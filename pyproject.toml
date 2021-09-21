@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "premium-allocation-tool"
+version = "0.1.0"
+description = "Premium allocation tool adapted from the previous Excel/R tool"
+authors = ["Chengyou Xiao"]
+license = "Guy Carpenter"
+
+[tool.poetry.dependencies]
+python = "3.8.8"
+pandas = "^1.3.2"
+pyodbc = "^4.0.32"
+
+[tool.poetry.dev-dependencies]
+jupyterlab = "^3.1.8"
+autopep8 = "^1.5.7"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,40 @@
+OccupancyType,PremiumWeight,HPRMap,PremiumPercent,HPRTable
+Apartment/Condo under 10 units,0,Low,0,36
+Apartment/Condo over 10 units,0,Medium,0,37
+Dwelling,0,Medium,0,37
+Group Institutional Housing,0,Medium,0,37
+Hospitals and Nursing Homes,0,Heavy,0,38
+Hotels and Motels - With Restaurant,0,Medium,0,37
+Hotels and Motels - Other,0,Low,0,36
+Entertainment and Recreation,0,Medium,0,37
+Restaurants and Bars,0,Medium,0,37
+Emergency Services,0,Low,0,36
+Government Services,0,Low,0,36
+Churches,0,Medium,0,37
+Schools,0,Medium,0,37
+Offices and Banks,0,Medium,0,37
+Other Mercantiles - Retail/Wholesale,0,Medium,0,37
+Other Mercantiles - Other,0,Low,0,36
+Gasoline Stations,0,Medium,0,37
+Auto repair,0,Medium,0,37
+Parking,0,Low,0,36
+Billboards,0,Low,0,36
+Personal and Repair Services,0,Low,0,36
+Buildings Under Construction,0,Heavy,0,38
+Air/Airplane Hangars,0,Medium,0,37
+Storage,0,Heavy,0,38
+Agricultural - Greenhouses,0,Low,0,36
+Agricultural - Grain Elevators,0,Heavy,0,38
+Food Processing - Other,0,Medium,0,37
+Food Processing - Severe,0,Heavy,0,38
+General Indu/Metal Manufacturing,0,Medium,0,37
+Chemical Manufacturing,0,Heavy,0,38
+Light Manufacturing - Printing,0,Low,0,36
+Light Manufacturing - Other,0,Medium,0,37
+Heavy Manufacturing - Wood ,0,Heavy,0,38
+Heavy Manufacturing - Other,0,Heavy,0,38
+Severe Manufacturing - Petroleum,0,Heavy,0,38
+Highly Protected Risks - Low,0,Low,0,36
+Highly Protected Risks - Medium,0,Medium,0,37
+Highly Protected Risks - Heavy,0,Heavy,0,38
+All (Excl. HPR),1,Medium,1,37
