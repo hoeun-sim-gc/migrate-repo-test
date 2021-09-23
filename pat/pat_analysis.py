@@ -11,7 +11,7 @@ from datetime import datetime
 
 from .pat_flag import PatFlag
 
-class PatJob:
+class PatAnalysis:
     """Class to repreet a PAT analysis"""
 
     peril_table = {1: "eqdet", 2: "hudet", 3: "todet",
@@ -25,8 +25,8 @@ class PatJob:
         self.df_facnet = None
         self.df_pat = None
 
-        self.conn_str = f'''DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={self.para["server"]};
-            DATABASE={self_para["edm_database"]};Trusted_Connection=yes; MARS_Connection=yes'''
+        self.conn_str = f'''DRIVER={{SQL Server}};Server={self.para["server"]};Database={self_para["edm_database"]};
+            Trusted_Connection=True;MultipleActiveResultSets=true;'''
 
         self.iCovg = 2 if self.para['coverage'] == "Building + Contents + Time Element" else 1
         self.iSubGrp = {
@@ -48,6 +48,7 @@ class PatJob:
 
         self.gdReinsuranceLimit = 1000000 # global reinsurance limit
         self.gdReinsuranceRetention = 1000000 # global reinsurance retention
+        
 
     def extract_edm_rdm(self):
         with pyodbc.connect(self.conn_str) as conn:
@@ -384,6 +385,8 @@ class PatJob:
         self.__check_policy()
         self.__check_fac()
         self.__check_location()
+
+        return True
 
     def __check_policy(self):
         self.df_pol['status'] = int(0)
