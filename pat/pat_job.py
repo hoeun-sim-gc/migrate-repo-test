@@ -139,8 +139,8 @@ class PatJob:
                             ) as accttiv1 
                         group by accgrpid
                         ) as accttiv on p.accgrpid = accttiv.accgrpid
-                    where p.policytype = {self.para['analysisid']}
-                    and pa.portinfoid = {self.para['portinfoid']}""")
+                    where p.policytype = {self.para['perilid']}
+                        and pa.portinfoid = {self.para['portinfoid']}""")
 
             # policy_loc_conditions
             cur.execute(f"""select p.accgrpid, p.policyid, p.policytype, p.blanlimamt, p.partof, 
@@ -185,63 +185,102 @@ class PatJob:
                     left join incl_locs on all_locs.policyid = incl_locs.policyid and all_locs.locid = incl_locs.locid
                 where incl_locs.locid is null""")
 
-            # locpoltotals
-            cur.execute(f"""select a.id as policyid, p.blanlimamt, p.partof, 
-                    p.undcovamt, p.polded, res1value as locid, a.eventid,
-                    sum(case when perspcode = 'gu' then perspvalue else 0  end) as grounduploss,
-                    sum(case when perspcode = 'cl' then perspvalue else 0  end) as clientloss,
-                    sum(case when perspcode = 'uc' then perspvalue else 0  end) as undcovloss,
-                    sum(case when perspcode = 'ol' then perspvalue else 0  end) as overlimitloss,
-                    sum(case when perspcode = 'oi' then perspvalue else 0  end) as otherinsurerloss,
-                    sum(case when perspcode = 'gr' then perspvalue else 0  end) as grossloss,
-                    sum(case when perspcode = 'ss' then perspvalue else 0  end) as surplusshareloss,
-                    sum(case when perspcode = 'fa' then perspvalue else 0  end) as facloss,
-                    sum(case when perspcode = 'rl' then perspvalue else 0  end) as netprecatloss
-                    into #locpoltotals
-                from {self.para['rdm_database']}..rdm_policy a 
-                    inner join {self.para['rdm_database']}..rdm_eventareadetails b on a.eventid = b.eventid 
-                    inner join #policy_standard as p on a.id = p.policyid
-                where anlsid = {self.para['analysisid']}
-                group by a.id, res1value, a.eventid, p.blanlimamt, p.partof, p.undcovamt, p.polded
-                having sum(case when perspcode = 'gu' then perspvalue else 0 end) * 
-                    ({self.para['additional_coverage']} + 1) > p.undcovamt""")
-
             # sqlpremalloc
-            cur.execute(f"""select case when cond.conditiontype is null then 0 else cond.conditiontype end as condition,
-                    a.locid, b.accgrpid, c.accgrpname, a.policyid, b.policynum,
-                    b.blanlimamt as orig_blanlim,
-                    b.partof as orig_partof,
-                    b.undcovamt as orig_undcovamt,
-                    b.blanlimamt / b.partof as orig_participation,
-                    a.grounduploss, clientloss, undcovloss, overlimitloss, otherinsurerloss, grossloss,
-                    case when grossloss + otherinsurerloss = 0 then a.blanlimamt else
-                        case when overlimitloss > 1 then (a.blanlimamt / a.partof) * (grossloss + otherinsurerloss) else a.blanlimamt end end as  rev_blanlimamt,
-                    case when grossloss + otherinsurerloss = 0 then a.partof else 
-                        case when overlimitloss > 1 then grossloss + otherinsurerloss else a.partof end end as rev_partof,	
-                    case when a.partof = 0 then 1 else a.blanlimamt / a.partof end as participation,
-                    clientloss as deductible,
-                    case when cond.conditiontype = 2 then undcovloss else b.undcovamt end as undcovamt, grounduploss as origtiv,
-                    case when grossloss + otherinsurerloss = 0 then clientloss + undcovloss else grounduploss end as rev_tiv,
-                    case when grounduploss < totaltiv then grounduploss * (bldgval/totaltiv) else bldgval end as bldgval,
-                    case when grounduploss < totaltiv then grounduploss * (contval/totaltiv) else contval end as contval,
-                    case when grounduploss < totaltiv then grounduploss * (bival/totaltiv) else bival end as bival,
-                    a.grossloss as spidergel, blanpreamt
-                    into #sqlpremalloc
-                from #locpoltotals a 
-                    inner join #policy_standard b on a.policyid = b.policyid
-                    inner join accgrp as c on b.accgrpid = c.accgrpid 
-                    inner join 
-                        (select locid, peril,
-                            sum(case when losstype = 1 then valueamt else 0  end) as bldgval,
-                            sum(case when losstype = 2 then valueamt else 0  end) as contval,
-                            sum(case when losstype = 3 then valueamt else 0  end) as bival,
-                            sum(valueamt) as totaltiv
-                        from loccvg								
-                        where peril = {self.para['perilid']}
-                        group by locid, peril) as d on a.locid = d.locid 
-                    left join #policy_loc_conditions as cond on a.policyid = cond.policyid and a.locid = cond.locid
-                where case when cond.conditiontype is null then 0 else cond.conditiontype end <> 1
-                order by  b.accgrpid, a.locid, a.undcovloss""")
+            if 'rdm_database' in self.para and 'analysisid' in self.para:
+                cur.execute(f"""with locpoltotals as (
+                    select a.id as policyid, p.blanlimamt, p.partof, 
+                        p.undcovamt, p.polded, res1value as locid, a.eventid,
+                        sum(case when perspcode = 'gu' then perspvalue else 0  end) as grounduploss,
+                        sum(case when perspcode = 'cl' then perspvalue else 0  end) as clientloss,
+                        sum(case when perspcode = 'uc' then perspvalue else 0  end) as undcovloss,
+                        sum(case when perspcode = 'ol' then perspvalue else 0  end) as overlimitloss,
+                        sum(case when perspcode = 'oi' then perspvalue else 0  end) as otherinsurerloss,
+                        sum(case when perspcode = 'gr' then perspvalue else 0  end) as grossloss,
+                        sum(case when perspcode = 'ss' then perspvalue else 0  end) as surplusshareloss,
+                        sum(case when perspcode = 'fa' then perspvalue else 0  end) as facloss,
+                        sum(case when perspcode = 'rl' then perspvalue else 0  end) as netprecatloss
+                    from {self.para['rdm_database']}..rdm_policy a 
+                        inner join {self.para['rdm_database']}..rdm_eventareadetails b on a.eventid = b.eventid 
+                        inner join #policy_standard as p on a.id = p.policyid
+                    where anlsid = {self.para['analysisid']}
+                    group by a.id, res1value, a.eventid, p.blanlimamt, p.partof, p.undcovamt, p.polded
+                    having sum(case when perspcode = 'gu' then perspvalue else 0 end) * 
+                        ({self.para['additional_coverage']} + 1) > p.undcovamt)
+
+                    select case when cond.conditiontype is null then 0 else cond.conditiontype end as condition,
+                        a.locid, b.accgrpid, c.accgrpname, a.policyid, b.policynum,
+                        b.blanlimamt as orig_blanlim,
+                        b.partof as orig_partof,
+                        b.undcovamt as orig_undcovamt,
+                        b.blanlimamt / b.partof as orig_participation,
+                        a.grounduploss, clientloss, undcovloss, overlimitloss, otherinsurerloss, grossloss,
+                        case when grossloss + otherinsurerloss = 0 then a.blanlimamt else
+                            case when overlimitloss > 1 then (a.blanlimamt / a.partof) * (grossloss + otherinsurerloss) else a.blanlimamt end end as  rev_blanlimamt,
+                        case when grossloss + otherinsurerloss = 0 then a.partof else 
+                            case when overlimitloss > 1 then grossloss + otherinsurerloss else a.partof end end as rev_partof,	
+                        case when a.partof = 0 then 1 else a.blanlimamt / a.partof end as participation,
+                        clientloss as deductible,
+                        case when cond.conditiontype = 2 then undcovloss else b.undcovamt end as undcovamt, grounduploss as origtiv,
+                        case when grossloss + otherinsurerloss = 0 then clientloss + undcovloss else grounduploss end as rev_tiv,
+                        case when grounduploss < totaltiv then grounduploss * (bldgval/totaltiv) else bldgval end as bldgval,
+                        case when grounduploss < totaltiv then grounduploss * (contval/totaltiv) else contval end as contval,
+                        case when grounduploss < totaltiv then grounduploss * (bival/totaltiv) else bival end as bival,
+                        a.grossloss as spidergel, blanpreamt
+                        into #sqlpremalloc
+                    from locpoltotals a 
+                        inner join #policy_standard b on a.policyid = b.policyid
+                        inner join accgrp as c on b.accgrpid = c.accgrpid 
+                        inner join 
+                            (select locid, peril,
+                                sum(case when losstype = 1 then valueamt else 0  end) as bldgval,
+                                sum(case when losstype = 2 then valueamt else 0  end) as contval,
+                                sum(case when losstype = 3 then valueamt else 0  end) as bival,
+                                sum(valueamt) as totaltiv
+                            from loccvg								
+                            where peril = {self.para['perilid']}
+                            group by locid, peril) as d on a.locid = d.locid 
+                        left join #policy_loc_conditions as cond on a.policyid = cond.policyid and a.locid = cond.locid
+                    where case when cond.conditiontype is null then 0 else cond.conditiontype end <> 1
+                    order by  b.accgrpid, a.locid, a.undcovloss""")
+            else:
+                cur.execute(f"""select 0 as conditionid, l.locid, a.accgrpid, a.accgrpname, 
+                        p.policyid, p.policynum, p.blanlimamt as orig_blanlimamt, 
+                        p.partof as orig_partof, p.undcovamt as orig_undcovamt,
+                        p.polparticipation as orig_participation, l.tiv as grounduploss, 
+                        p.polded as clientloss, p.undcovamt as undcovloss,
+                        case when l.tiv < p.undcovamt + p.partof + p.polded then 0
+                            else l.tiv - (p.undcovamt + p.partof + p.polded) end as overlimitloss,
+                        case when l.tiv < p.undcovamt + p.polded then 0
+                            when l.tiv < p.undcovamt + p.partof + p.polded and l.tiv > p.undcovamt + p.polded 
+                                then (l.tiv - (p.undcovamt + p.polded)) * (1-p.polparticipation)
+                            else p.partof * (1 - p.polparticipation) end as otherinsurerloss,
+                        case when l.tiv < p.undcovamt + p.polded then 0 
+                            when l.tiv < p.undcovamt + p.partof + p.polded and l.tiv > p.undcovamt + p.polded 
+                                then (l.tiv - (p.undcovamt + p.polded)) * (p.polparticipation)
+                            else p.blanlimamt end as grossloss,
+                        p.blanlimamt as rev_blanlimamt, p.partof as rev_partof, 
+                        p.polparticipation as participation, p.polded as deductible, p.undcovamt as undcovamt,
+                        l.tiv as origtiv, l.tiv as rev_tiv, bldgval, contval, bival, 
+                        case when l.tiv < p.undcovamt + p.polded then 0
+                            when l.tiv < p.undcovamt + p.partof + p.polded and l.tiv > p.undcovamt + p.polded 
+                                then (l.tiv - (p.undcovamt + p.polded)) * (p.polparticipation)
+                            else p.blanlimamt end as spidergel, p.blanpreamt
+                        into #sqlpremalloc
+                        from accgrp as a 
+                            inner join policy_standard as p on a.accgrpid = p.accgrpid 
+                            inner join policy as pol on p.policyid = pol.policyid 
+                            inner join 
+                                (select loc.accgrpid, loc.locid, sum(valueamt) as tiv,
+                                    sum(case when losstype = 1 then valueamt else 0 end) as bldgval,
+                                    sum(case when losstype = 2 then valueamt else 0 end) as contval,
+                                    sum(case when losstype = 3 then valueamt else 0 end) as bival
+                                from loc 
+                                    inner join loccvg on loc.locid = loccvg.locid 
+                                where peril = {self.para['perilid']}
+                                group by loc.accgrpid, loc.locid
+                                ) as l on a.accgrpid = l.accgrpid
+                        where l.tiv * ({self.para['additional_coverage']} + 1) > p.undcovamt""")
+
             cur.commit()
 
             cur.execute(f"""update #sqlpremalloc
@@ -337,7 +376,7 @@ class PatJob:
         with conn.cursor() as cur:
             cur.execute("drop table #policy_standard")
             cur.execute("drop table #policy_loc_conditions")
-            cur.execute("drop table #locpoltotals")
+            # cur.execute("drop table #locpoltotals")
             cur.execute("drop table #sqlpremalloc")
             cur.commit()
 
