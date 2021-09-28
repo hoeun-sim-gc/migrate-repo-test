@@ -17,15 +17,26 @@ class PatAnalysis:
     peril_table = {1: "eqdet", 2: "hudet", 3: "todet",
                    4: "fldet", 5: "frdet", 6: "trdet"}
     
-    def __init__(self, self_para):
-        self.para = self_para
+    def __init__(self, job_para):
+        self.job_guid = None
+        self.job_name = None
+        self.user_name = None
+        self.user_email = None
+        self.para = job_para
+
+        self.job_name = self.para['job_name']
+        if 'user_name' in job_para:
+            self.user_name = self.para['user_name']
+        if 'user_email' in job_para:
+            self.user_email = self.para['user_email']  
+
         self.df_pol = None
         self.df_loc = None
         self.df_fac = None
         self.df_facnet = None
         self.df_pat = None
 
-        self.conn_str = f'''DRIVER={{SQL Server}};Server={self.para["server"]};Database={self_para["edm_database"]};
+        self.conn_str = f'''DRIVER={{SQL Server}};Server={self.para["server"]};Database={job_para["edm_database"]};
             Trusted_Connection=True;MultipleActiveResultSets=true;'''
 
         self.iCovg = 2 if self.para['coverage'] == "Building + Contents + Time Element" else 1
@@ -41,6 +52,8 @@ class PatAnalysis:
 
         self.iDedType = 1 if self.para['deductible_treatment'] == "Retains Limit" else 2
         self.dSubjPrem = float(self.para['subject_premium'])
+
+        self.loss_ratio = float(self.para['loss_alae_ratio'])
         
         self.dtAveAccDate = datetime.strptime(self.para['average_accident_date'], '%m/%d/%Y')
         self.gdtPSTrendFrom = datetime(2015,12,31)
@@ -48,12 +61,14 @@ class PatAnalysis:
 
         self.gdReinsuranceLimit = 1000000 # global reinsurance limit
         self.gdReinsuranceRetention = 1000000 # global reinsurance retention
-        
+
+        #last one to get job_guid
+        self.job_guid = self.para['job_guid']
+
 
     def extract_edm_rdm(self):
         with pyodbc.connect(self.conn_str) as conn:
-            with pyodbc.connect(self.conn_str) as conn:
-                if self.__verify_edm_rdm(conn) != 'ok': return
+            if self.__verify_edm_rdm(conn) != 'ok': return
 
             self.__create_temp_tables(conn)
 
@@ -616,14 +631,11 @@ class PatAnalysis:
         dfLayers['LimitRetained'] = dfLayers.Limit100 * \
             dfLayers.NetParticipation
 
-        # Tack on loss raito (input from sheet)
-        dfLayers['LossRatio'] = float(self.para['loss_alae_ratio'])
-
         # FacNet table
         self.df_facnet = dfLayers[["OriginalPolicyID", "PseudoPolicyID", "LayerID",
-                                    "Limit100", "LayerLow", "LossRatio", "PolPremium", "NetParticipation"]]
+                                    "Limit100", "LayerLow", "PolPremium", "NetParticipation"]]
         self.df_facnet.columns = ["OriginalPolicyID", "PseudoPolicyID", "PseudoLayerID",
-                                    "Limit", "Retention", "LossRatio", "OriginalPremium", "Participation"]
+                                    "Limit", "Retention", "OriginalPremium", "Participation"]
 
     def apply_user_correction(self):
         # use user input (pol.loc, fac) to replace the ones need to be correct, re-check data
@@ -765,21 +777,21 @@ class PatAnalysis:
         dfLoc = self.__calc_las(dfLoc, gdMu, dfWeights, dfUniqueDetail)
 
         # dfLocation6
-        dfLoc['sumLAS'] = (dfLoc.PolLAS-dfLoc.DedLAS)*dfLoc.LossRatio*dfLoc.Participation
+        dfLoc['sumLAS'] = (dfLoc.PolLAS-dfLoc.DedLAS)*self.loss_ratio*dfLoc.Participation
         dfLoc['sumLAS'] = dfLoc['sumLAS'].fillna(value=0)
         dfLoc['sumLAS'] = dfLoc['sumLAS'].groupby(dfLoc.OriginalPolicyID).transform('sum')
         dfLoc['premLAS'] = dfLoc.OriginalPremium / dfLoc.sumLAS
-        dfLoc['Prem'] = (dfLoc.PolLAS - dfLoc.DedLAS) * dfLoc.LossRatio * dfLoc.Participation * dfLoc.premLAS
-        dfLoc['EffPrem'] = (dfLoc.Prem * self.dSubjPrem/ dfLoc.Prem.sum())
+        dfLoc['Premium'] = (dfLoc.PolLAS - dfLoc.DedLAS) * self.loss_ratio * dfLoc.Participation * dfLoc.premLAS
+        dfLoc['EffPrem'] = (dfLoc.Premium * self.dSubjPrem/ dfLoc.Premium.sum())
         dfLoc['ExpectedLossCount'] = ((np.minimum(dfLoc.RetStepLAS,dfLoc.PolLAS)-np.minimum(dfLoc.PolLAS, dfLoc.RetLAS)) \
-            /(dfLoc.PolLAS - dfLoc.DedLAS) * dfLoc.LossRatio*dfLoc.EffPrem )/.01
+            /(dfLoc.PolLAS - dfLoc.DedLAS) * self.loss_ratio*dfLoc.EffPrem )/.01
 
         # Final
-        self.df_pat = dfLoc[["Limit", "Retention", "Prem", "Participation", "LossRatio", "AOI", "LocationIDStack",
+        self.df_pat = dfLoc[["Limit", "Retention", "Premium", "Participation", "AOI", "LocationIDStack",
                     "RatingGroup", "OriginalPolicyID", "PseudoPolicyID", "PseudoLayerID", "PolLAS", "DedLAS"]] \
                 .sort_values(by=['OriginalPolicyID', 'PseudoPolicyID', 'PseudoLayerID'])
         self.df_pat.rename(columns={
-            'Prem':'Allocated_Premium',
+            'Premium':'Allocated_Premium',
             'RatingGroup':'Rating_Group',
             'OriginalPolicyID':'Original_Policy_ID',
             'PseudoLayerID': 'Pseudo_Layer_ID',
@@ -975,7 +987,7 @@ class PatAnalysis:
         df.loc[df.OriginalPremium > 0, ['MaxLoss']] = np.maximum(np.minimum(
             df.Limit*(1+df.AddtlCovg)-df.dPolDed, df.dEffLimRet)-df.dEffRet, 0) * df.Participation
         df['ExpectedLossCount'] = ((np.minimum(df.RetStepLAS, df.PolLAS) - np.minimum(
-            df.PolLAS, df.RetLAS)) / (df.PolLAS-df.DedLAS) * df.LossRatio * df.EffPrem) / rein
+            df.PolLAS, df.RetLAS)) / (df.PolLAS-df.DedLAS) * self.loss_ratio * df.EffPrem) / rein
         
         df['PercentExpos'] = 0
         df.loc[df.OriginalPremium > 0, 'PercentExpos'] = \
