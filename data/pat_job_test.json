@@ -1,24 +1,24 @@
 {
-    "job_guid" : "80a1ca07-41f9-4f34-b7bb-d01b477bc78d",
-    "job_name":"PAT_Test_AIG",
+    "job_guid": "80a1ca07-41f9-4f34-b7bb-d01b477bc78d",
+    "job_name": "PAT_Test_AIG",
     "error_action": "stop",
 
-    "type_of_rating":"PSOLD",
-    "coverage":"Building + Contents + Time Element",
-    "peril_subline":"All_Perils",
-    "subject_premium": 1e8,
+    "type_of_rating": "PSOLD",
+    "coverage": "Building + Contents + Time Element",
+    "peril_subline": "All_Perils",
+    "subject_premium": 100000000.0,
     "loss_alae_ratio": 1,
-    "average_accident_date":"1/1/2022",
+    "average_accident_date": "1/1/2022",
     "trend_factor": 1.035,
     "additional_coverage": 2,
-    "deductible_treatment":"Retains Limit",
-    "server":"DFWCAT-RMS5SQL1",
-    "edm_database":"RMS_EPL_AIG_PAT_Testing_202107_EDM181",
-    "rdm_database":"RMS_EPL_AIG_PAT_Testing_202107_RDM181",
+    "deductible_treatment": "Retains Limit",
+    "server": "DFWCAT-RMS5SQL1",
+    "edm_database": "RMS_EPL_AIG_PAT_Testing_202107_EDM181",
+    "rdm_database": "RMS_EPL_AIG_PAT_Testing_202107_RDM181",
     "portinfoid": 6,
-    "perilid": 5, 
+    "perilid": 5,
     "analysisid": 5,
-
+    
     "user_name": "cxiao",
-    "user_ema": "chengyou.xiao@guycarp.com"
+    "user_email": "chengyou.xiao@guycarp.com"
 }
