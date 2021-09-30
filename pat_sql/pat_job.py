@@ -1,26 +1,32 @@
 
 import os
-import math
-from enum import Flag
-from typing import Final
-import numpy as np
-import pandas as pd
-import pyodbc
-from pandasql import sqldf
+import json
+import logging
+import threading
 from datetime import datetime
 
-from .pat_flag import PatFlag
+import numpy as np
+import pandas as pd
+
+import pyodbc
+from bcpandas import SqlCreds, to_sql
+
+from common import AppSettings, PatFlag
 
 class PatJob:
     """Class to repreet a PAT analysis"""
 
     peril_table = {1: "eqdet", 2: "hudet", 3: "todet",
                    4: "fldet", 5: "frdet", 6: "trdet"}
-    
-    def __init__(self, job_para, data_file = None):
-        self.job_guid = None
-        self.para = job_para
+    job_conn = f'''DRIVER={{SQL Server}};Server={AppSettings.PAT_JOB_SVR};Database={AppSettings.PAT_JOB_DB};
+            User Id={AppSettings.PAT_JOB_USR};Password={AppSettings.PAT_JOB_PWD};
+            MultipleActiveResultSets=true;'''
 
+    def __init__(self, job_para, data_file = None):
+        self.para = job_para
+        self.job_guid = self.para['job_guid']
+        self.job_id =0 
+        
         self.job_name = self.para['job_name']
         self.user_name = self.para['user_name'] if 'user_name' in job_para else None
         self.user_email = self.para['user_email'] if 'user_email' in job_para else None
@@ -43,22 +49,203 @@ class PatJob:
         self.gdReinsuranceLimit = 1000000 # global reinsurance limit
         self.gdReinsuranceRetention = 1000000 # global reinsurance retention
 
-        #last one to get job_guid
-        self.job_guid = self.para['job_guid']
+        #
+        self.job_id = self.__register_job()
+        if self.job_id > 0:
+            self.__setup_logging(f"{self.job_id}")
 
-    def extract_edm_rdm(self):
-        conn_str = f'''DRIVER={{SQL Server}};Server={self.para["server"]};Database={self.job_para["edm_database"]};
+    def __register_job(self):
+        with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
+            dt = datetime.utcnow().isoformat()
+            n = cur.execute(f"""if not exists(select 1 from pat_job where job_guid = '{self.job_guid}')
+                                begin 
+                                insert into pat_job values (next value for pat_analysis_id_seq, '{self.job_guid}', '{self.job_name}',
+                                    '{dt}', '{dt}', 'received',
+                                    '{self.user_name}','{self.user_email}',
+                                    '{json.dumps(self.para).replace("'", "''")}')
+                                end""").rowcount
+            cur.commit()
+            
+            if n==1:
+                df = pd.read_sql_query(f"""select job_id from pat_job where job_guid = '{self.job_guid}'""", conn)
+                if len(df)>0:
+                    return df.job_id[0]
+        return 0
+
+    def __setup_logging(self, name):
+        self.log_file = os.path.join(AppSettings.PAT_LOG, "pat.log")
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(logging.DEBUG)
+        formatter = logging.Formatter("%(asctime)s [%(name)s] (%(levelname)s): %(message)s")
+
+        oh = logging.StreamHandler()
+        oh.setLevel(logging.INFO)
+        oh.setFormatter(formatter)
+        self.logger.addHandler(oh)
+
+        try:
+            fh = logging.FileHandler(self.log_file)
+            fh.setLevel(logging.DEBUG)
+            fh.setFormatter(formatter)
+            self.logger.addHandler(fh)
+        except:
+            pass    
+
+        self.logger.info(f"Start processing job: {self.job_guid}")
+        self.logger.info(f"parameter: {json.dumps(self.para, sort_keys=True, indent=4)}")
+
+    def __update_status(self, st):
+        with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
+            cur.execute(f"""update pat_job set status = '{st.replace("'","''")}', 
+                update_time = '{datetime.utcnow().isoformat()}'
+                where job_id = {self.job_id}""").rowcount
+            cur.commit()
+
+    @classmethod
+    def get_job_list(cls):
+        with pyodbc.connect(cls.job_conn) as conn:
+            df = pd.read_sql_query(f"""select job_id job_id, job_guid, job_name, receive_time, update_time, status, user_name, user_email
+            from pat_job order by update_time desc, job_id desc""", conn)
+
+            return df.to_json()
+
+    @classmethod
+    def get_job_para(cls, job_id):
+        with pyodbc.connect(cls.job_conn) as conn:
+            df = pd.read_sql_query(f"""select parameters from pat_job where job_id = {job_id}""", conn)
+            if df is not None and len(df) > 0:
+                return df.parameters[0]
+
+    @classmethod
+    def get_summary(cls, job_id):
+        with pyodbc.connect(cls.job_conn) as conn:
+            df = pd.read_sql_query(f"""select count(*) as cnt_policy from pat_policy where job_id = {job_id}""", conn)
+            df['cnt_location'] = pd.read_sql_query(f"""select count(*) from pat_location where job_id = {job_id}""", conn)
+            df['cnt_fac'] = pd.read_sql_query(f"""select count(*) from pat_facultative where job_id = {job_id}""", conn)
+            return df.to_json()
+
+    @classmethod
+    def get_results(cls, job_id):
+        with pyodbc.connect(cls.job_conn) as conn:
+            df = pd.read_sql_query(f"""select Limit, Retention, Premium, Participation, AOI, LocationIDStack, 
+                                            RatingGroup, OriginalPolicyID, PseudoPolicyID, PseudoLayerID, PolLAS, DedLAS
+                                       from pat_premium where job_id = {job_id}""", conn)
+            return df.to_json()
+
+    @classmethod
+    def delete(cls, *job_lst):
+        if len(job_lst) >0 :  
+            lst= [f"{a}" for a in job_lst]
+            with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+                for t in ['pat_job','pat_policy','pat_location', 'pat_facultative', 'pat_premium']:
+                    cur.execute(f"""delete from [{t}] where job_id in ({','.join(lst)})""")
+                
+                cur.commit()
+        
+        return cls.get_job_list()
+   
+    @classmethod
+    def get_validation_data(self, job_id):
+        with pyodbc.connect(self.job_conn) as conn:
+            df1 = pd.read_sql_query(f"""
+                select * from pat_policy where job_id = {job_id} and flag != 0
+                order by PseudoPolicyID""",conn)
+            if len(df1) > 0:
+                df = df1[['flag']].drop_duplicates(ignore_index=True)
+                df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
+                df1 = df1.merge(df, on ='flag')
+            
+            df2 = pd.read_sql_query(f"""
+                select * from pat_location where job_id = {job_id} and flag != 0
+                order by PseudoPolicyID""",conn)
+            if len(df2) > 0:
+                df = df2[['flag']].drop_duplicates(ignore_index=True)
+                df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
+                df2 = df2.merge(df, on ='flag')
+
+            df3 = pd.read_sql_query(f"""
+                select * from pat_facultative where job_id = {job_id} and flag != 0
+                order by PseudoPolicyID""",conn)
+            if len(df3) > 0:
+                df = df3[['flag']].drop_duplicates(ignore_index=True)
+                df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
+                df3 = df3.merge(df, on ='flag')
+
+        return (df1, df2, df3)
+
+    # deamon  
+    def process_job_async(self):
+        d = threading.Thread(name='pat-daemon', target=self.perform_analysis)
+        d.setDaemon(True)
+        d.start()
+
+        return True
+    
+    def perform_analysis(self):
+        self.logger.info("Import data...")
+        self.__extract_edm_rdm()
+        self.logger.info("Import data...OK")
+        self.__update_status("data_extracted")
+
+        if self.__need_correction():
+            if 'error_action' in self.para and self.para['error_action'] == 'stop':
+                self.logger.error("Need to correct data tehn run again")
+                return
+            else:
+                self.logger.warning("Skip erroneous data and continue")
+        
+        # start calculation
+        self.logger.info("create the net of FAC layer stack ...")
+        df_facnet = self.__net_of_fac()
+        self.logger.info("create the net of FAC layer stack...OK")
+        self.__update_status("net_of_fac")
+
+        self.logger.info("Allocate premium with PSOLD...")
+        df_pat = self.__allocate_with_psold(df_facnet)
+        self.logger.info("Allocate premium with PSOLD...OK")
+        self.__update_status("allocated")
+
+        # save results
+        if df_pat is not None and len(df_pat) > 0:
+            self.logger.info("Save results to database...")
+            df_pat.fillna(value=0, inplace=True)
+            df_pat['job_id'] = self.job_id
+            creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
+            to_sql(df_pat, "pat_premium", creds, index=False, if_exists='append')
+            self.logger.info("Save results to database...OK")
+        
+        self.__update_status("finished")
+        self.logger.info("Finished!")
+
+    def __extract_edm_rdm(self):
+        conn_str = f'''DRIVER={{SQL Server}};Server={self.para["server"]};Database={self.para["edm_database"]};
             Trusted_Connection=True;MultipleActiveResultSets=true;'''
         with pyodbc.connect(conn_str) as conn:
+            self.logger.debug("Verify input data base info...")
             if self.__verify_edm_rdm(conn) != 'ok': return
+            self.logger.debug("Verify input data base info...OK")
 
+            self.logger.debug("Create temp tables...")
             self.__create_temp_tables(conn)
-
+            self.logger.debug("Create temp tables...OK")
+            
+            self.logger.debug("Extract policy table...")
             self.__extract_policy(conn)
+            self.logger.debug("Extract policy table...OK")
+            
+            self.logger.debug("Extract location table...")
             self.__extract_location(conn)
+            self.logger.debug("Extract location table...OK")
+            
+            self.logger.debug("Extract fac table...")
             self.__extract_fac(conn)
+            self.logger.debug("Extract fac table...OK")
 
             self.__delete_temp_tables(conn)
+
+            self.logger.debug("Some extra data checking...")
+            self.__extra_data_check()
+            self.logger.debug("Some extra data checking...OK")
 
     def __verify_edm_rdm(self, conn):
         # Check that PerilID is valid
@@ -239,7 +426,7 @@ class PatJob:
                             group by locid, peril) as d on a.locid = d.locid 
                         left join #policy_loc_conditions as cond on a.policyid = cond.policyid and a.locid = cond.locid
                     where case when cond.conditiontype is null then 0 else cond.conditiontype end <> 1
-                    order by  b.accgrpid, a.locid, a.undcovloss""")
+                    order by b.accgrpid, a.locid, a.undcovloss""")
             else:
                 cur.execute(f"""select 0 as conditionid, l.locid, a.accgrpid, a.accgrpname, 
                         p.policyid, p.policynum, p.blanlimamt as orig_blanlimamt, 
@@ -279,80 +466,143 @@ class PatJob:
                                 ) as l on a.accgrpid = l.accgrpid
                         where l.tiv * ({self.para['additional_coverage']} + 1) > p.undcovamt""")
 
-            cur.commit()
-
             cur.execute(f"""update #sqlpremalloc
                 set bldgval = rev_tiv * (bldgval / origtiv), 
                     contval = rev_tiv * (contval / origtiv), 
                     bival = rev_tiv * (bival / origtiv)
                 where origtiv > rev_tiv + 1""")
 
+            cur.commit()
+
     def __extract_policy(self, conn):
         retained_lmt = "(locpol.rev_partof - locpol.deductible) * locpol.rev_blanlimamt / locpol.rev_partof" if self.para[
             'deductible_treatment'] == 'Erodes Limit' else "locpol.rev_blanlimamt"
         gross_lmt = "locpol.rev_partof - locpol.deductible" if self.para[
             'deductible_treatment'] == 'Erodes Limit' else "locpol.rev_partof"
-        self.df_pol = pd.read_sql_query(f"""select locpol.policyid as OriginalPolicyID, 
+        df_pol = pd.read_sql_query(f"""select locpol.policyid as OriginalPolicyID, 
                     concat(locpol.policyid, '_', locpol.locid) as PseudoPolicyID, 
                     {retained_lmt} as PolRetainedLimit, 
-                    {gross_lmt} as PolLimit, 
+                    round({gross_lmt}, 2) as PolLimit, 
                     locpol.participation as PolParticipation, 
-                    locpol.deductible + locpol.undcovamt as PolRetention, 
+                    round(locpol.deductible + locpol.undcovamt, 2) as PolRetention, 
                     policy.blanpreamt as PolPremium
                 from #sqlpremalloc as locpol 
-                    inner join policy on locpol.policyid = policy.policyid 
-                order by locpol.accgrpid, locpol.policyid, locpol.locid""", conn)
+                    inner join policy on locpol.policyid = policy.policyid""", conn)
 
-        mask = np.round(self.df_pol.PolRetainedLimit -
-                        self.df_pol.PolLimit * self.df_pol.PolParticipation, 1) <= 2
-        self.df_pol.loc[mask, ['PolParticipation']] = np.divide(
-            self.df_pol['PolRetainedLimit'][mask], self.df_pol['PolLimit'][mask])
-        self.df_pol['PolLimit'] = np.round(self.df_pol['PolLimit'], 2)
-        self.df_pol['PolRetention'] = np.round(self.df_pol['PolRetention'], 2)
+        df_pol['job_id'] = self.job_id
+        creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
+        to_sql(df_pol, "pat_policy", creds, index=False, if_exists='append')
 
-        # sorting
-        self.df_pol.sort_values(['OriginalPolicyID', 'PseudoPolicyID']).reset_index(drop=True, inplace=True)
+        # normalize policy
+        with pyodbc.connect(self.job_conn) as j_conn, j_conn.cursor() as cur:
+            cur.execute(f"""update pat_policy set flag = 0 where job_id = {self.job_id}""")
+            cur.execute(f"""update pat_policy set PolParticipation = PolRetainedLimit / PolLimit
+                            where job_id  = {self.job_id}
+                                and round(PolRetainedLimit - PolLimit * PolParticipation, 1) <= 2""")
+            
+            # Duplicate Policies 
+            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolDupe}
+                            where job_id  = {self.job_id}
+                                and PseudoPolicyID in 
+                                (select PseudoPolicyID from pat_policy 
+                                 where job_id  = {self.job_id}
+                                 group by PseudoPolicyID having count(*) > 1)""")
+
+            # Policies with nonNumeric Fields
+            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolNA}
+                            where job_id  = {self.job_id}
+                                and (PolLimit is null or PolRetention is null or PolRetainedLimit is null or
+                                    PolParticipation is null or PolPremium is null)""")
+            
+            # Policies with negative fields
+            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolNeg}
+                            where job_id  = {self.job_id}
+                                and (PolLimit < 0 or PolRetention < 0 or PolRetainedLimit < 0 or
+                                    PolParticipation < 0 or PolPremium < 0)""")
+
+            # Policies with inconsistant limit/participation alegebra
+            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolLimitParticipation}
+                            where job_id  = {self.job_id}
+                                and round(PolRetainedLimit - PolLimit * PolParticipation, 1) > 2""") #? check above for same formula 
+
+            # Policies with excess participation
+            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolParticipation}
+                            where job_id  = {self.job_id} 
+                                and round(PolParticipation, 2) > 1""")
+
+            cur.commit()
 
     def __extract_location(self, conn):
         aoi = "locpol.bldgval + locpol.contval + locpol.bival" if self.para[
             'coverage'] == "Building + Contents + Time Element" else "locpol.bldgval + locpol.contval"
-        self.df_loc = pd.read_sql_query(f"""select concat(locpol.policyid, '_', locpol.locid) as PseudoPolicyID, 
+        df_loc = pd.read_sql_query(f"""select concat(locpol.policyid, '_', locpol.locid) as PseudoPolicyID, 
                     locpol.locid as LocationIDStack,
                     {aoi} as AOI, 
                     loc.occscheme as occupancy_scheme, loc.occtype as occupancy_code 
                 from #sqlpremalloc as locpol 
-                    inner join loc on locpol.locid = loc.locid 
-                order by locpol.accgrpid, locpol.policyid, locpol.locid""", conn)
+                    inner join loc on locpol.locid = loc.locid""", conn)
+        
+        df_loc['job_id'] = self.job_id
+        creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
+        to_sql(df_loc, "pat_location", creds, index=False, if_exists='append')
 
-        self.__apply_psold_mapping()
+        # normalize location
+        with pyodbc.connect(self.job_conn) as j_conn, j_conn.cursor() as cur:
+            df = pd.read_sql_query(f"""select min(PSOLD_RG) as min_rg, max(PSOLD_RG) as max_rg from psold_mapping""", j_conn)
+            min_psold_rg = df.min_rg[0]
+            max_psold_rg = df.max_rg[0]
+           
+            cur.execute(f"""update pat_location set flag = 0, RatingGroup = 0 where job_id  = {self.job_id}""")
 
-        self.df_loc = self.df_loc[["PseudoPolicyID", "AOI", "LocationIDStack", "psold_rg"]].rename(columns={"psold_rg":"RatingGroup"})
+            # Attach PSOLD mapping
+            cur.execute(f"""update t set t.RatingGroup = m.PSOLD_RG
+                                from pat_location t 
+                                join psold_mapping m on t.occupancy_scheme = m.occscheme
+                                    and t.occupancy_code = m.occtype --date constraint 
+                                where job_id  = {self.job_id}""")
 
-        # convert to numeric if possible
-        self.df_loc['LocationIDStack'] = self.df_loc['LocationIDStack'].astype(str)
+            # Location record duplications
+            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocDupe}
+                            where job_id  = {self.job_id}
+                                and PseudoPolicyID in 
+                                (select PseudoPolicyID from pat_location 
+                                 where job_id  = {self.job_id}
+                                 group by PseudoPolicyID having count(*) > 1)""")
+            
+            # duplicate LocationIDStack
+            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocIDDupe}
+                            where job_id  = {self.job_id}
+                                and LocationIDStack in 
+                                    (select LocationIDStack from 
+                                        (select distinct LocationIDStack, round(aoi, 1) as AOI
+                                         from pat_location
+                                         where job_id = {self.job_id} and LocationIDStack is not null
+                                        ) a
+                                     group by LocationIDStack
+                                     having count(*) > 1
+                                    )""")
 
-        # sorting
-        self.df_loc.sort_values(['LocationIDStack', 'PseudoPolicyID']).reset_index(drop=True, inplace=True)
+            # Location record non numeric entry
+            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocNA}
+                            where job_id  = {self.job_id} 
+                                and (AOI is null or RatingGroup is null or RatingGroup = 0)""")
+            
+            # Location record negative field
+            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocNeg}
+                            where job_id  = {self.job_id} 
+                                and (AOI <0 or RatingGroup < 0)""")
 
-    def __apply_psold_mapping(self):
-        df_psold = pd.read_csv('data/psold_rg_mapping.csv')
-        df_psold.columns = df_psold.columns.str.lower()
-        self.max_psold_rg = df_psold.psold_rg.max()
+            # Location record rating group out of range
+            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocRG}
+                            where job_id  = {self.job_id} 
+                                and (RatingGroup < {min_psold_rg} or RatingGroup > {max_psold_rg})""")
 
-        # Attach PSOLD mapping to location data
-        self.df_loc = self.df_loc.merge(df_psold, how='left', left_on=['occupancy_scheme', 'occupancy_code'],
-                                        right_on=['occscheme', 'occtype'])
-
-        mask = np.isnan(self.df_loc['psold_rg'])
-        if np.any(mask):
-            self.df_loc['psold_rg'][mask] = 'Unmapped PSOLD: ' + \
-                self.df_loc.occupancy_scheme[mask] + ' ' +\
-                self.df_loc.occupancy_code.astype(str)[mask]
+            cur.commit()
 
     def __extract_fac(self, conn):
-        self.df_fac = pd.read_sql_query(f"""select concat(locpol.policyid, '_', locpol.locid) as PseudoPolicyID, 
-                    case when excessamt + layeramt > rev_blanlimamt then rev_blanlimamt - excessamt 
-                        else layeramt end as FacLimit, 
+        df_fac = pd.read_sql_query(f"""select concat(locpol.policyid, '_', locpol.locid) as PseudoPolicyID, 
+                    round(case when excessamt + layeramt > rev_blanlimamt then rev_blanlimamt - excessamt 
+                        else layeramt end, 2) as FacLimit, 
                     excessamt as FacAttachment, pcntreins/100 as FacCeded
                 from #sqlpremalloc as locpol 
                     inner join reinsinf on locpol.policyid = reinsinf.exposureid 
@@ -360,15 +610,27 @@ class PatJob:
                     and layeramt > 0 and pcntreins > 0 
                 order by locpol.accgrpid, locpol.locid, locpol.undcovamt, reinsinf.excessamt, FacLimit, pcntreins""", conn)
 
-        # "pollocid","100pct_fac_limit","fac_attachment","fac_pct_ceded"
-        # "PseudoPolicyID", "FacLimit", "FacAttachment", "FacCeded"
-
         # keep the original key (why?)
-        self.df_fac['FacKey'] = np.arange(1, len(self.df_fac)+1, dtype=int)
-        self.df_fac['FacLimit'] = np.round(self.df_fac['FacLimit'], 2)
+        df_fac['FacKey'] = np.arange(1, len(df_fac)+1, dtype=int)
+        df_fac['job_id'] = self.job_id
+        creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
+        to_sql(df_fac, "pat_facultative", creds, index=False, if_exists='append')
 
-        # sorting
-        self.df_fac.sort_values(['PseudoPolicyID', 'FacAttachment', 'FacLimit', 'FacCeded']).reset_index(drop=True, inplace=True)
+        # normalize location
+        with pyodbc.connect(self.job_conn) as j_conn, j_conn.cursor() as cur:
+            cur.execute(f"""update pat_facultative set flag = 0 where job_id  = {self.job_id}""")
+
+            # Fac records with NA entries
+            cur.execute(f"""update pat_facultative set flag = flag + {PatFlag.FlagFacNA}
+                            where job_id  = {self.job_id} 
+                                and (FacLimit is null or FacAttachment is null or FacCeded is null)""")
+
+            # Fac records with negative entries
+            cur.execute(f"""update pat_facultative set flag = flag + {PatFlag.FlagFacNeg}
+                            where job_id  = {self.job_id} 
+                                and (FacLimit < 0 or FacAttachment < 0 or FacCeded < 0)""")
+
+            cur.commit()
         
     def __delete_temp_tables(self, conn):
         with conn.cursor() as cur:
@@ -378,247 +640,65 @@ class PatJob:
             cur.execute("drop table #sqlpremalloc")
             cur.commit()
 
-    def check_data(self):
-        self.__check_policy()
-        self.__check_fac()
-        self.__check_location()
+    def __extra_data_check(self):
+        with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
+            # Policies with no Locations
+            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolNoLoc}
+                            where job_id  = {self.job_id} 
+                                and PseudoPolicyID not in 
+                                    (select distinct PseudoPolicyID from pat_location where job_id = {self.job_id})""")
 
-        return True
+            # Location records with no policy
+            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocOrphan}
+                            where job_id  = {self.job_id} 
+                                and PseudoPolicyID not in 
+                                    (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id})""")
 
-    def __check_policy(self):
-        self.df_pol['status'] = int(0)
+            # Orphan Fac Records
+            cur.execute(f"""update pat_facultative set flag = flag + {PatFlag.FlagFacOrphan}
+                            where job_id  = {self.job_id} 
+                                and PseudoPolicyID not in 
+                                    (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id})""")
 
-        # Duplicate Policies 
-        mask = self.df_pol.PseudoPolicyID.duplicated(keep=False)
-        PatFlag.FlagPolDupe.set_flag(self.df_pol, mask)
+                    
+            # FacNet combined specific checks
+            f = PatFlag.FlagPolNA |PatFlag.FlagPolNeg | PatFlag.FlagFacNA | PatFlag.FlagFacNeg
+            cur.execute(f"""with cte as (
+                    select a.PolParticipation, a.PolRetention,
+                        PolLimit + PolRetention as PolTopLine,
+                        (case when b.FacKey is null then 0 else b.FacLimit end) / PolParticipation as FacGupLimit,
+                        case when b.FacKey is null then 0 else b.FacAttachment end as FacAttachment,
+                        b.FacKey
+                    from pat_policy a 
+                        left join pat_facultative b on a.job_id =b.job_id
+                            and a.PseudoPolicyID = b.PseudoPolicyID
+                    where a.job_id  = {self.job_id} and (a.flag & {f.value}) = 0 and (b.flag & {f.value}) = 0
+                ),
+                cte1 as (
+                    select FacKey, PolTopLine,
+                        FacAttachment / PolParticipation + PolRetention as FacGupAttachment,
+                        FacGupLimit + FacAttachment / PolParticipation + PolRetention as FacGupTopLine
+                    from cte
+                )
+                update pat_facultative set flag = flag + {PatFlag.FlagFacOverexposed}
+                where job_id  = {self.job_id} and FacKey in (
+                        select distinct FacKey 
+                        from cte1
+                        where FacGupAttachment - PolTopLine > 1 or FacGupTopLine - PolTopLine > 1
+                    )""")
 
-        # Policies with no Locations
-        diff = set(self.df_pol.PseudoPolicyID).difference(self.df_loc.PseudoPolicyID)
-        if len(diff) > 0:
-            df = self.df_pol[["PseudoPolicyID"]].merge(pd.DataFrame({"PseudoPolicyID": np.array(diff), "st":1}), on = 'PseudoPolicyID', how="left")
-            mask = ~np.isnan(df.st)
-            PatFlag.FlagPolNoLoc.set_flag(self.df_pol, mask)
+            cur.commit()
 
-
-        # Policies with nonNumeric Fields
-        mask = np.sum(np.isnan(self.df_pol[["PolLimit", "PolRetention", "PolRetainedLimit", "PolParticipation", "PolPremium"]]), axis=1) > 0
-        PatFlag.FlagPolNA.set_flag(self.df_pol, mask)
-
-        # Policies with negative fields
-        mask = np.sum(self.df_pol[["PolLimit", "PolRetention", "PolRetainedLimit",
-                      "PolParticipation", "PolPremium"]] < 0, axis=1) > 0
-        PatFlag.FlagPolNeg.set_flag(self.df_pol, mask)
-        
-        # Policies with inconsistant limit/participation alegebra
-        mask = np.abs(np.round(self.df_pol.PolRetainedLimit -
-                      self.df_pol.PolLimit * self.df_pol.PolParticipation, 1)) > 2
-        PatFlag.FlagPolLimitParticipation.set_flag(self.df_pol, mask)
-        
-        # Policies with excess participation
-        mask = self.df_pol.PolParticipation > 1
-        PatFlag.FlagPolParticipation.set_flag(self.df_pol, mask)
-
-    def __check_fac(self):
-        self.df_fac['status'] = int(0)
-        if len(self.df_fac) <= 0: return
-
-        # 
-        # Orphan Fac Records
-        diff = set(self.df_fac.PseudoPolicyID).difference(self.df_pol.PseudoPolicyID)
-        if len(diff) > 0:
-            df = self.df_fac[["PseudoPolicyID"]].merge(pd.DataFrame({"PseudoPolicyID": np.array(diff), "st":1}), on = 'PseudoPolicyID', how="left")
-            mask = ~np.isnan(df.st)
-            PatFlag.FlagFacOrphan.set_flag(self.df_fac, mask)
-        
-        # Fac records with NA entries
-        mask = np.sum(np.isnan(self.df_fac[["FacLimit", "FacAttachment", "FacCeded"]]), axis=1) > 0
-        PatFlag.FlagFacNA.set_flag(self.df_fac, mask)
-
-        # Fac records with negative entries
-        mask = np.sum(self.df_fac[["FacLimit", "FacAttachment", "FacCeded"]] < 0, axis=1) > 0
-        PatFlag.FlagFacNeg.set_flag(self.df_fac, mask)
-
-        # FacNet combined specific checks
-        dfPolFac = self.df_pol[['PseudoPolicyID', 'PolLimit', 'PolRetention', 'PolParticipation', 'status']]\
-            .merge(self.df_fac[['PseudoPolicyID', 'FacLimit', 'FacAttachment', 'FacKey', 'status']]
-            , on = 'PseudoPolicyID',how='left')
-
-        dfPolFac['status'] = dfPolFac['status_x'] & dfPolFac['status_y'].fillna(value=0).astype(int)
-        dfPolFac.drop(columns=['status_x','status_y'], inplace=True)
-
-        f = PatFlag.FlagPolNA |PatFlag.FlagPolNeg | PatFlag.FlagFacNA | PatFlag.FlagFacNeg
-        dfPolFac = dfPolFac[~(dfPolFac.status & f != 0)].sort_values(by=['PseudoPolicyID','FacAttachment']).reset_index(drop=True)
-        mask = np.isnan(dfPolFac.FacKey)
-        dfPolFac.at[mask, ['FacLimit','FacAttachment']] = 0
-
-        dfPolFac['PolTopLine'] = dfPolFac.PolLimit + dfPolFac.PolRetention
-        dfPolFac['FacGupLimit'] = dfPolFac.FacLimit / dfPolFac.PolParticipation
-        dfPolFac['FacGupAttachment'] = dfPolFac.FacAttachment / dfPolFac.PolParticipation \
-            + dfPolFac.PolRetention
-        dfPolFac['FacGupTopLine'] = dfPolFac.FacGupLimit + dfPolFac.FacGupAttachment
-
-        lst = set(dfPolFac[np.logical_or(dfPolFac.FacGupAttachment - dfPolFac.PolTopLine > 1,
-        dfPolFac.FacGupTopLine - dfPolFac.PolTopLine > 1)].FacKey)
-        df=pd.DataFrame(lst,columns=['FacKey'])
-        df['st'] = 1
-        self.df_fac = self.df_fac.merge(df, on='FacKey', how='left')
-        mask= self.df_fac['st'].notna()
-        PatFlag.FlagFacOverexposed.set_flag(self.df_fac,mask)
-        self.df_fac.drop(columns= 'st',inplace=True)
-
-    def __check_location(self):
-        self.df_loc['status'] = int(0)
-
-        # Location record duplications
-        mask = self.df_pol.PseudoPolicyID.duplicated(keep=False)
-        PatFlag.FlagLocDupe.set_flag(self.df_loc, mask)
-
-        # Location records with no policy
-        diff = set(self.df_loc.PseudoPolicyID).difference(self.df_pol.PseudoPolicyID)
-        if len(diff) > 0:
-            df = self.df_loc[["PseudoPolicyID"]].merge(pd.DataFrame({"PseudoPolicyID": np.array(diff), "st":1}), on = 'PseudoPolicyID', how="left")
-            mask = ~np.isnan(df.st)
-            PatFlag.FlagLocOrphan.set_flag(self.df_loc, mask)
-
-        #
-        df = pd.concat([self.df_loc["LocationIDStack"], np.round(self.df_loc['AOI'], 1)], axis=1)
-        df = df.dropna(subset=['LocationIDStack']).drop_duplicates(ignore_index=True)
-        df = df.groupby('LocationIDStack').size().reset_index(name='LocIDCount')
-        df = df[df.LocIDCount > 1].reset_index(drop=True)
-        if len(df) > 0:
-            df = self.df_loc[["LocationIDStack"]].merge(df, on = 'LocationIDStack', how="left")
-            mask = df['LocIDCount'].notna()
-            PatFlag.FlagLocIDDupe.set_flag(self.df_loc, mask)
-
-        # Location record non numeric entry
-        mask = np.sum(np.isnan(self.df_loc[["AOI", "RatingGroup"]]), axis=1) > 0
-        PatFlag.FlagLocNA.set_flag(self.df_loc, mask)
-
-        # Location record negative field
-        mask = np.sum(self.df_loc[["AOI", "RatingGroup"]] < 0, axis=1) > 0
-        PatFlag.FlagLocNeg.set_flag(self.df_loc, mask)
-        
-        # Location record rating group out of range
-        mask = np.logical_or(self.df_loc.RatingGroup < 1,self.df_loc.RatingGroup > self.max_psold_rg)
-        PatFlag.FlagLocRG.set_flag(self.df_loc, mask)
+    def __need_correction(self):
+        with pyodbc.connect(self.job_conn) as conn:
+            for t in ['pat_policy','pat_location', 'pat_facultative']:
+                df = pd.read_sql_query(f"""select count(*) from [{t}] where job_id = {self.job_id} and flag != 0""", conn)
+                if df is not None and len(df)>0: 
+                    return True
+            
+        return False
     
-    def net_of_fac(self):
-        df_use = self.get_good_policies()
-        dfPolUse = self.df_pol.merge(df_use, on ='PseudoPolicyID', how='inner').reset_index(drop=True)
-        dfFacUse = self.df_fac.merge(df_use, on ='PseudoPolicyID', how='inner').reset_index(drop=True)
-
-        # Calculate the metrics for the policy (TopLine) and fac for layering exercise
-        dfPolUse['PolTopLine'] = dfPolUse.PolLimit + dfPolUse.PolRetention
-        dfPolUse.loc[dfPolUse.PolParticipation > 1, ['PolParticipation']] = 1
-
-        # Combined Policy and Fac table, get metrics
-        dfPolFac = dfPolUse.merge(dfFacUse, on="PseudoPolicyID")
-        dfPolFac['status'] = dfPolFac['status_x'] + dfPolFac['status_y']
-        dfPolFac.drop(columns=['status_x', 'status_y'],  inplace=True)
-
-        dfPolFac['FacGupLimit'] = np.divide(dfPolFac.FacLimit, dfPolFac.PolParticipation)
-        dfPolFac['FacGupAttachment'] = np.divide(dfPolFac.FacAttachment, dfPolFac.PolParticipation) \
-            + dfPolFac.PolRetention
-        dfPolFac['FacGupTopLine'] = dfPolFac.FacGupLimit + dfPolFac.FacGupAttachment
-
-        # Layering Exercise
-        # Created four tables. For each PsudoPolicy ID,
-        # find the bottom point of exposure, and top point
-        # for each the policy and Fac.
-        # ............................................................
-        dfLayer1 = dfPolUse[["PseudoPolicyID", "PolRetention"]].rename(
-            columns={'PolRetention': "LayerLow"})
-        dfLayer2 = dfPolUse[["PseudoPolicyID", "PolTopLine"]].rename(
-            columns={'PolTopLine': "LayerLow"})
-        dfLayer3 = dfPolFac[["PseudoPolicyID", "FacGupAttachment"]].rename(
-            columns={'FacGupAttachment': "LayerLow"})
-        dfLayer4 = dfPolFac[["PseudoPolicyID", "FacGupTopLine"]].rename(
-            columns={'FacGupTopLine': "LayerLow"})
-
-        # Combined the four table by row. Now each PseudoPolicy ID has
-        # up to four records. Order based on PPID and Layer attach pt
-        dfLayers = dfLayer1.append(dfLayer2).append(
-            dfLayer3).append(dfLayer4, ignore_index=True)
-        dfLayers.drop_duplicates(inplace=True, ignore_index=True)
-        dfLayers.sort_values(by=['PseudoPolicyID', 'LayerLow'], inplace=True, ignore_index=True)
-
-        # Add a key to each layer:
-        # i.e.
-        # PseudoPolicyID      LayerLow      LayerID
-        #   ABCXYZ_123        1,000,000       1
-        #   ABCXYZ_123        5,000,000       2
-        #   ABCXYZ_123        8,000,000       3
-        #   ABCXYZ_123        10,000,000      4
-
-        dfLayers = dfLayers.rename_axis('LayerKey').reset_index()
-        dfLayers.LayerKey = dfLayers.LayerKey + 1
-
-        # Join the table above with a copy of itself, OFFSET by one.
-        # i.e.
-        # PseudoPolicyID      LayerLow      LayerID   LayerHigh
-        #   ABCXYZ_123        1,000,000       1       5,000,000
-        #   ABCXYZ_123        5,000,000       2       8,000,000
-        #   ABCXYZ_123        8,000,000       3       10,000,000
-
-        dfLayers1 = dfLayers[['PseudoPolicyID', 'LayerKey', 'LayerLow']].rename(
-            columns={'LayerLow': 'LayerHigh'})
-        dfLayers1['LayerKey'] = dfLayers1.LayerKey - 1
-        dfLayers = dfLayers.merge(
-            dfLayers1, on=['PseudoPolicyID', 'LayerKey'], how='inner')
-
-        # Remove overlap caused by rounding
-        dfLayers = dfLayers [dfLayers.LayerHigh - dfLayers.LayerLow > 1] #? 
-
-        # Pull in Fac ceded amount
-        dfLayers = sqldf("""Select a.*, b.OriginalPolicyID, b.PolParticipation as Participation, b.PolPremium, c.FacCeded as Ceded
-                        FROM dfLayers a
-                        Left Join dfPolUse b ON a.PseudoPolicyID = b.PseudoPolicyID
-                        Left Join dfPolFac c ON a.PseudoPolicyID = c.PseudoPolicyID and a.LayerLow >= c.FacGupAttachment and a.LayerHigh <= FacGupTopLine
-                    """)
-
-        # Summarize Layers, sum over ceded
-        dfLayers = sqldf("""select OriginalPolicyID,PseudoPolicyID,LayerLow,LayerHigh,Participation,PolPremium,
-                sum(Ceded) as Ceded,
-                row_number() OVER (PARTITION BY PseudoPolicyID ORDER BY PseudoPolicyID) as LayerID
-                from dfLayers
-                group by PseudoPolicyID,LayerLow,LayerHigh,Participation
-                """)
-        
-        # Ceded Error Checkings
-        dfLayers['Ceded'] = dfLayers['Ceded'].fillna(value=0)
-        dfCededGT100 = dfLayers.loc[dfLayers.Ceded > 1, ['PseudoPolicyID']].drop_duplicates(ignore_index=True)
-        dfCededGT100['st'] = 0
-
-        if dfCededGT100 is not None and len(dfCededGT100) > 0:
-            self.df_pol = self.df_pol.merge(dfCededGT100, on='PseudoPolicyID', how='left')
-            mask = self.df_pol['st'].notna()
-            PatFlag.FlagCeded100.set_flag(self.df_pol, mask)
-            self.df_pol.drop(columns='st', inplace=True)
-
-            self.df_fac = self.df_fac.merge(dfCededGT100, on='PseudoPolicyID', how='left')
-            mask = self.df_fac['st'].notna()
-            PatFlag.FlagCeded100.set_flag(self.df_fac, mask)
-            self.df_fac.drop(columns='st', inplace=True)
-
-            self.df_loc = self.df_loc.merge(dfCededGT100, on='PseudoPolicyID', how='left')
-            mask = self.df_loc['st'].notna()
-            PatFlag.FlagCeded100.set_flag(self.df_loc, mask)
-            self.df_loc.drop(columns='st', inplace=True)
-
-        # Additional Metrics
-        dfLayers.loc[dfLayers.Ceded > 1, ['Ceded']] = 1
-        dfLayers['NetParticipation'] = dfLayers.Participation * \
-            (1 - dfLayers.Ceded)
-        dfLayers['Limit100'] = dfLayers.LayerHigh-dfLayers.LayerLow
-        dfLayers['LimitRetained'] = dfLayers.Limit100 * \
-            dfLayers.NetParticipation
-
-        # FacNet table
-        self.df_facnet = dfLayers[["OriginalPolicyID", "PseudoPolicyID", "LayerID",
-                                    "Limit100", "LayerLow", "PolPremium", "NetParticipation"]]
-        self.df_facnet.columns = ["OriginalPolicyID", "PseudoPolicyID", "PseudoLayerID",
-                                    "Limit", "Retention", "OriginalPremium", "Participation"]
-
+    #?
     def apply_user_correction(self):
         # use user input (pol.loc, fac) to replace the ones need to be correct, re-check data
         #for testing read from file
@@ -639,9 +719,9 @@ class PatJob:
         if os.path.isfile(fn):  
             corr =  pd.read_csv(fn).set_index('PseudoPolicyID')
             if len(corr) > 0:
-                df = self.df_loc.set_index('PseudoPolicyID')
+                df = df_loc.set_index('PseudoPolicyID')
                 df.update(corr)
-                self.df_loc = df.reset_index()
+                df_loc = df.reset_index()
                 modified = True
         
         # fac
@@ -649,96 +729,118 @@ class PatJob:
         if os.path.isfile(fn):  
             corr =  pd.read_csv(fn).set_index(['PseudoPolicyID', 'FacKey'])
             if len(corr) > 0:
-                df = self.df_loc.set_index(['PseudoPolicyID', 'FacKey'])
+                df = df_loc.set_index(['PseudoPolicyID', 'FacKey'])
                 df.update(corr)
-                self.df_loc = df.reset_index()
+                df_loc = df.reset_index()
                 modified = True
 
         if modified:
             self.check_data()
             self.net_of_fac()
-    
-    def get_validation_counts(self):
-        res= {
-            "Policy Records processed": len(self.df_pol),
-            "Location Records processed": len(self.df_loc),
-            "Facultative Records processed": len(self.df_fac),
-        }
+   
+    def __net_of_fac(self):
+        with pyodbc.connect(self.job_conn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"""with good_p as
+                    (select distinct a.PseudoPolicyID
+                    from pat_policy a
+                        join pat_location b on a.job_id = b.job_id and a.PseudoPolicyID =b.PseudoPolicyID
+                        left join 
+                            (select distinct PseudoPolicyID from pat_facultative where job_id = {self.job_id} and flag != 0)
+                            c on a.PseudoPolicyID = c.PseudoPolicyID
+                        where a.job_id = {self.job_id} and a.flag = 0 and b.flag = 0 and c.PseudoPolicyID is null
+                    )
+                    select OriginalPolicyID, a.PseudoPolicyID, PolRetainedLimit, PolLimit, 
+                        case when PolParticipation > 1 then 1 else PolParticipation end as PolParticipation, 
+                        PolRetention, PolPremium,
+                        PolLimit + PolRetention as PolTopLine
+                    into #dfPolUse
+                    from pat_policy a 
+                        join good_p b on a.PseudoPolicyID = b.PseudoPolicyID 
+                    where a.job_id = {self.job_id}""")
 
-        for f in PatFlag:
-            n1 = np.sum(self.df_pol.status & f !=0)
-            n2 = np.sum(self.df_loc.status & f !=0)
-            res[PatFlag.describe(f)] = max(n1, n2)
+                cur.execute(f"""select a.PseudoPolicyID, PolRetention,PolTopLine, FacCeded,
+                        FacLimit / PolParticipation as FacGupLimit,
+                        FacAttachment / PolParticipation + PolRetention as FacGupAttachment,
+                        (FacLimit + FacAttachment) / PolParticipation + PolRetention as FacGupTopLine
+                    into #dfPolFac
+                    from #dfPolUse a 
+                        join pat_facultative b on a.PseudoPolicyID = b.PseudoPolicyID 
+                    where b.job_id = {self.job_id}""")
+                
+                cur.execute(f"""with cte1 as 
+                        (select PseudoPolicyID,PolRetention as LayerLow from #dfPolUse
+                        union
+                        select PseudoPolicyID, PolTopLine as LayerLow from #dfPolUse
+                        union
+                        select PseudoPolicyID, FacGupAttachment as LayerLow from #dfPolFac
+                        union
+                        select PseudoPolicyID, FacGupTopLine as LayerLow from #dfPolFac
+                        ),
+                    cte2 as 
+                        (select ROW_NUMBER() over (order by PseudoPolicyID, LayerLow) as LayerKey, PseudoPolicyID, LayerLow from cte1),
+                    cte3 as
+                        (select a.PseudoPolicyID, a.LayerKey, a.LayerLow, b.LayerLow as LayerHigh
+                         from cte2 a 
+                         join cte2 b on a.PseudoPolicyID = b.PseudoPolicyID and a.LayerKey = b.LayerKey - 1
+                         where b.LayerLow - a.LayerLow > 1),
+                    cte4 as
+                        (select a.*, b.OriginalPolicyID, b.PolParticipation as Participation, b.PolPremium, 
+                            case when c.FacCeded is null then 0 else c.FacCeded end as Ceded
+                        from cte3 a
+                            Left Join #dfPolUse b ON a.PseudoPolicyID = b.PseudoPolicyID
+                            Left Join #dfPolFac c ON a.PseudoPolicyID = c.PseudoPolicyID 
+                                and a.LayerLow >= c.FacGupAttachment and a.LayerHigh <= FacGupTopLine
+                    )
+                    select OriginalPolicyID,PseudoPolicyID,LayerLow,LayerHigh,Participation,max(PolPremium) as PolPremium,
+                        sum(case when Ceded is null then 0 else Ceded end) as Ceded,
+                        row_number() OVER (PARTITION BY PseudoPolicyID ORDER BY LayerLow) as LayerID
+                        into #dfLayers
+                    from cte4
+                    group by PseudoPolicyID,OriginalPolicyID, LayerLow,LayerHigh,Participation""")
 
-        return pd.DataFrame(data={'item': res.keys(), 'count':res.values()})
+                cur.execute(f"""select distinct PseudoPolicyID into #ceded100 
+                                from #dfLayers where round(Ceded, 4) >1;
+                            update pat_facultative set flag = flag + {PatFlag.FlagCeded100}
+                            where job_id = {self.job_id} and PseudoPolicyID in 
+                                (select PseudoPolicyID from #ceded100);
+                            """)
 
-    def get_validation_data(self):
-        df1 = self.df_pol[ self.df_pol.status !=0].sort_values(by='PseudoPolicyID').reset_index(drop = True)
-        if len(df1) > 0:
-            df = df1[['status']].drop_duplicates(ignore_index=True)
-            df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-            df1 = df1.merge(df, on ='status')
-
-        df2 = self.df_loc[ self.df_loc.status !=0].sort_values(by='PseudoPolicyID').reset_index(drop = True)
-        if len(df2) > 0:
-            df = df2[['status']].drop_duplicates(ignore_index=True)
-            df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-            df2 = df2.merge(df, on ='status')
-
-        df3 = self.df_fac[ self.df_fac.status !=0].sort_values(by='PseudoPolicyID').reset_index(drop = True)
-        if len(df3) > 0:
-            df = df3[['status']].drop_duplicates(ignore_index=True)
-            df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-            df3 = df3.merge(df, on ='status')
-        
-        df1 = df1.drop(columns=['status']).sort_values(by='PseudoPolicyID').reset_index(drop = True)
-        df2 = df2.drop(columns=['status']).sort_values(by='PseudoPolicyID').reset_index(drop = True)
-        df3 = df3.drop(columns=['status'])\
-                .sort_values(by=['PseudoPolicyID','FacAttachment', 'FacLimit', 'FacCeded'])\
-                .reset_index(drop = True)
-
-        return (df1, df2, df3)
-
-    def get_good_policies(self):
-        lst1 = self.df_pol[self.df_pol.status == 0].PseudoPolicyID
-        lst2 = self.df_loc[self.df_loc.status == 0].PseudoPolicyID
-        lst= set.intersection(set(lst1),set(lst2))
-
-        lst3 = self.df_fac[self.df_fac.status != 0].PseudoPolicyID
-        lst = lst.difference(set(lst3))
-
-        if len(lst) >0: 
-            return pd.DataFrame(lst,columns=['PseudoPolicyID'])
-
-    def get_bad_policies(self):
-        lst1 = self.df_pol[ self.df_pol.status !=0].PseudoPolicyID
-        lst2 = self.df_loc[ self.df_loc.status !=0].PseudoPolicyID
-        lst3 = self.df_fac[ self.df_fac.status !=0].PseudoPolicyID
-
-        lst= set.union(set(lst1),set(lst2),set(lst3))
-        if len(lst) >0: 
-            return pd.DataFrame(lst,columns=['PseudoPolicyID'])
-
-    def allocate_with_psold(self):     
-        dfFacNetLast = self.df_facnet.groupby('PseudoPolicyID').agg({'PseudoLayerID':max}).rename(columns={'PseudoLayerID':'LayerPosition'})
-        # dfLocation2
-        dfLoc = self.df_facnet.merge(self.df_loc[['PseudoPolicyID','AOI', 'LocationIDStack', 'RatingGroup']], on='PseudoPolicyID')\
-            .merge(dfFacNetLast, left_on='PseudoPolicyID', right_index=True)
+                cur.commit()
             
-        dfWeights = pd.read_csv('data/tmpWeights.csv'
-            ,dtype={
-                'OccupancyType':str,
-                'PremiumWeight':float,
-                'HPRMap':str,
-                'PremiumPercent':float,
-                'HPRTable':int
-                })
-        dfHPR = pd.read_csv('data/tmpHPR.csv',dtype={'Limit':float,'Weight':float})
+            df_facnet = pd.read_sql_query(f"""select OriginalPolicyID, a.PseudoPolicyID, LayerID as PseudoLayerID,
+                    LayerHigh - LayerLow as Limit, LayerLow as Retention, 
+                    PolPremium as OriginalPremium, 
+                    case when Ceded > 1 then 0 else Participation * (1 - Ceded) end as Participation,
+                    b.AOI, b.LocationIDStack, b.RatingGroup
+                from #dfLayers a
+                    left join pat_location b on a.PseudoPolicyID = b.PseudoPolicyID
+                where b.job_id ={self.job_id} and a.PseudoPolicyID not in 
+                    (select PseudoPolicyID from #ceded100)
+                order by a.PseudoPolicyID, LayerID, LayerLow, LayerHigh
+                """,conn)
 
-        guNewPSTable = pd.read_csv('data/guNewPSTable2016.csv')
+            with conn.cursor() as cur:
+                cur.execute(f"""drop table #dfPolUse;
+                                drop table #dfPolFac;
+                                drop table #dfLayers;
+                                drop table #ceded100""")
+                
+                cur.commit()
+        
+            return df_facnet
+    
+    def __allocate_with_psold(self, df_facnet):     
+        dfFacNetLast = df_facnet.groupby('PseudoPolicyID').agg({'PseudoLayerID':max}).rename(columns={'PseudoLayerID':'LayerPosition'})
+        # dfLocation2
+        dfLoc = df_facnet.merge(dfFacNetLast, left_on='PseudoPolicyID', right_index=True)
+
+        with pyodbc.connect(self.job_conn) as conn:
+            dfWeights = pd.read_sql_query(f"""select * from psold_weight""", conn)
+            AOI_split = pd.read_sql_query(f"""select * from psold_aoi order by AOI""", conn).AOI.to_numpy() 
+            guNewPSTable = pd.read_sql_query(f"""select * from psold_gu_2016 order by COVG, SUBGRP, RG, EG""", conn)
+
         gdMu = [1000 * (np.sqrt(10)**(i-1)) for i in range(1,12)]
-
-        AOI_split = pd.read_csv('data/psold_aoi.csv').x.to_numpy() 
         dfWeights = self.__calc_weights(dfWeights, guNewPSTable, gdMu, AOI_split)
 
         # dfLocation3
@@ -769,10 +871,10 @@ class PatJob:
             /(dfLoc.PolLAS - dfLoc.DedLAS) * self.loss_ratio*dfLoc.EffPrem )/.01
 
         # Final
-        self.df_pat = dfLoc[["Limit", "Retention", "Premium", "Participation", "AOI", "LocationIDStack",
+        df_pat = dfLoc[["Limit", "Retention", "Premium", "Participation", "AOI", "LocationIDStack",
                     "RatingGroup", "OriginalPolicyID", "PseudoPolicyID", "PseudoLayerID", "PolLAS", "DedLAS"]] \
                 .sort_values(by=['OriginalPolicyID', 'PseudoPolicyID', 'PseudoLayerID'])
-        self.df_pat.rename(columns={
+        df_pat.rename(columns={
             'Premium':'Allocated_Premium',
             'RatingGroup':'Rating_Group',
             'OriginalPolicyID':'Original_Policy_ID',
@@ -780,7 +882,9 @@ class PatJob:
             'PolLAS':'PolicyLAS',
             'DedLAS':'DeductibleLAS',
             'LocationIDStack':'Original_Location_ID'
-            })
+            } )
+
+        return df_pat
       
     def __calc_weights(self,tableWgts, guNewPSTable, gdMu, AOI_split):
         # Initialize Variables
@@ -910,10 +1014,10 @@ class PatJob:
 
 
         df['StackedPolicyLimit'] = (df.dPolLmt-df.dPolDed)*df.Participation
-        df['StackedPolicyLimit'] = df.sort_values(['LocationIDStack','Retention']).groupby('LocationIDStack')['StackedPolicyLimit'].transform(lambda x: x.cumsum().shift())
-        df.loc[df.LocationIDStack.isna(), ['StackedPolicyLimit']] = 0
-        #?
-        df.loc[df.StackedPolicyLimit.isna(), ['StackedPolicyLimit']] = 0
+        df['StackedPolicyLimit'] = df.sort_values(['LocationIDStack','Retention', 'Limit']) \
+            .groupby('LocationIDStack')['StackedPolicyLimit'].transform(lambda x: x.cumsum().shift())
+        df.loc[np.logical_or(df.LocationIDStack.isna(),df.StackedPolicyLimit.isna()), 
+            ['StackedPolicyLimit']] = 0
 
         df['dEffLimRet'] = np.maximum(0, ((self.gdReinsuranceLimit + self.gdReinsuranceRetention)-df.StackedPolicyLimit)/df.Participation)
         df['dEffRet'] = np.maximum(0, ((self.gdReinsuranceRetention)-df.StackedPolicyLimit)/df.Participation)

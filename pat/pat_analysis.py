@@ -524,11 +524,11 @@ class PatAnalysis:
         df_use = self.get_good_policies()
         dfPolUse = self.df_pol.merge(df_use, on ='PseudoPolicyID', how='inner').reset_index(drop=True)
         dfFacUse = self.df_fac.merge(df_use, on ='PseudoPolicyID', how='inner').reset_index(drop=True)
-
+        
         # Calculate the metrics for the policy (TopLine) and fac for layering exercise
         dfPolUse['PolTopLine'] = dfPolUse.PolLimit + dfPolUse.PolRetention
         dfPolUse.loc[dfPolUse.PolParticipation > 1, ['PolParticipation']] = 1
-
+       
         # Combined Policy and Fac table, get metrics
         dfPolFac = dfPolUse.merge(dfFacUse, on="PseudoPolicyID")
         dfPolFac['status'] = dfPolFac['status_x'] + dfPolFac['status_y']
@@ -597,7 +597,7 @@ class PatAnalysis:
         # Summarize Layers, sum over ceded
         dfLayers = sqldf("""select OriginalPolicyID,PseudoPolicyID,LayerLow,LayerHigh,Participation,PolPremium,
                 sum(Ceded) as Ceded,
-                row_number() OVER (PARTITION BY PseudoPolicyID ORDER BY PseudoPolicyID) as LayerID
+                row_number() OVER (PARTITION BY PseudoPolicyID ORDER BY LayerLow) as LayerID --#? order by PseudoPolicyID? ,should by LayerLow
                 from dfLayers
                 group by PseudoPolicyID,LayerLow,LayerHigh,Participation
                 """)
@@ -630,6 +630,7 @@ class PatAnalysis:
         dfLayers['Limit100'] = dfLayers.LayerHigh-dfLayers.LayerLow
         dfLayers['LimitRetained'] = dfLayers.Limit100 * \
             dfLayers.NetParticipation
+
 
         # FacNet table
         self.df_facnet = dfLayers[["OriginalPolicyID", "PseudoPolicyID", "LayerID",
@@ -742,7 +743,7 @@ class PatAnalysis:
         # dfLocation2
         dfLoc = self.df_facnet.merge(self.df_loc[['PseudoPolicyID','AOI', 'LocationIDStack', 'RatingGroup']], on='PseudoPolicyID')\
             .merge(dfFacNetLast, left_on='PseudoPolicyID', right_index=True)
-            
+          
         dfWeights = pd.read_csv('data/tmpWeights.csv'
             ,dtype={
                 'OccupancyType':str,
@@ -751,12 +752,12 @@ class PatAnalysis:
                 'PremiumPercent':float,
                 'HPRTable':int
                 })
-        dfHPR = pd.read_csv('data/tmpHPR.csv',dtype={'Limit':float,'Weight':float})
+        # dfHPR = pd.read_csv('data/tmpHPR.csv',dtype={'Limit':float,'Weight':float})
 
         guNewPSTable = pd.read_csv('data/guNewPSTable2016.csv')
         gdMu = [1000 * (np.sqrt(10)**(i-1)) for i in range(1,12)]
 
-        AOI_split = pd.read_csv('data/psold_aoi.csv').x.to_numpy() 
+        AOI_split = pd.read_csv('data/psold_aoi.csv').AOI.to_numpy() 
         dfWeights = self.__calc_weights(dfWeights, guNewPSTable, gdMu, AOI_split)
 
         # dfLocation3
@@ -928,7 +929,8 @@ class PatAnalysis:
 
 
         df['StackedPolicyLimit'] = (df.dPolLmt-df.dPolDed)*df.Participation
-        df['StackedPolicyLimit'] = df.sort_values(['LocationIDStack','Retention']).groupby('LocationIDStack')['StackedPolicyLimit'].transform(lambda x: x.cumsum().shift())
+        df['StackedPolicyLimit'] = df.sort_values(['LocationIDStack','Retention', 'Limit']) \
+            .groupby('LocationIDStack')['StackedPolicyLimit'].transform(lambda x: x.cumsum().shift())
         df.loc[df.LocationIDStack.isna(), ['StackedPolicyLimit']] = 0
         #?
         df.loc[df.StackedPolicyLimit.isna(), ['StackedPolicyLimit']] = 0
