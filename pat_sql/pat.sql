@@ -1,7 +1,7 @@
 CREATE SEQUENCE pat_analysis_id_seq  
     AS int  
     START WITH 100000000  
-    INCREMENT BY 1 ;  
+    INCREMENT BY 1;  
 
 create table pat_job(
     job_id integer primary key,
@@ -13,7 +13,7 @@ create table pat_job(
     user_name varchar(100),
     user_email varchar(100),
     parameters varchar(max)
-)
+);
 
 create table pat_policy(
     job_id int,
@@ -25,7 +25,8 @@ create table pat_policy(
     PolRetention float,
     PolPremium float,
     flag int 
-)
+);
+create index idx_pat_policy on pat_policy (job_id asc);
 
 create table pat_location(
     job_id int,
@@ -36,7 +37,8 @@ create table pat_location(
     AOI float,
     RatingGroup int,
     flag int 
-)
+);
+create index idx_pat_location on pat_location (job_id asc);
 
 create table pat_facultative(
     job_id int,
@@ -46,7 +48,8 @@ create table pat_facultative(
     FacCeded float,
     FacKey int,
     flag int 
-)
+);
+create index idx_pat_facultative on pat_facultative (job_id asc);
 
 create table pat_premium(
     job_id int,
@@ -62,7 +65,8 @@ create table pat_premium(
     PseudoLayerID int,
     PolLAS float,
     DedLAS float
-)
+);
+create index idx_pat_premium on pat_premium (job_id asc);
 
 create table psold_mapping(
     OCCSCHEME varchar(20),
@@ -72,7 +76,7 @@ create table psold_mapping(
     PSOLD_Description varchar(100),
     Effective varchar(15),
     Expiration varchar(15)
-)
+);
 
 create table psold_weight(
     OccupancyType varchar(50),
@@ -80,11 +84,11 @@ create table psold_weight(
     HPRMap varchar(10),
     PremiumPercent float,
     HPRTable int
-) 
+);
 
 create table psold_aoi(
     AOI float
-)
+);
 
 create table psold_gu_2016(
     COVG int,
@@ -115,4 +119,4 @@ create table psold_gu_2016(
     R9 float,
     R10 float,
     R11 float
-)
+);

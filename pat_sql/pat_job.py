@@ -1,4 +1,3 @@
-
 import os
 import json
 import logging
@@ -501,32 +500,33 @@ class PatJob:
                                 and round(PolRetainedLimit - PolLimit * PolParticipation, 1) <= 2""")
             
             # Duplicate Policies 
-            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolDupe}
-                            where job_id  = {self.job_id}
-                                and PseudoPolicyID in 
-                                (select PseudoPolicyID from pat_policy 
-                                 where job_id  = {self.job_id}
-                                 group by PseudoPolicyID having count(*) > 1)""")
+            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagPolDupe}
+                            from pat_policy a
+                                join (select PseudoPolicyID from pat_policy 
+                                    where job_id  = {self.job_id}
+                                    group by PseudoPolicyID having count(*) > 1) b
+                                    on a.PseudoPolicyID = b.PseudoPolicyID
+                            where job_id  = {self.job_id}""")
 
             # Policies with nonNumeric Fields
-            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolNA}
+            cur.execute(f"""update pat_policy set flag = flag | {PatFlag.FlagPolNA}
                             where job_id  = {self.job_id}
                                 and (PolLimit is null or PolRetention is null or PolRetainedLimit is null or
                                     PolParticipation is null or PolPremium is null)""")
             
             # Policies with negative fields
-            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolNeg}
+            cur.execute(f"""update pat_policy set flag = flag | {PatFlag.FlagPolNeg}
                             where job_id  = {self.job_id}
                                 and (PolLimit < 0 or PolRetention < 0 or PolRetainedLimit < 0 or
                                     PolParticipation < 0 or PolPremium < 0)""")
 
             # Policies with inconsistant limit/participation alegebra
-            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolLimitParticipation}
+            cur.execute(f"""update pat_policy set flag = flag | {PatFlag.FlagPolLimitParticipation}
                             where job_id  = {self.job_id}
                                 and round(PolRetainedLimit - PolLimit * PolParticipation, 1) > 2""") #? check above for same formula 
 
             # Policies with excess participation
-            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolParticipation}
+            cur.execute(f"""update pat_policy set flag = flag | {PatFlag.FlagPolParticipation}
                             where job_id  = {self.job_id} 
                                 and round(PolParticipation, 2) > 1""")
 
@@ -558,42 +558,43 @@ class PatJob:
             cur.execute(f"""update t set t.RatingGroup = m.PSOLD_RG
                                 from pat_location t 
                                 join psold_mapping m on t.occupancy_scheme = m.occscheme
-                                    and t.occupancy_code = m.occtype --date constraint 
+                                    and t.occupancy_code = m.occtype --? date constraint 
                                 where job_id  = {self.job_id}""")
 
             # Location record duplications
-            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocDupe}
-                            where job_id  = {self.job_id}
-                                and PseudoPolicyID in 
-                                (select PseudoPolicyID from pat_location 
-                                 where job_id  = {self.job_id}
-                                 group by PseudoPolicyID having count(*) > 1)""")
+            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagLocDupe}
+                            from pat_location a
+                                join (select PseudoPolicyID from pat_location 
+                                        where job_id  = {self.job_id}
+                                        group by PseudoPolicyID having count(*) > 1) b
+                                    on a.PseudoPolicyID = b.PseudoPolicyID 
+                            where job_id  = {self.job_id}""")
             
             # duplicate LocationIDStack
-            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocIDDupe}
-                            where job_id  = {self.job_id}
-                                and LocationIDStack in 
-                                    (select LocationIDStack from 
+            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagLocIDDupe}
+                            from pat_location a 
+                                join (select LocationIDStack from 
                                         (select distinct LocationIDStack, round(aoi, 1) as AOI
                                          from pat_location
                                          where job_id = {self.job_id} and LocationIDStack is not null
                                         ) a
                                      group by LocationIDStack
                                      having count(*) > 1
-                                    )""")
+                                    ) b on a.LocationIDStack =b.LocationIDStack
+                            where job_id  = {self.job_id}""")
 
             # Location record non numeric entry
-            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocNA}
+            cur.execute(f"""update pat_location set flag = flag | {PatFlag.FlagLocNA}
                             where job_id  = {self.job_id} 
                                 and (AOI is null or RatingGroup is null or RatingGroup = 0)""")
             
             # Location record negative field
-            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocNeg}
+            cur.execute(f"""update pat_location set flag = flag | {PatFlag.FlagLocNeg}
                             where job_id  = {self.job_id} 
                                 and (AOI <0 or RatingGroup < 0)""")
 
             # Location record rating group out of range
-            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocRG}
+            cur.execute(f"""update pat_location set flag = flag | {PatFlag.FlagLocRG}
                             where job_id  = {self.job_id} 
                                 and (RatingGroup < {min_psold_rg} or RatingGroup > {max_psold_rg})""")
 
@@ -621,12 +622,12 @@ class PatJob:
             cur.execute(f"""update pat_facultative set flag = 0 where job_id  = {self.job_id}""")
 
             # Fac records with NA entries
-            cur.execute(f"""update pat_facultative set flag = flag + {PatFlag.FlagFacNA}
+            cur.execute(f"""update pat_facultative set flag = flag | {PatFlag.FlagFacNA}
                             where job_id  = {self.job_id} 
                                 and (FacLimit is null or FacAttachment is null or FacCeded is null)""")
 
             # Fac records with negative entries
-            cur.execute(f"""update pat_facultative set flag = flag + {PatFlag.FlagFacNeg}
+            cur.execute(f"""update pat_facultative set flag = flag | {PatFlag.FlagFacNeg}
                             where job_id  = {self.job_id} 
                                 and (FacLimit < 0 or FacAttachment < 0 or FacCeded < 0)""")
 
@@ -643,23 +644,25 @@ class PatJob:
     def __extra_data_check(self):
         with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
             # Policies with no Locations
-            cur.execute(f"""update pat_policy set flag = flag + {PatFlag.FlagPolNoLoc}
-                            where job_id  = {self.job_id} 
-                                and PseudoPolicyID not in 
-                                    (select distinct PseudoPolicyID from pat_location where job_id = {self.job_id})""")
+            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagPolNoLoc}
+                from pat_policy a
+                    left join (select distinct PseudoPolicyID from pat_location where job_id = {self.job_id}) b 
+                        on a.PseudoPolicyID = b.PseudoPolicyID
+                where a.job_id  = {self.job_id} and b.PseudoPolicyID is null""")
 
             # Location records with no policy
-            cur.execute(f"""update pat_location set flag = flag + {PatFlag.FlagLocOrphan}
-                            where job_id  = {self.job_id} 
-                                and PseudoPolicyID not in 
-                                    (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id})""")
+            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagLocOrphan}
+                from pat_location a 
+                    left join (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id}) b
+                        on a.PseudoPolicyID = b.PseudoPolicyID
+                where a.job_id  = {self.job_id} and b.PseudoPolicyID is null""")
 
             # Orphan Fac Records
-            cur.execute(f"""update pat_facultative set flag = flag + {PatFlag.FlagFacOrphan}
-                            where job_id  = {self.job_id} 
-                                and PseudoPolicyID not in 
-                                    (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id})""")
-
+            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagFacOrphan}
+                from pat_facultative a 
+                    left join (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id}) b
+                        on a.PseudoPolicyID = b.PseudoPolicyID
+                where a.job_id  = {self.job_id} and b.PseudoPolicyID is null""")
                     
             # FacNet combined specific checks
             f = PatFlag.FlagPolNA |PatFlag.FlagPolNeg | PatFlag.FlagFacNA | PatFlag.FlagFacNeg
@@ -672,7 +675,7 @@ class PatJob:
                     from pat_policy a 
                         left join pat_facultative b on a.job_id =b.job_id
                             and a.PseudoPolicyID = b.PseudoPolicyID
-                    where a.job_id  = {self.job_id} and (a.flag & {f.value}) = 0 and (b.flag & {f.value}) = 0
+                    where a.job_id  = {self.job_id} and (a.flag | {f.value}) = 0 and (b.flag | {f.value}) = 0
                 ),
                 cte1 as (
                     select FacKey, PolTopLine,
@@ -680,12 +683,13 @@ class PatJob:
                         FacGupLimit + FacAttachment / PolParticipation + PolRetention as FacGupTopLine
                     from cte
                 )
-                update pat_facultative set flag = flag + {PatFlag.FlagFacOverexposed}
-                where job_id  = {self.job_id} and FacKey in (
-                        select distinct FacKey 
-                        from cte1
-                        where FacGupAttachment - PolTopLine > 1 or FacGupTopLine - PolTopLine > 1
-                    )""")
+                update a set a.flag = a.flag | {PatFlag.FlagFacOverexposed}
+                    from pat_facultative a
+                        join (select distinct FacKey 
+                                from cte1
+                                where FacGupAttachment - PolTopLine > 1 or FacGupTopLine - PolTopLine > 1
+                            ) b on a.FacKey = b.FacKey
+                where job_id  = {self.job_id}""")
 
             cur.commit()
 
@@ -801,10 +805,10 @@ class PatJob:
 
                 cur.execute(f"""select distinct PseudoPolicyID into #ceded100 
                                 from #dfLayers where round(Ceded, 4) >1;
-                            update pat_facultative set flag = flag + {PatFlag.FlagCeded100}
-                            where job_id = {self.job_id} and PseudoPolicyID in 
-                                (select PseudoPolicyID from #ceded100);
-                            """)
+                            update a set a.flag = a.flag | {PatFlag.FlagCeded100}
+                            from pat_facultative a 
+                                join #ceded100 b on a.PseudoPolicyID = b.PseudoPolicyID
+                            where job_id = {self.job_id};""")
 
                 cur.commit()
             
@@ -815,8 +819,8 @@ class PatJob:
                     b.AOI, b.LocationIDStack, b.RatingGroup
                 from #dfLayers a
                     left join pat_location b on a.PseudoPolicyID = b.PseudoPolicyID
-                where b.job_id ={self.job_id} and a.PseudoPolicyID not in 
-                    (select PseudoPolicyID from #ceded100)
+                    left join #ceded100 c on a.PseudoPolicyID = c.PseudoPolicyID
+                where b.job_id ={self.job_id} and c.PseudoPolicyID is null
                 order by a.PseudoPolicyID, LayerID, LayerLow, LayerHigh
                 """,conn)
 
