@@ -812,15 +812,17 @@ class PatJob:
 
                 cur.commit()
             
+            #? why old R code have to include all participation = 0 layers?
             df_facnet = pd.read_sql_query(f"""select OriginalPolicyID, a.PseudoPolicyID, LayerID as PseudoLayerID,
                     LayerHigh - LayerLow as Limit, LayerLow as Retention, 
                     PolPremium as OriginalPremium, 
-                    case when Ceded > 1 then 0 else Participation * (1 - Ceded) end as Participation,
+                    case when Ceded >= 1 then 0 else Participation * (1 - Ceded) end as Participation,
                     b.AOI, b.LocationIDStack, b.RatingGroup
                 from #dfLayers a
                     left join pat_location b on a.PseudoPolicyID = b.PseudoPolicyID
                     left join #ceded100 c on a.PseudoPolicyID = c.PseudoPolicyID
                 where b.job_id ={self.job_id} and c.PseudoPolicyID is null
+                    and case when Ceded >= 1 then 0 else Participation * (1 - Ceded) end > 1e-6 
                 order by a.PseudoPolicyID, LayerID, LayerLow, LayerHigh
                 """,conn)
 
