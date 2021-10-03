@@ -4,6 +4,11 @@ version = "0.1.0"
 description = "Premium allocation tool adapted from the previous Excel/R tool"
 authors = ["Chengyou Xiao"]
 license = "Guy Carpenter"
+packages = [
+    {include = "pat_common"},
+    {include = "pat_flask"},
+    {include = "pat_sql"}
+]
 
 [tool.poetry.dependencies]
 python = ">=3.8.8"
@@ -11,7 +16,6 @@ pandas = "^1.3.2"
 Flask = "^2.0.1"
 python-dotenv = "^0.19.0"
 waitress = "^2.0.0"
-pandasql = "^0.7.3"
 pyodbc = "^4.0.32"
 bcpandas = "^1.4.0"
 

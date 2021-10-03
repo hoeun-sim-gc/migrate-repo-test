@@ -1,7 +1,7 @@
 {
     "job_guid": "80a1ca07-41f9-4f34-b7bb-d01b477bc78d",
     "job_name": "PAT_Test_AIG",
-    "error_action": "continue",
+    "error_action": "stop",
 
     "type_of_rating": "PSOLD",
     "coverage": "Building + Contents + Time Element",

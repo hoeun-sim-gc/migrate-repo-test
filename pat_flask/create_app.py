@@ -1,11 +1,12 @@
-import requests
+import io
+import zipfile
+import logging
+
 import json
-from flask import Flask, abort, request
-from requests.models import Request
+from flask import Flask, abort, request, send_file
 from waitress import serve
 
 from pat_sql import PatJob
-from common import PatFlag, AppSettings
 
 def create_app(st_folder):
     app = Flask(__name__,static_url_path="/", static_folder=st_folder)
@@ -16,42 +17,38 @@ def create_app(st_folder):
 
     @app.route('/api/Jobs', methods=['POST'])
     def submit_job():
-        if request.files:
-            if 'para' in request.files.keys():
-                job = PatJob(json.loads(request.files['para'].read()), request.files)
-                if job.job_id > 0:
-                    job.process_job_async()
-                    return 'Analysis submitted!'
+        if request.json:
+            job = PatJob(request.json)
+            if job.job_id > 0:
+                job.process_job_async()
+                return f'Analysis submitted: {job.job_id}'
         
         abort(404)
             
     @app.route('/api/Jobs', methods=['GET'])
     def get_job_list():
-        ret= PatJob.get_job_list()
-        if ret:
-            return ret
+        df = PatJob.get_job_list()
+        if df is not None and len(df) > 0:
+            return df.to_json()
         else:
             abort(404)
 
     @app.route('/api/Jobs/<int:job_id>', methods=['GET'])
     def summary(job_id):
-        ret= PatJob.get_summary(job_id)
-        if ret:
-            return ret
+        df = PatJob.get_summary(job_id)
+        if df is not None and len(df) > 0:
+            return df.to_json()
         else:
             abort(404)
 
-   
-    # @app.route('/api/Jobs/<int:job_id>/Validation', methods=['GET'])
-    # def data_file(job_id):
-    #     pm = PmAppJob(request)
-    #     if pm.is_valid():
-    #         ret= pm.download_data(job_id)
-    #         if ret:
-    #             return ret
-    #     else:
-    #         abort(404)
-
+    @app.route('/api/Jobs/<int:job_id>/Validation', methods=['GET'])
+    def get_validate_data(job_id):
+        df1, df2, df3 = PatJob.get_validation_data(job_id)
+        return send_zip_file(f'pat_validation_{job_id}.zip', 
+            ('pol_validation.csv', df1),
+            ('loc_validation.csv', df2),
+            ('fac_validation.csv', df3)
+        )
 
     @app.route('/api/Jobs/<int:job_id>/Para', methods=['GET'])
     def get_job_para(job_id):
@@ -63,21 +60,21 @@ def create_app(st_folder):
     
     @app.route('/api/Jobs/<int:job_id>/Result', methods=['GET'])
     def results(job_id):
-        ret= PatJob.get_results(job_id)
-        if ret:
-            return ret
+        df = PatJob.get_results(job_id)
+        if df is not None:
+            return send_zip_file(f"pat_premium_{job_id}.zip", (f'pat_premium.csv', df))
         else:
             abort(404)
 
     @app.route('/api/Jobs/<int:job_id>', methods=['DELETE'])
     def delete(job_id):
-        ret= PatJob.delete(job_id)
-        if ret:
-            return ret
+        df= PatJob.delete(job_id)
+        if df is not None:
+            return df.to_json()
         else:
             abort(404)
 
-    # @app.route('/api/Jobs/<int:job_id>/Stop', methods=['PUT'])
+    # @app.route('/api/Jobs/<int:job_id>/Rerun', methods=['PUT'])
     # def stop_job(job_id):
     #     if 'req_id' in request.args and 'load' in request.args:
     #         pm = PmAppJob(request)
@@ -90,9 +87,24 @@ def create_app(st_folder):
     #             abort(404)
     #     else:
     #         abort(400)    
+    # if request.files:
+    #         if 'para' in request.files.keys():
+    #             job = PatJob(json.loads(request.files['para'].read()), request.files)
+    #             if job.job_id > 0:
+    #                 job.process_job_async()
+    #                 return f'Analysis submitted: {job.job_id}'
 
-    
-
+    def send_zip_file(name, *df_lst):
+        try:
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED, False) as zf:
+                for nm, df in df_lst:
+                    if df is not None:
+                        zf.writestr(nm, df.to_csv(header=True, index=False))
+            zip_buffer.seek(0)
+            return send_file(zip_buffer, mimetype='application/zip', attachment_filename=name, as_attachment=True, cache_timeout=0)
+        except Exception as e:
+            logging.warning(f"Download daat file: \n{e}")
 
 
     return app

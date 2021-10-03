@@ -10,7 +10,7 @@ import pandas as pd
 import pyodbc
 from bcpandas import SqlCreds, to_sql
 
-from common import AppSettings, PatFlag
+from pat_common import AppSettings, PatFlag
 
 class PatJob:
     """Class to repreet a PAT analysis"""
@@ -21,7 +21,7 @@ class PatJob:
             User Id={AppSettings.PAT_JOB_USR};Password={AppSettings.PAT_JOB_PWD};
             MultipleActiveResultSets=true;'''
 
-    def __init__(self, job_para, data_file = None):
+    def __init__(self, job_para):
         self.para = job_para
         self.job_guid = self.para['job_guid']
         self.job_id =0 
@@ -51,7 +51,9 @@ class PatJob:
         #
         self.job_id = self.__register_job()
         if self.job_id > 0:
-            self.__setup_logging(f"{self.job_id}")
+            self.logger = logging.getLogger(f"{self.job_id}")
+            self.logger.info(f"Start processing job: {self.job_guid}")
+            self.logger.info(f"parameter: {json.dumps(self.para, sort_keys=True, indent=4)}")
 
     def __register_job(self):
         with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
@@ -71,28 +73,6 @@ class PatJob:
                     return df.job_id[0]
         return 0
 
-    def __setup_logging(self, name):
-        self.log_file = os.path.join(AppSettings.PAT_LOG, "pat.log")
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.DEBUG)
-        formatter = logging.Formatter("%(asctime)s [%(name)s] (%(levelname)s): %(message)s")
-
-        oh = logging.StreamHandler()
-        oh.setLevel(logging.INFO)
-        oh.setFormatter(formatter)
-        self.logger.addHandler(oh)
-
-        try:
-            fh = logging.FileHandler(self.log_file)
-            fh.setLevel(logging.DEBUG)
-            fh.setFormatter(formatter)
-            self.logger.addHandler(fh)
-        except:
-            pass    
-
-        self.logger.info(f"Start processing job: {self.job_guid}")
-        self.logger.info(f"parameter: {json.dumps(self.para, sort_keys=True, indent=4)}")
-
     def __update_status(self, st):
         with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
             cur.execute(f"""update pat_job set status = '{st.replace("'","''")}', 
@@ -103,10 +83,12 @@ class PatJob:
     @classmethod
     def get_job_list(cls):
         with pyodbc.connect(cls.job_conn) as conn:
-            df = pd.read_sql_query(f"""select job_id job_id, job_guid, job_name, receive_time, update_time, status, user_name, user_email
-            from pat_job order by update_time desc, job_id desc""", conn)
+            df = pd.read_sql_query(f"""select job_id job_id, job_guid, job_name, 
+                    receive_time, update_time, status, user_name, user_email
+                from pat_job 
+                order by update_time desc, job_id desc""", conn)
 
-            return df.to_json()
+            return df
 
     @classmethod
     def get_job_para(cls, job_id):
@@ -121,7 +103,8 @@ class PatJob:
             df = pd.read_sql_query(f"""select count(*) as cnt_policy from pat_policy where job_id = {job_id}""", conn)
             df['cnt_location'] = pd.read_sql_query(f"""select count(*) from pat_location where job_id = {job_id}""", conn)
             df['cnt_fac'] = pd.read_sql_query(f"""select count(*) from pat_facultative where job_id = {job_id}""", conn)
-            return df.to_json()
+            
+            return df
 
     @classmethod
     def get_results(cls, job_id):
@@ -129,7 +112,7 @@ class PatJob:
             df = pd.read_sql_query(f"""select Limit, Retention, Premium, Participation, AOI, LocationIDStack, 
                                             RatingGroup, OriginalPolicyID, PseudoPolicyID, PseudoLayerID, PolLAS, DedLAS
                                        from pat_premium where job_id = {job_id}""", conn)
-            return df.to_json()
+            return df
 
     @classmethod
     def delete(cls, *job_lst):
@@ -152,7 +135,7 @@ class PatJob:
             if len(df1) > 0:
                 df = df1[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df1 = df1.merge(df, on ='flag')
+                df1 = df1.merge(df, on ='flag').drop(columns=['job_id'])
             
             df2 = pd.read_sql_query(f"""
                 select * from pat_location where job_id = {job_id} and flag != 0
@@ -160,7 +143,7 @@ class PatJob:
             if len(df2) > 0:
                 df = df2[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df2 = df2.merge(df, on ='flag')
+                df2 = df2.merge(df, on ='flag').drop(columns=['job_id'])
 
             df3 = pd.read_sql_query(f"""
                 select * from pat_facultative where job_id = {job_id} and flag != 0
@@ -168,7 +151,7 @@ class PatJob:
             if len(df3) > 0:
                 df = df3[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df3 = df3.merge(df, on ='flag')
+                df3 = df3.merge(df, on ='flag').drop(columns=['job_id'])
 
         return (df1, df2, df3)
 
