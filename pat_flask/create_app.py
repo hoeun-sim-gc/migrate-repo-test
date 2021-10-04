@@ -17,8 +17,11 @@ def create_app(st_folder):
 
     @app.route('/api/Jobs', methods=['POST'])
     def submit_job():
-        if request.json:
-            job = PatJob(request.json)
+        js = request.json if request.json else (json.load(request.files['para']) if request.files else None)
+        data = request.files['data'] if request.files and 'data' in request.files else None
+
+        if js:
+            job = PatJob(js,data)
             if job.job_id > 0:
                 job.process_job_async()
                 return f'Analysis submitted: {job.job_id}'
@@ -74,26 +77,7 @@ def create_app(st_folder):
         else:
             abort(404)
 
-    # @app.route('/api/Jobs/<int:job_id>/Rerun', methods=['PUT'])
-    # def stop_job(job_id):
-    #     if 'req_id' in request.args and 'load' in request.args:
-    #         pm = PmAppJob(request)
-    #         if pm.is_valid():
-    #             load =  request.args.get('load') 
-    #             ret= pm.stop_job(job_id, load and load.lower() == 'true')
-    #             if ret:
-    #                 return ret
-    #         else:
-    #             abort(404)
-    #     else:
-    #         abort(400)    
-    # if request.files:
-    #         if 'para' in request.files.keys():
-    #             job = PatJob(json.loads(request.files['para'].read()), request.files)
-    #             if job.job_id > 0:
-    #                 job.process_job_async()
-    #                 return f'Analysis submitted: {job.job_id}'
-
+    
     def send_zip_file(name, *df_lst):
         try:
             zip_buffer = io.BytesIO()

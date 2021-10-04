@@ -25,34 +25,38 @@ flag_descrs = {
     #'NoteFacOverexposed1' : "Fac exposure exceeds policy exposure",
 
 class PatFlag(IntFlag):
-    FlagPolDupe = 1
-    FlagPolNoLoc = 2
-    FlagPolNA = 1 << 2
-    FlagPolNeg = 1 << 3
-    FlagPolLimitParticipation = 1 << 4
-    FlagPolParticipation = 1 << 5
-    FlagFacOrphan = 1 << 6
-    FlagFacNA = 1 << 7
-    FlagFacNeg = 1 << 8
-    FlagLocDupe = 1 << 9
-    FlagLocOrphan = 1 << 10
-    FlagLocIDDupe = 1 << 11
-    FlagLocNA = 1 << 12
-    FlagLocNeg = 1 << 13
-    FlagLocRG = 1 << 14
+    FlagPolDupe = 0x00000001
+    FlagPolNoLoc = 0x00000002
+    FlagPolNA = 0x00000004
+    FlagPolNeg = 0x00000008
+    FlagPolLimitParticipation = 0x00000010
+    FlagPolParticipation = 0x00000020
+    FlagFacOrphan = 0x00000040
+    FlagFacNA = 0x00000080
+    FlagFacNeg = 0x00000100
+    FlagLocDupe = 0x00000200
+    FlagLocOrphan = 0x00000400
+    FlagLocIDDupe = 0x00000800
+    FlagLocNA = 0x00001000
+    FlagLocNeg = 0x00002000
+    FlagLocRG = 0x00004000
 
-    FlagFacOverexposed = 1 << 15
-    FlagCeded100 = 1 << 16
+    FlagFacOverexposed = 0x00008000
+    FlagCeded100 =  0x00010000
+
+    # not error status 
+    FlagCorrected =  0x10000000
+    FlagActive =  0x20000000
 
     @classmethod
     def describe(cls, code):
-        lst = [(flag_descrs[n] if f.value & code else None) for n,f in cls.__members__.items()]
+        lst = [(flag_descrs[n] if (f.value & code & 0x00FFFFFF)  else None) for n,f in cls.__members__.items()] # do not consider last two items
         lst = list(filter(None, lst))
 
         return ', '.join(lst)
         
     def set_flag(self, df, mask):
         if np.any(mask):
-            df.loc[mask,['status']] += self.value
+            df.loc[mask,['status']] |= self.value
 
     
