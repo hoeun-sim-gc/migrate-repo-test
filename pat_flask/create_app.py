@@ -2,11 +2,14 @@ import io
 import zipfile
 import logging
 
+import pandas as pd
+
 import json
 from flask import Flask, abort, request, send_file
 from waitress import serve
 
 from pat_sql import PatJob
+
 
 def create_app(st_folder):
     app = Flask(__name__,static_url_path="/", static_folder=st_folder)
@@ -32,15 +35,17 @@ def create_app(st_folder):
     def get_job_list():
         df = PatJob.get_job_list()
         if df is not None and len(df) > 0:
-            return df.to_json()
+            # return df.to_json()
+            lst= df.to_dict('records')
+            return json.dumps(df.to_dict('records'))
         else:
             abort(404)
 
     @app.route('/api/Jobs/<int:job_id>', methods=['GET'])
     def summary(job_id):
-        df = PatJob.get_summary(job_id)
-        if df is not None and len(df) > 0:
-            return df.to_json()
+        ret = PatJob.get_summary(job_id)
+        if ret:
+            return ret
         else:
             abort(404)
 
@@ -77,7 +82,7 @@ def create_app(st_folder):
         else:
             abort(404)
 
-    
+
     def send_zip_file(name, *df_lst):
         try:
             zip_buffer = io.BytesIO()
@@ -89,6 +94,5 @@ def create_app(st_folder):
             return send_file(zip_buffer, mimetype='application/zip', attachment_filename=name, as_attachment=True, cache_timeout=0)
         except Exception as e:
             logging.warning(f"Download daat file: \n{e}")
-
 
     return app

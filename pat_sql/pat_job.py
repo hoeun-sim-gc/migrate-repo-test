@@ -126,12 +126,21 @@ class PatJob:
 
     @classmethod
     def get_summary(cls, job_id):
-        with pyodbc.connect(cls.job_conn) as conn:
-            df = pd.read_sql_query(f"""select count(*) as cnt_policy from pat_policy where job_id = {job_id} and (flag & {PatFlag.FlagActive}) !=0""", conn)
-            df['cnt_location'] = pd.read_sql_query(f"""select count(*) from pat_location where job_id = {job_id} and (flag & {PatFlag.FlagActive}) !=0""", conn)
-            df['cnt_fac'] = pd.read_sql_query(f"""select count(*) from pat_facultative where job_id = {job_id} and (flag & {PatFlag.FlagActive}) !=0""", conn)
-            
-            return df
+        summary = {}
+        with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+            ret = cur.execute(f"""select count(*) as cnt from pat_policy where job_id = {job_id} and (flag & {PatFlag.FlagActive}) !=0""").fetchone()
+            summary['policy count'] = ret[0]
+            cur.commit()
+
+            ret = cur.execute(f"""select count(*) as cnt from pat_location where job_id = {job_id} and (flag & {PatFlag.FlagActive}) !=0""").fetchone()
+            summary['location count'] = ret[0]
+            cur.commit()
+
+            ret = cur.execute(f"""select count(*) as cnt from pat_facultative where job_id = {job_id} and (flag & {PatFlag.FlagActive}) !=0""").fetchone()
+            summary['facultative count'] = ret[0]
+            cur.commit()
+
+            return summary
 
     @classmethod
     def get_results(cls, job_id):
