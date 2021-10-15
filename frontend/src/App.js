@@ -19,6 +19,7 @@ import HomePage from './features/home-page';
 import JobPage from './features/job-page';
 import Login from './features/login-page';
 import Settings from './features/setting-page';
+import GuidePage from './features/guide-page';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -51,17 +52,6 @@ function App () {
   }
   const [theme, setTheme] = useState(prefTheme) 
   
-  const GuidePage = ()=>{
-    return <div className="float-left"><h1>Welcome to Premium Allocation Tool</h1>
-        <h3>Introduction</h3>
-        <p>blah blah blah...</p>
-      </div>
-  };
-
-  const UnderConst = ()=>{
-    return <div className="float-left"><h2>Under Construction...</h2></div>
-  };
-
   const NotFound = ()=>{
     return <div className="float-left"><h2>404 Page Not Found!</h2></div>
   };

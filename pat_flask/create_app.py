@@ -9,6 +9,7 @@ from flask import Flask, abort, request, send_file
 from waitress import serve
 
 from pat_sql import PatJob
+from pat_common import SqlHelper
 
 
 def create_app(st_folder):
@@ -20,12 +21,18 @@ def create_app(st_folder):
 
     @app.route('/api/Jobs', methods=['POST'])
     def submit_job():
-        js = request.json if request.json else (json.load(request.files['para']) if request.files else None)
-        data = request.files['data'] if request.files and 'data' in request.files else None
+        js = None
+        data = None
+        if request.files and 'data' in request.files.keys():
+            data = request.files['data']
+        if request.form and 'para' in request.form.keys():
+            js = json.loads(request.form['para'])
+        else:
+            request.json 
 
         if js:
             job = PatJob(js,data)
-            if job.job_id > 0:
+            if job.job_id and job.job_id > 0:
                 job.process_job_async()
                 return f'Analysis submitted: {job.job_id}'
         
@@ -65,6 +72,14 @@ def create_app(st_folder):
             return ret
         else:
             abort(404)
+
+    @app.route('/api/Jobs/<int:job_id>/Status', methods=['GET'])
+    def get_job_status(job_id):
+        ret= PatJob.get_job_status(job_id)
+        if ret:
+            return ret
+        else:
+            abort(404)
     
     @app.route('/api/Jobs/<int:job_id>/Result', methods=['GET'])
     def results(job_id):
@@ -82,7 +97,6 @@ def create_app(st_folder):
         else:
             abort(404)
 
-
     def send_zip_file(name, *df_lst):
         try:
             zip_buffer = io.BytesIO()
@@ -93,6 +107,32 @@ def create_app(st_folder):
             zip_buffer.seek(0)
             return send_file(zip_buffer, mimetype='application/zip', attachment_filename=name, as_attachment=True, cache_timeout=0)
         except Exception as e:
-            logging.warning(f"Download daat file: \n{e}")
+            logging.warning(f"Download data file: \n{e}")
+
+    
+    
+    
+    @app.route('/api/dblist/<sever>', methods=['GET'])
+    def get_db_list(sever):
+        edm,rdm = SqlHelper.get_db_list(sever)
+        return json.dumps( {'edm': edm.name.to_list(), 'rdm': rdm.name.to_list() })        
+
+    @app.route('/api/anls/<sever>/<db>', methods=['GET'])
+    def get_anls_list(sever, db):
+        df = SqlHelper.get_anls_list(sever, db)
+        if df is not None and len(df)>0:
+            return json.dumps(df.to_dict('records'))
+
+    @app.route('/api/port/<sever>/<db>', methods=['GET'])
+    def get_port_list(sever, db):
+        df = SqlHelper.get_port_list(sever, db)
+        if df is not None and len(df)>0:            
+            return json.dumps(df.to_dict('records'))
+
+    @app.route('/api/peril/<sever>/<db>/<int:pid>', methods=['GET'])
+    def get_peril_list(sever, db, pid):
+        df = SqlHelper.get_peril_list(sever, db, pid)
+        if df is not None and len(df)>0:            
+            return json.dumps(df.policytype.to_list())
 
     return app

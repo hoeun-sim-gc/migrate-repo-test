@@ -9,6 +9,7 @@ packages = [
     {include = "pat_flask"},
     {include = "pat_sql"}
 ]
+include = ["pat_flask/react_build/**/*"]
 
 [tool.poetry.dependencies]
 python = ">=3.8.8"

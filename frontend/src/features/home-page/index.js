@@ -38,10 +38,6 @@ const useStyles = makeStyles((theme) => ({
     textDecoration: 'inherit',
     marginRight: '12px'
   },
-  paper: {
-    height: 140,
-    width: 100,
-  },
   table: {
     color: theme.palette.text.primary,
     "&:hover tbody tr:hover td": {
@@ -60,10 +56,6 @@ const useStyles = makeStyles((theme) => ({
     display: 'block',
     margin: '0 auto',
     zIndex: 9999,
-  },
-  card: {
-    marginTop: 10,
-    textAlign: 'left'
   },
   para: {
     color: theme.palette.text.primary,
@@ -270,11 +262,11 @@ export default function HomePage(props) {
 
   const options = {
     // pageStartIndex: 0,
-    sizePerPage: 15,
+    sizePerPage: 19, 
     hideSizePerPage: true,
     hidePageListOnlyOnePage: true,
-    //sizePerPageList: [5,10,15,25,30,40,50],
-    //showTotal: true,
+    // sizePerPageList: [5,10,15,25,30,40,50],
+    showTotal: true,
   };
 
   const selectRow = {
@@ -301,22 +293,16 @@ export default function HomePage(props) {
           />
         </div>
       }
+      <WbMenu header="Selected Analysis" items={[
+          { text: 'Download Results', onClick: () => { setDownloadingResults(true) } },
+          { text: 'Dowload Validation', onClick: () => { setDownloadingDatafile(true) } },
+          { text: 'Divider' },
+          { text: 'Populate to EDM', onClick: () => {alert("Haven't implemented yet!") } },
+          { text: 'Divider' },
+          { text: 'New Analyis Copy This', onClick: () => {alert("Haven't implemented yet!") }  },
+        ]} />
       <Grid container className={classes.root} spacing={2}>
-        <Grid item md={12}>
-          <Grid container justify="left" >
-            <WbMenu header="Selected Analysis" items={[
-              { text: 'Download Results', onClick: () => { setDownloadingResults(true) } },
-              { text: 'Dowload Validation', onClick: () => { setDownloadingDatafile(true) } },
-              { text: 'Divider' },
-              { text: 'Populate to EDM', onClick: () => {alert("Haven't implemented yet!") } },
-              { text: 'Divider' },
-              { text: 'New Analyis Copy This', onClick: () => {alert("Haven't implemented yet!") }  },
-            ]} />
-          </Grid>
-        </Grid>
-      </Grid>
-      <Grid container className={classes.root} spacing={2}>
-        <Grid item md={8} style={{ marginTop: '-36px' }}>
+        <Grid item md={8} style={{ marginTop: '-28px' }}>
           <ToolkitProvider
             keyField="job_id"
             data={jobList}
@@ -329,7 +315,7 @@ export default function HomePage(props) {
                 <div justify='flex-end'>
                   <Grid container justify='flex-end'>
                     <Grid item md={6} container justify='flex-end'>
-                      <SearchBar  {...props.searchProps} />
+                      <SearchBar  {...props.searchProps} style={{height:'26px'}} />
                     </Grid>
                   </Grid>
                   <BootstrapTable classes={classes.table}
@@ -347,39 +333,32 @@ export default function HomePage(props) {
             }
           </ToolkitProvider>
         </Grid>
-        <Grid item md={4} style={{ marginTop: '-36px' }}>
+        <Grid item md={4} style={{ marginTop: '-30px' }}>
             <div>
               <Grid container>
-                <Grid item md={4}>
-                  <h4>Parameters:</h4>
+                <Grid item md={8}>
+                  <h5>Parameters:</h5>
                 </Grid>
-                <Grid item md={4}>
-                  <h5>{selectedJob?.job_id}</h5>
-                </Grid>
-                <Grid item container md={4} justify='flex-end'>
+                <Grid item container md={4} justify='flex-end' >
                   <Button onClick={(e) => { setClipboard(selectedPara); alert("Analysis parameters have been copied to Clipboard!"); }} >Copy</Button>
                 </Grid>
               </Grid>
-              <Grid item>
-                <div>
-                  <pre className={classes.para} style={{height:'300px', border: '1px solid gray' }} >{selectedPara}</pre>
-                </div>
-              </Grid>
+              <div>
+                <pre className={classes.para} style={{height:'280px', border: '1px solid gray' }} >{selectedPara}</pre>
+              </div>
               <Grid container>
                 <Grid item md={8}>
-                  <h4>Summary:</h4>
+                  <h5>Summary:</h5>
                 </Grid>
                 <Grid item container md={4} justify='flex-end'>
                   <Button onClick={(e) => { setClipboard(selectedSum); alert("Analysis summary been copied to Clipboard!"); }} >Copy</Button>
                 </Grid>
               </Grid>
-              <Grid item>
-                <div>
-                <pre className={classes.para} style={{height:'300px', border: '1px solid gray' }} >{selectedSum}</pre>
-                </div>
-              </Grid>
+              <div>
+                <pre className={classes.para} style={{height:'280px', border: '1px solid gray' }} >{selectedSum}</pre>
+              </div>
             </div>
-      </Grid>
+          </Grid>
       </Grid>
     </div>
   );

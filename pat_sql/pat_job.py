@@ -23,12 +23,12 @@ class PatJob:
             MultipleActiveResultSets=true;'''
 
     def __init__(self, job_para, data=None):
+        self.job_id =0 
         if not job_para or 'job_guid' not in job_para:
             return 
 
         self.para = job_para
         self.job_guid = self.para['job_guid']
-        self.job_id =0 
         
         self.logger = logging.getLogger(self.job_guid)
         self.logger.info(f"""Start to process job:\n{json.dumps(self.para, sort_keys=True, indent=4)}""")
@@ -41,8 +41,8 @@ class PatJob:
         self.iSubGrp = {
                 "Fire":1,
                 "Wind":2,
-                "Special_Cause_of_Loss": 3,
-                "All_Perils": 4
+                "Special Cause of Loss": 3,
+                "All Perils": 4
                 }[self.para['peril_subline']] 
         self.AddtlCovg = float(self.para['additional_coverage'])
         self.dCurrencyAdj = 1.0
@@ -123,6 +123,13 @@ class PatJob:
             df = pd.read_sql_query(f"""select parameters from pat_job where job_id = {job_id}""", conn)
             if df is not None and len(df) > 0:
                 return df.parameters[0]
+
+    @classmethod
+    def get_job_status(cls, job_id):
+        with pyodbc.connect(cls.job_conn) as conn:
+            df = pd.read_sql_query(f"""select status from pat_job where job_id = {job_id}""", conn)
+            if df is not None and len(df) > 0:
+                return df.status[0]
 
     @classmethod
     def get_summary(cls, job_id):
@@ -238,7 +245,7 @@ class PatJob:
         self.logger.info("Finished!")
 
     def __extract_edm_rdm(self):
-        conn_str = f'''DRIVER={{SQL Server}};Server={self.para["server"]};Database={self.para["edm_database"]};
+        conn_str = f'''DRIVER={{SQL Server}};Server={self.para["server"]};Database={self.para["edm"]};
             Trusted_Connection=True;MultipleActiveResultSets=true;'''
         with pyodbc.connect(conn_str) as conn:
             self.logger.debug("Verify input data base info...")
@@ -270,27 +277,27 @@ class PatJob:
     def __verify_edm_rdm(self, conn):
         # Check that PerilID is valid
         if len(pd.read_sql_query(f"""select top 1 1
-                from [{self.para['edm_database']}]..policy a
-                    join [{self.para['edm_database']}]..portacct b on a.accgrpid = b.accgrpid
+                from [{self.para['edm']}]..policy a
+                    join [{self.para['edm']}]..portacct b on a.accgrpid = b.accgrpid
                 where b.portinfoid = {self.para['portinfoid']} and policytype = {self.para['perilid']}""", conn)) <= 0:
             return 'PerilID is not valid!'
 
         # Check that portfolio ID is valid
         if len(pd.read_sql_query(f"""select top 1 1
-                from [{self.para['edm_database']}]..loccvg 
-                    inner join [{self.para['edm_database']}]..property on loccvg.locid = property.locid 
-                    inner join [{self.para['edm_database']}]..portacct on property.accgrpid = portacct.accgrpid 
+                from [{self.para['edm']}]..loccvg 
+                    inner join [{self.para['edm']}]..property on loccvg.locid = property.locid 
+                    inner join [{self.para['edm']}]..portacct on property.accgrpid = portacct.accgrpid 
                 where loccvg.peril = {self.para['perilid']} and portacct.portinfoid = {self.para['portinfoid']}""", conn)) <= 0:
             return 'portfolio ID is not valid!'
 
         # Check that analysis ID is valid
-        if 'rdm_database' in self.para and 'analysisid' in self.para:
+        if 'rdm' in self.para and 'analysisid' in self.para:
             if len(pd.read_sql_query(f"""select top 1 1
-            FROM [{self.para['edm_database']}]..loccvg 
-                inner join [{self.para['edm_database']}]..property on loccvg.locid = property.locid 
-                inner join [{self.para['edm_database']}]..portacct on property.accgrpid = portacct.accgrpid 
-                inner join [{self.para['edm_database']}]..policy on property.accgrpid = policy.accgrpid 
-                inner join [{self.para['rdm_database']}]..rdm_policy on policy.policyid = rdm_policy.id 
+            FROM [{self.para['edm']}]..loccvg 
+                inner join [{self.para['edm']}]..property on loccvg.locid = property.locid 
+                inner join [{self.para['edm']}]..portacct on property.accgrpid = portacct.accgrpid 
+                inner join [{self.para['edm']}]..policy on property.accgrpid = policy.accgrpid 
+                inner join [{self.para['rdm']}]..rdm_policy on policy.policyid = rdm_policy.id 
             where portacct.portinfoid = {self.para['portinfoid']} and loccvg.peril = {self.para['perilid']}
             and rdm_policy.ANLSID = {self.para['analysisid']}""", conn)) <= 0:
                 print('portfolio ID is not valid!')
@@ -391,7 +398,7 @@ class PatJob:
                 where incl_locs.locid is null""")
 
             # sqlpremalloc
-            if 'rdm_database' in self.para and 'analysisid' in self.para:
+            if 'rdm' in self.para and 'analysisid' in self.para:
                 cur.execute(f"""with locpoltotals as (
                     select a.id as policyid, p.blanlimamt, p.partof, 
                         p.undcovamt, p.polded, res1value as locid, a.eventid,
@@ -404,8 +411,8 @@ class PatJob:
                         sum(case when perspcode = 'ss' then perspvalue else 0  end) as surplusshareloss,
                         sum(case when perspcode = 'fa' then perspvalue else 0  end) as facloss,
                         sum(case when perspcode = 'rl' then perspvalue else 0  end) as netprecatloss
-                    from {self.para['rdm_database']}..rdm_policy a 
-                        inner join {self.para['rdm_database']}..rdm_eventareadetails b on a.eventid = b.eventid 
+                    from {self.para['rdm']}..rdm_policy a 
+                        inner join {self.para['rdm']}..rdm_eventareadetails b on a.eventid = b.eventid 
                         inner join #policy_standard as p on a.id = p.policyid
                     where anlsid = {self.para['analysisid']}
                     group by a.id, res1value, a.eventid, p.blanlimamt, p.partof, p.undcovamt, p.polded
