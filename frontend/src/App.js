@@ -72,8 +72,11 @@ function App () {
                 <Route exact path="/home">
                   <HomePage />
                 </Route>
-                <Route exact path="/job">
-                  {IsLogin?<JobPage />:<Login backto='/job'/>}
+                <Route exact path="/job/" >
+                  {IsLogin?<JobPage theme={theme} ChangeTheme={setTheme} />:<Login backto='/job'/>}
+                </Route>
+                <Route exact path="/job/:job_id">
+                  {IsLogin?<JobPage theme={theme} ChangeTheme={setTheme} />:<Login backto='/job/:job_id'/>}
                 </Route>
                 <Route exact path="/guide">
                   <GuidePage theme={theme} ChangeTheme={setTheme} />

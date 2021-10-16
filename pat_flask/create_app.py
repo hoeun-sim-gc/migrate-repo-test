@@ -35,8 +35,6 @@ def create_app(st_folder):
             if job.job_id and job.job_id > 0:
                 job.process_job_async()
                 return f'Analysis submitted: {job.job_id}'
-        
-        abort(404)
             
     @app.route('/api/Jobs', methods=['GET'])
     def get_job_list():
@@ -45,16 +43,12 @@ def create_app(st_folder):
             # return df.to_json()
             lst= df.to_dict('records')
             return json.dumps(df.to_dict('records'))
-        else:
-            abort(404)
 
     @app.route('/api/Jobs/<int:job_id>', methods=['GET'])
     def summary(job_id):
         ret = PatJob.get_summary(job_id)
         if ret:
             return ret
-        else:
-            abort(404)
 
     @app.route('/api/Jobs/<int:job_id>/Validation', methods=['GET'])
     def get_validate_data(job_id):
@@ -70,32 +64,24 @@ def create_app(st_folder):
         ret= PatJob.get_job_para(job_id)
         if ret:
             return ret
-        else:
-            abort(404)
 
     @app.route('/api/Jobs/<int:job_id>/Status', methods=['GET'])
     def get_job_status(job_id):
         ret= PatJob.get_job_status(job_id)
         if ret:
             return ret
-        else:
-            abort(404)
     
     @app.route('/api/Jobs/<int:job_id>/Result', methods=['GET'])
     def results(job_id):
         df = PatJob.get_results(job_id)
         if df is not None:
             return send_zip_file(f"pat_premium_{job_id}.zip", (f'pat_premium.csv', df))
-        else:
-            abort(404)
 
     @app.route('/api/Jobs/<int:job_id>', methods=['DELETE'])
     def delete(job_id):
         df= PatJob.delete(job_id)
         if df is not None:
             return df.to_json()
-        else:
-            abort(404)
 
     def send_zip_file(name, *df_lst):
         try:

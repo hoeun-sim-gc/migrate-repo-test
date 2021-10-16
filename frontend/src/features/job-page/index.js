@@ -1,4 +1,5 @@
-import React, { useState, useContext, useRef } from 'react';
+import React, { useState, useContext } from 'react';
+import { useParams } from "react-router-dom";
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import {
   Grid, Card, CardContent,
@@ -95,9 +96,10 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export default function JobPage(props) {
+  const { job_id } = useParams();
+
   const classes = useStyles();
   const theme = useTheme();
-
   const [user,] = useContext(UserContext);
 
   const [paraString, setParaString] = useState('');
@@ -142,48 +144,86 @@ export default function JobPage(props) {
   const [jobFile, setJobFile] = useState('')
   const [uploadingJob, setUploadingJob] = useState(false);
 
-  const [currentJob, setCurrentJob] = useState({job_id:0,status:'',finished:0})
+  const [currentJob, setCurrentJob] = useState({job_id:job_id,status:'',finished:0})
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
+
 
 
   React.useEffect(() => {
     setLoadingServerList(true);
 
+    setLoadingCurrentJob(true);
     const interval = setInterval(() => setLoadingCurrentJob(true), 10000);
     return () => {
       clearInterval(interval);
     };
   }, []);
 
-  React.useEffect(() => {
-    setParaString(JSON.stringify(jobParameter, null, '  '))
-  }, [jobParameter]);
-
-
-  //server list
+  //server list , reference job
   React.useEffect(() => {
     if (!loadingServerList) return;
 
+    //sever list
     let lst = [];
     let js = localStorage.getItem('Server_List')
     if (js) lst = JSON.parse(js);
-
-    let saved_svr = localStorage.getItem('currentServer');
-    if (saved_svr) {
-      lst.push(jobParameter.server)
+    
+    var svr = localStorage.getItem('currentServer');
+    if (svr) {
+      lst.push(svr)
       lst = [...new Set(lst)].sort();
       localStorage.setItem("Server_List", JSON.stringify(lst));
     }
-
-    setJobParameter({ ...jobParameter, server: saved_svr, edm: '', rdm: '', portinfoid: 0, perilid: 0, analysisid: 0 });
     setServerList(lst);
-    setDbList([]);
-    setLoadingDbList(true);
 
+    //reference 
+    if(job_id && job_id >0) {
+      const request = '/api/Jobs/' + job_id+'/Para';
+      fetch(request).then(response => {
+        if (response.ok) {
+          return response.json();
+        }
+        throw new TypeError("Oops, we haven't got data!");
+      })
+      .then(data => {
+        delete data.job_id;
+        delete data.job_guid;
+        delete data.data_correction;
+        setJobParameter(data);
+        
+        if( 'server' in data) svr= data['server'];
+        else svr = localStorage.getItem('currentServer');
+        if (svr) {
+          lst.push(svr)
+          lst = [...new Set(lst)].sort();
+          localStorage.setItem("Server_List", JSON.stringify(lst));
+
+          setDbList([]);
+          setLoadingDbList(true);
+        }
+      })
+      .catch(error => {
+        console.log(error);
+      })
+      .then(() => {
+        setLoadingServerList(false);
+      });
+    }
+    else {
+      setJobParameter({ ...jobParameter, server: svr, edm: '', rdm: '', portinfoid: 0, perilid: 0, analysisid: 0 });
+      setDbList([]);
+      setLoadingDbList(true);
+    }
     setLoadingServerList(false);
 
     // eslint-disable-next-line
   }, [loadingServerList]);
+
+
+  React.useEffect(() => {
+    setParaString(JSON.stringify(jobParameter, null, '  '))
+  }, [jobParameter]);
+
 
   //get EDM/RDM list 
   React.useEffect(() => {
@@ -202,7 +242,14 @@ export default function JobPage(props) {
     })
       .then(data => {
         setDbList(data);
-        setJobParameter({ ...jobParameter, edm: data.edm[0], rdm: data.rdm[0], portinfoid: 0, perilid: 0, analysisid: 0 });
+        if (!data.edm.includes(jobParameter.edm))
+        {
+          setJobParameter({ ...jobParameter, edm: data.edm[0], portinfoid: 0, perilid: 0});
+        }
+        if (!data.rdm.includes(jobParameter.rdm))
+        {
+          setJobParameter({ ...jobParameter, rdm: data.rdm[0], analysisid: 0});
+        }
         setLoadingPortList(true);
         setLoadingAnlsList(true);
       })
@@ -232,7 +279,12 @@ export default function JobPage(props) {
     })
       .then(data => {
         setPortList(data);
-        if (data.length > 0) setJobParameter({ ...jobParameter, portinfoid: data[0].portinfoid })
+        if (data.length > 0) 
+        {
+          if (data.filter(e => e.portinfoid === jobParameter.portinfoid).length <= 0) {
+            setJobParameter({ ...jobParameter, portinfoid: data[0].portinfoid, perilid:0 })
+          }
+        }
 
         setLoadingPerilList(true);
       })
@@ -262,7 +314,10 @@ export default function JobPage(props) {
     })
       .then(data => {
         setPerilList(data);
-        if (data.length > 0) setJobParameter({ ...jobParameter, perilid: data[0] })
+        if (data.length > 0)
+        {
+          if(!data.includes(jobParameter.perilid)) setJobParameter({ ...jobParameter, perilid: data[0] })
+        } 
 
         setLoadingPerilList(true);
       })
@@ -294,6 +349,11 @@ export default function JobPage(props) {
       .then(data => {
         if (data) data = [{ id: 0, name: '' }].concat(data);
         else data = [{ id: 0, name: '' }]
+
+        if (data.filter(r => r.id === jobParameter.analysisid).length <= 0) {
+          setJobParameter({ ...jobParameter, analysisid: 0})
+        }
+
         setAnlsList(data);
       })
       .catch(error => {

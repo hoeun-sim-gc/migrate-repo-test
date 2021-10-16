@@ -1,4 +1,6 @@
-import React, { useState, useContext, useRef } from 'react';
+import React, { useState, useContext, useCallback } from 'react';
+import {useHistory} from 'react-router-dom';
+
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import {Grid,Button} from '@material-ui/core';
 
@@ -68,6 +70,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export default function HomePage(props) {
+  const history = useHistory(); 
   const classes = useStyles();
   const theme = useTheme();
 
@@ -226,6 +229,8 @@ export default function HomePage(props) {
     // eslint-disable-next-line
   }, [downloadingResults]);
 
+  const handleGoJob = useCallback((job_id) => history.push('/job/' + job_id), [history]);
+
   //data file
   React.useEffect(() => {
     if (!downloadingDatafile) return;
@@ -299,7 +304,7 @@ export default function HomePage(props) {
           { text: 'Divider' },
           { text: 'Populate to EDM', onClick: () => {alert("Haven't implemented yet!") } },
           { text: 'Divider' },
-          { text: 'New Analyis Copy This', onClick: () => {alert("Haven't implemented yet!") }  },
+          { text: 'New Analyis Copy This', onClick: () => {handleGoJob(selectedJob?.job_id) } },
         ]} />
       <Grid container className={classes.root} spacing={2}>
         <Grid item md={8} style={{ marginTop: '-28px' }}>
