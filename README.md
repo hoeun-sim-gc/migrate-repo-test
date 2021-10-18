@@ -11,4 +11,8 @@ pip3 install poetry==1.1.2
 poetry install
 
 # Build and Test
-poetry run pytest
+cd frentend
+yarn build
+cd ..
+poetry build --format=whee
+
