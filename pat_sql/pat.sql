@@ -68,6 +68,12 @@ create table pat_job(
     parameters varchar(max)
 );
 
+create table pat_flag(
+    flag_code integer primary key,
+    flag_name varchar(100),
+    descr varchar(500)
+);
+
 create table pat_policy(
     job_id int not null,
     OriginalPolicyID int,

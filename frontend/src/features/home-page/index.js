@@ -18,6 +18,8 @@ import columns from './header';
 import WbMenu from '../../app/menu';
 import { convertTime } from '../../app/theme'
 
+import './index.css';
+
 const useStyles = makeStyles((theme) => ({
   root: {
     flexGrow: 1,
@@ -67,6 +69,12 @@ const useStyles = makeStyles((theme) => ({
     fontSize: 16,
     padding: 5
   },
+  summary: {
+    color: theme.palette.text.primary,
+    marginTop: 10,
+    marginBottom: 10,
+    overflow: "auto",
+  },
 }));
 
 export default function HomePage(props) {
@@ -84,7 +92,7 @@ export default function HomePage(props) {
   const [selectedPara, setSelectedPara] = useState(null);
 
   const [loadingJobSum, setLoadingJobSum] = useState(false);
-  const [selectedSum, setSelectedSum] = useState(null);
+  const [selectedSum, setSelectedSum] = useState([]);
 
   const [downloadingResults, setDownloadingResults] = useState(false);
   const [downloadingDatafile, setDownloadingDatafile] = useState(false);
@@ -137,7 +145,7 @@ export default function HomePage(props) {
     setSelectedPara('');
     setLoadingJobPara(true);
 
-    setSelectedSum('');
+    setSelectedSum([]);
     setLoadingJobSum(true);
   }, [selectedJob]);
 
@@ -184,7 +192,7 @@ export default function HomePage(props) {
       throw new TypeError("Oops, we haven't got data!");
     })
       .then(data => {
-        setSelectedSum(JSON.stringify(data, null,'  '));
+        setSelectedSum(data);
       })
       .catch(error => {
         console.log(error);
@@ -355,13 +363,26 @@ export default function HomePage(props) {
                 <Grid item md={8}>
                   <h5>Summary:</h5>
                 </Grid>
-                <Grid item container md={4} justify='flex-end'>
+                {/* <Grid item container md={4} justify='flex-end'>
                   <Button onClick={(e) => { setClipboard(selectedSum); alert("Analysis summary been copied to Clipboard!"); }} >Copy</Button>
-                </Grid>
+                </Grid> */}
               </Grid>
-              <div>
-                <pre className={classes.para} style={{height:'280px', border: '1px solid gray' }} >{selectedSum}</pre>
-              </div>
+                  <table style={{width:'100%', border: '1px solid gray'}} className={classes.summary} >
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedSum.map(row => (
+                        <tr key={row.item}>
+                          <td>{row.item}</td>
+                          <td>{row.cnt}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
             </div>
           </Grid>
       </Grid>

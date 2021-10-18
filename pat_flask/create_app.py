@@ -46,9 +46,9 @@ def create_app(st_folder):
 
     @app.route('/api/Jobs/<int:job_id>', methods=['GET'])
     def summary(job_id):
-        ret = PatJob.get_summary(job_id)
-        if ret:
-            return ret
+        df = PatJob.get_summary(job_id)
+        if df is not None and len(df) > 0:
+            return json.dumps(df.to_dict('records'))
 
     @app.route('/api/Jobs/<int:job_id>/Validation', methods=['GET'])
     def get_validate_data(job_id):

@@ -50,7 +50,10 @@ class PatFlag(IntFlag):
 
     @classmethod
     def describe(cls, code):
-        lst = [(flag_descrs[n] if (f.value & code & 0x00FFFFFF)  else None) for n,f in cls.__members__.items()] # do not consider last two items
+        if not code:
+            return ''
+
+        lst = [(flag_descrs[n] if (f.value & code & 0x00FFFFFF) else 0) for n,f in cls.__members__.items()] # do not consider last two items
         lst = list(filter(None, lst))
 
         return ', '.join(lst)

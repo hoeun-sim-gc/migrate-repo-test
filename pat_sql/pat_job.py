@@ -4,6 +4,7 @@ import logging
 import threading
 from datetime import datetime
 import zipfile
+from flask.helpers import _split_blueprint_path
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,13 @@ import pyodbc
 from bcpandas import SqlCreds, to_sql
 
 from pat_common import AppSettings, PatFlag
+
+def split_flag(row):
+    if row is None or len(row)<=0: 
+        return []
+         
+    desc = PatFlag.describe(row[0])
+    return desc.split(',') if desc else []
 
 class PatJob:
     """Class to repreet a PAT analysis"""
@@ -133,21 +141,21 @@ class PatJob:
 
     @classmethod
     def get_summary(cls, job_id):
-        summary = {}
-        with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-            ret = cur.execute(f"""select count(*) as cnt from pat_policy where job_id = {job_id} and (flag & {PatFlag.FlagActive}) !=0""").fetchone()
-            summary['policy count'] = ret[0]
-            cur.commit()
-
-            ret = cur.execute(f"""select count(*) as cnt from pat_location where job_id = {job_id} and (flag & {PatFlag.FlagActive}) !=0""").fetchone()
-            summary['location count'] = ret[0]
-            cur.commit()
-
-            ret = cur.execute(f"""select count(*) as cnt from pat_facultative where job_id = {job_id} and (flag & {PatFlag.FlagActive}) !=0""").fetchone()
-            summary['facultative count'] = ret[0]
-            cur.commit()
-
-            return summary
+        summary = pd.DataFrame(columns=['item', 'cnt'])
+        summary1 = pd.DataFrame(columns=['item', 'cnt'])
+        with pyodbc.connect(cls.job_conn) as conn:
+            for t in ['Policy', 'Location', 'Facultative']:
+                df = pd.read_sql_query(f"""select flag, count(*) as cnt 
+                                from pat_{t} where job_id = {job_id} group by flag""", conn)
+                summary.loc[summary.shape[0]]=[f'{t} Records Processed', df.cnt.sum()]
+                
+                df["Notes"] = df.apply(split_flag, axis=1)
+                df = df.explode("Notes").groupby('Notes').agg({'cnt': 'sum'}).reset_index()
+                df=df[df.Notes != ''].rename(columns={'Notes':'item'})
+                if len(df) > 0:
+                    summary1= pd.concat((summary1,df), ignore_index = True, axis = 0)
+        
+        return pd.concat((summary,summary1), ignore_index = True, axis = 0)
 
     @classmethod
     def get_results(cls, job_id):
