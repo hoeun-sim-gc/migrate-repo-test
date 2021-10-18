@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { useParams } from "react-router-dom";
+import { useParams, useHistory } from "react-router-dom";
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import {
   Grid, Card, CardContent,
@@ -97,6 +97,7 @@ const useStyles = makeStyles((theme) => ({
 
 export default function JobPage(props) {
   const { job_id } = useParams();
+  const history = useHistory()
 
   const classes = useStyles();
   const theme = useTheme();
@@ -428,6 +429,7 @@ export default function JobPage(props) {
             if(aid>0){
               setCurrentJob({job_id:aid,status:'',finished:0});
               setLoadingCurrentJob(true);
+              history.push('/job/'+aid)
             }
           }
           catch (err) { }

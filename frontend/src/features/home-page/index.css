@@ -5,3 +5,47 @@ table, th, td {
 th, td {
   padding: 5px;
 }
+
+@media all and (min-width: 480px) {
+  .pat_container {
+    display: flex;
+    flex-direction: row;
+    height: 85vh;
+  }
+  
+  .job_col {
+    flex: 3;
+    margin: 10px;
+  }
+  
+  .para_col {
+    margin: 10px;
+    flex: 2;
+    overflow: auto;
+  }
+
+  .para_container1 {
+    display: flex;
+    margin: 0px;
+    flex-direction: column;
+  }
+
+  .single_row {
+    margin: 10px;
+   }
+
+  .para_row {
+    flex-grow: 0;
+    margin: 10px;
+    flex:1;
+   }
+  
+  .sum_row {
+    margin: 10px;
+    flex-grow: 0;
+    flex:1;
+  }
+}
+
+
+

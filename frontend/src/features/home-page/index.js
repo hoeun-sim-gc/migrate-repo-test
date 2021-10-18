@@ -106,10 +106,6 @@ export default function HomePage(props) {
     return () => {
       clearInterval(interval);
     };
-
-    return () => {
-      clearInterval(interval);
-    };
   }, []);
 
   //job list
@@ -273,13 +269,32 @@ export default function HomePage(props) {
     // eslint-disable-next-line
   }, [downloadingDatafile]);
 
-  const options = {
-    // pageStartIndex: 0,
-    sizePerPage: 19, 
-    hideSizePerPage: true,
-    hidePageListOnlyOnePage: true,
-    // sizePerPageList: [5,10,15,25,30,40,50],
-    showTotal: true,
+  const get_options = ()=>{
+    let ps = 20;
+    try
+    {
+      var s = localStorage.getItem('job_page_size');
+      ps = parseInt(s);
+    }
+    catch
+    {
+      ps=20;
+    }
+
+    if (!ps || ps <= 0) ps=20;
+
+    return {
+      // pageStartIndex: 0,
+      sizePerPage: ps, 
+      hideSizePerPage: true,
+      hidePageListOnlyOnePage: true,
+      sizePerPageList: [5,10,15,20,25,30,40,50],
+      alwaysShowAllBtns: true,
+      showTotal: true,
+      hideSizePerPage: true
+    };
+
+
   };
 
   const selectRow = {
@@ -296,96 +311,97 @@ export default function HomePage(props) {
   const { SearchBar } = Search;
 
   return (
-    <div>
-      {(loadingJobList || loadingJobPara || downloadingResults || downloadingDatafile) &&
-        <div className={classes.spinner}>
-          <PulseLoader
-            size={30}
-            color={"#2BAD60"}
-            loading={loadingJobList || loadingJobPara || downloadingResults || downloadingDatafile}
-          />
-        </div>
-      }
-      <WbMenu header="Selected Analysis" items={[
+    <div class="pat_container">
+      <div class="job_col">
+        {(loadingJobList || loadingJobPara || downloadingResults || downloadingDatafile) &&
+          <div className={classes.spinner}>
+            <PulseLoader
+              size={30}
+              color={"#2BAD60"}
+              loading={loadingJobList || loadingJobPara || downloadingResults || downloadingDatafile}
+            />
+          </div>
+        }
+        <WbMenu header="Selected Analysis" items={[
           { text: 'Download Results', onClick: () => { setDownloadingResults(true) } },
           { text: 'Dowload Validation', onClick: () => { setDownloadingDatafile(true) } },
           { text: 'Divider' },
-          { text: 'Populate to EDM', onClick: () => {alert("Haven't implemented yet!") } },
+          { text: 'Populate to EDM', onClick: () => { alert("Haven't implemented yet!") } },
           { text: 'Divider' },
-          { text: 'New Analyis Copy This', onClick: () => {handleGoJob(selectedJob?.job_id) } },
+          { text: 'New Analyis Copy This', onClick: () => { handleGoJob(selectedJob?.job_id) } },
         ]} />
-      <Grid container className={classes.root} spacing={2}>
-        <Grid item md={8} style={{ marginTop: '-28px' }}>
-          <ToolkitProvider
-            keyField="job_id"
-            data={jobList}
-            columns={columns}
-            bootstrap4
-            search
-          >
-            {
-              props => (
-                <div justify='flex-end'>
-                  <Grid container justify='flex-end'>
-                    <Grid item md={6} container justify='flex-end'>
-                      <SearchBar  {...props.searchProps} style={{height:'26px'}} />
+        <Grid container className={classes.root} spacing={2}>
+          <Grid item md={12} style={{ marginTop: '-28px'}}>
+            <ToolkitProvider
+              keyField="job_id"
+              data={jobList}
+              columns={columns}
+              bootstrap4
+              search
+            >
+              {
+                props => (
+                  <div justify='flex-end'>
+                    <Grid container justify='flex-end'>
+                      <Grid item md={6} container justify='flex-end'>
+                        <SearchBar  {...props.searchProps} style={{ height: '26px' }} />
+                      </Grid>
                     </Grid>
-                  </Grid>
-                  <BootstrapTable classes={classes.table}
-                    //ref={tableRef} 
-                    {...props.baseProps}
-                    rowClasses={classes.table_row}
-                    selectRow={selectRow}
-                    pagination={paginationFactory(options)}
-                    striped
-                    hover
-                    condensed
-                  />
-                </div>
-              )
-            }
-          </ToolkitProvider>
-        </Grid>
-        <Grid item md={4} style={{ marginTop: '-30px' }}>
-            <div>
-              <Grid container>
-                <Grid item md={8}>
-                  <h5>Parameters:</h5>
-                </Grid>
-                <Grid item container md={4} justify='flex-end' >
-                  <Button onClick={(e) => { setClipboard(selectedPara); alert("Analysis parameters have been copied to Clipboard!"); }} >Copy</Button>
-                </Grid>
-              </Grid>
-              <div>
-                <pre className={classes.para} style={{height:'280px', border: '1px solid gray' }} >{selectedPara}</pre>
-              </div>
-              <Grid container>
-                <Grid item md={8}>
-                  <h5>Summary:</h5>
-                </Grid>
-                {/* <Grid item container md={4} justify='flex-end'>
-                  <Button onClick={(e) => { setClipboard(selectedSum); alert("Analysis summary been copied to Clipboard!"); }} >Copy</Button>
-                </Grid> */}
-              </Grid>
-                  <table style={{width:'100%', border: '1px solid gray'}} className={classes.summary} >
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th>Count</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedSum.map(row => (
-                        <tr key={row.item}>
-                          <td>{row.item}</td>
-                          <td>{row.cnt}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-            </div>
+                    <BootstrapTable classes={classes.table}
+                      //ref={tableRef} 
+                      {...props.baseProps}
+                      rowClasses={classes.table_row}
+                      selectRow={selectRow}
+                      pagination={paginationFactory(get_options())}
+                      striped
+                      hover
+                      condensed
+                    />
+                  </div>
+                )
+              }
+            </ToolkitProvider>
           </Grid>
-      </Grid>
+
+        </Grid>
+      </div>
+      <div class="para_col para_container1">
+        <div  class="single_row">
+        <Grid container>
+            <Grid item md={8}>
+              <h5>Parameters:</h5>
+            </Grid>
+            <Grid item container md={4} justify='flex-end' >
+              <Button onClick={(e) => { setClipboard(selectedPara); alert("Analysis parameters have been copied to Clipboard!"); }} >Copy</Button>
+            </Grid>
+          </Grid>
+        </div>
+       
+      <textarea value={selectedPara}
+          readOnly={true}
+          class="para_row"
+          style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
+        </textarea>
+        <div class="sum_row">
+          <h5>Summary:</h5>
+          <table style={{ width: '100%', border: '1px solid gray' }} className={classes.summary} >
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedSum.map(row => (
+                <tr key={row.item}>
+                  <td>{row.item}</td>
+                  <td>{row.cnt}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };

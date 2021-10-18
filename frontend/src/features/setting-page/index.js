@@ -10,6 +10,23 @@ export default function Settings(props) {
   const [checked, setChecked] = React.useState(props.theme==='dark');
 
   const [newServer, setNewServer]=useState('');
+  const [newPsize, setNewPsize]=useState(20);
+
+  React.useEffect(() => {
+    let ps = 20;
+    try
+    {
+      var s = localStorage.getItem('job_page_size');
+      ps = parseInt(s);
+    }
+    catch
+    {
+      ps=20;
+    }
+
+    if (ps && ps > 0) setNewPsize(ps)
+  }, []);
+
   
   React.useEffect(()=>{
     const mode= checked?'dark':'light'
@@ -56,11 +73,31 @@ export default function Settings(props) {
           </div>
           <div className="col">
             <FormGroup>
-              <Button id='login' type="submit">
+              <Button id='add_server' type="submit">
                 Add
               </Button>
             </FormGroup>
           </div>
+          <div className="col" />
+        </div>
+      </Form>
+      <Form>
+        <div className="row align-items-end" >
+          <div className="col">
+            <FormGroup>
+              <label className="float-left">Job List Number Per Page:</label>
+              <FormControl 
+                  value={newPsize}
+                  placeholder="Enter page size"
+                  onChange={
+                    e => {
+                      setNewPsize(e.target.value);
+                      localStorage.setItem("job_page_size",e.target.value );
+                    }
+                  } />
+            </FormGroup>
+          </div>
+          <div className="col" />
           <div className="col" />
         </div>
       </Form>
