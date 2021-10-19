@@ -31,7 +31,10 @@ th, td {
   }
 
   .single_row {
-    margin: 10px;
+    margin-left: 10px;
+    margin-top: 10px;
+    margin-right: 15px;
+    margin-bottom: 5px;
    }
 
   .para_row {

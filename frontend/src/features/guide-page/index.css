@@ -6,34 +6,35 @@
   }
   
   .pat_left_col {
-    border: 1px solid grey;
-    flex: 2;
+    /* border: 1px solid grey; */
+    flex: 1;
     margin: 10px;
   }
   
   .pat_right_col {
-    border: 1px solid grey;
+    /* border: 1px solid grey; */
     margin: 10px;
-    flex: 3;
+    flex: 1;
     overflow: auto;
   }
 
   .pat_container1 {
     display: flex;
     margin: 0px;
-    border: 0px solid grey;
+    /* border: 0px solid grey; */
     flex-direction: column;
   }
 
   .pat_top_row {
-    border: 1px solid grey;
+    /* border: 1px solid grey; */
     flex-grow: 0;
     margin: 10px;
     flex:1;
+    overflow-y: scroll;
    }
   
   .pat_bottom_row {
-    border: 1px solid grey;
+    /* border: 1px solid grey; */
     margin: 10px;
     flex-grow: 0;
     flex:1;

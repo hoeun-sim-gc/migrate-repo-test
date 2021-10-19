@@ -89,10 +89,7 @@ const useStyles = makeStyles((theme) => ({
     marginBottom: 10,
     overflow: "auto",
     padding: 5
-  },
-  dpicker: {
-    color: 'theme.palette.text.primary',
-  },
+  }
 }));
 
 export default function JobPage(props) {
@@ -494,7 +491,7 @@ export default function JobPage(props) {
       shorter = s1;
     }
     var longerLength = longer.length;
-    if (longerLength == 0) {
+    if (longerLength === 0) {
       return 1.0;
     }
     return (longerLength - editDistance(longer, shorter)) / parseFloat(longerLength);
@@ -508,7 +505,7 @@ export default function JobPage(props) {
     for (var i = 0; i <= s1.length; i++) {
       var lastValue = i;
       for (var j = 0; j <= s2.length; j++) {
-        if (i == 0)
+        if (i === 0)
           costs[j] = j;
         else {
           if (j > 0) {
@@ -895,9 +892,9 @@ export default function JobPage(props) {
               <div>
                 <FormControl className={classes.formControl}>
                   <LocalizationProvider dateAdapter={AdapterDateFns}>
-                    <DatePicker className='dpicker'
+                    <DatePicker
+                      color ={theme.palette.text.background}
                       label="Average Accident Date"
-                      value={jobParameter.average_accident_date}
                       onChange={(newValue) => {
                         setJobParameter({ ...jobParameter, average_accident_date: newValue });
                       }}

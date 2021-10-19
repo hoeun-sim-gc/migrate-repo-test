@@ -1,6 +1,9 @@
 import React, { useState, useContext, useCallback } from 'react';
 import {useHistory} from 'react-router-dom';
 
+import Tooltip from '@mui/material/Tooltip';
+import Link from '@mui/material/Link';
+
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import {Grid,Button} from '@material-ui/core';
 
@@ -23,24 +26,6 @@ import './index.css';
 const useStyles = makeStyles((theme) => ({
   root: {
     flexGrow: 1,
-  },
-  toolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    padding: theme.spacing(0, 1),
-    minHeight: '64px',
-  },
-  title: {
-    flexGrow: 1,
-    alignContent: 'center',
-    textAlign: 'center',
-    fontSize: 24,
-  },
-  menuLink: {
-    color: 'inherit',
-    textDecoration: 'inherit',
-    marginRight: '12px'
   },
   table: {
     color: theme.palette.text.primary,
@@ -69,11 +54,12 @@ const useStyles = makeStyles((theme) => ({
     fontSize: 16,
     padding: 5
   },
-  summary: {
-    color: theme.palette.text.primary,
-    marginTop: 10,
-    marginBottom: 10,
-    overflow: "auto",
+  buttonLink: {
+    color: 'inherit',
+    '&:hover':{
+      color: theme.palette.text.secondary,
+    },
+    textDecoration: 'inherit'
   },
 }));
 
@@ -233,7 +219,7 @@ export default function HomePage(props) {
     // eslint-disable-next-line
   }, [downloadingResults]);
 
-  const handleGoJob = useCallback((job_id) => history.push('/job/' + job_id), [history]);
+  const handleGoJob = useCallback((job_id) => history.push('/job' + (job_id?'/'+job_id:'') ), [history]);
 
   //data file
   React.useEffect(() => {
@@ -322,16 +308,39 @@ export default function HomePage(props) {
             />
           </div>
         }
-        <WbMenu header="Selected Analysis" items={[
-          { text: 'Download Results', onClick: () => { setDownloadingResults(true) } },
-          { text: 'Dowload Validation', onClick: () => { setDownloadingDatafile(true) } },
-          { text: 'Divider' },
-          { text: 'Populate to EDM', onClick: () => { alert("Haven't implemented yet!") } },
-          { text: 'Divider' },
-          { text: 'New Analyis Copy This', onClick: () => { handleGoJob(selectedJob?.job_id) } },
-        ]} />
+        
+        <div class='row'>
+          <Tooltip title="Download Results">
+            <Link className={classes.buttonLink} style={{padding:'10px 10px 10px 15px' }}
+            component="button"
+              onClick={(e) => { setDownloadingResults(true); }} >
+              Results
+            </Link>
+          </Tooltip>
+          <Tooltip title="Dowload Validation Data">
+            <Link className={classes.buttonLink} style={{padding:'10px' }}
+              component="button"
+              onClick={(e) => { setDownloadingDatafile(true); }} >
+              Validation
+            </Link>
+          </Tooltip>
+          <Tooltip title="Populate Results back to EDM">
+            <Link className={classes.buttonLink} style={{padding:'10px' }}
+            component="button"
+              onClick={(e) => { alert("This option hasn't been implemented yet!"); }} >
+              Populate
+            </Link>
+          </Tooltip>
+          <Tooltip title="New Analysis based on This"  >
+            <Link className={classes.buttonLink} style={{padding:'10px' }}
+            component="button"
+              onClick={(e) => { handleGoJob(selectedJob?.job_id); }} >
+              New Analysis
+            </Link>
+          </Tooltip>
+        </div>
         <Grid container className={classes.root} spacing={2}>
-          <Grid item md={12} style={{ marginTop: '-28px'}}>
+          <Grid item md={12} style={{ marginTop: '-30px'}}>
             <ToolkitProvider
               keyField="job_id"
               data={jobList}
@@ -366,17 +375,9 @@ export default function HomePage(props) {
         </Grid>
       </div>
       <div class="para_col para_container1">
-        <div  class="single_row">
-        <Grid container>
-            <Grid item md={8}>
-              <h5>Parameters:</h5>
-            </Grid>
-            <Grid item container md={4} justify='flex-end' >
-              <Button onClick={(e) => { setClipboard(selectedPara); alert("Analysis parameters have been copied to Clipboard!"); }} >Copy</Button>
-            </Grid>
-          </Grid>
+        <div class="single_row">
+          <h5>Parameters:</h5>
         </div>
-       
       <textarea value={selectedPara}
           readOnly={true}
           class="para_row"
@@ -384,7 +385,7 @@ export default function HomePage(props) {
         </textarea>
         <div class="sum_row">
           <h5>Summary:</h5>
-          <table style={{ width: '100%', border: '1px solid gray' }} className={classes.summary} >
+          <table style={{ width: '100%', border: '1px solid gray' }} >
             <thead>
               <tr>
                 <th>Item</th>
