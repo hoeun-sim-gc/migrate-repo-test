@@ -2,6 +2,7 @@ import io
 import zipfile
 import logging
 
+import uuid
 import pandas as pd
 
 import json
@@ -19,24 +20,44 @@ def create_app(st_folder):
     def index():
         return app.send_static_file('index.html')
 
-    @app.route('/api/Jobs', methods=['POST'])
+    @app.route('/api/job', methods=['POST'])
     def submit_job():
         js = None
         data = None
-        if request.files and 'data' in request.files.keys():
-            data = request.files['data']
+        batch = None
+        if request.files:
+            if 'data' in request.files.keys():
+                data = request.files['data']
+            if 'batch' in request.files.keys():
+                batch = pd.read_csv(request.files['batch'])
         if request.form and 'para' in request.form.keys():
             js = json.loads(request.form['para'])
         else:
-            request.json 
+            js = request.json 
 
         if js:
-            job = PatJob(js,data)
-            if job.job_id and job.job_id > 0:
-                job.process_job_async()
-                return f'Analysis submitted: {job.job_id}'
+            if batch is None or len(batch) <= 0:
+                job = PatJob(js,data)
+                if job.job_id and job.job_id > 0:
+                    job.process_job_async()
+                    return f'Analysis submitted: {job.job_id}'
+            else:
+                n = 0
+                for index, row in batch.iterrows():
+                    js['job_guid'] = str(uuid.uuid4())
+                    for c in batch.columns:
+                        js[c] = row[c]
+
+                    job = PatJob(js)
+                    if job.job_id and job.job_id > 0:
+                        job.process_job_async()
+                        n += 1
+
+                return f"Maultiple analyses submitted! ({n})"
+    
+        return "Submission failed!"
             
-    @app.route('/api/Jobs', methods=['GET'])
+    @app.route('/api/job', methods=['GET'])
     def get_job_list():
         df = PatJob.get_job_list()
         if df is not None and len(df) > 0:
@@ -44,13 +65,13 @@ def create_app(st_folder):
             lst= df.to_dict('records')
             return json.dumps(df.to_dict('records'))
 
-    @app.route('/api/Jobs/<int:job_id>', methods=['GET'])
+    @app.route('/api/job/<int:job_id>', methods=['GET'])
     def summary(job_id):
         df = PatJob.get_summary(job_id)
         if df is not None and len(df) > 0:
             return json.dumps(df.to_dict('records'))
 
-    @app.route('/api/Jobs/<int:job_id>/Validation', methods=['GET'])
+    @app.route('/api/valid/<int:job_id>', methods=['GET'])
     def get_validate_data(job_id):
         df1, df2, df3 = PatJob.get_validation_data(job_id)
         return send_zip_file(f'pat_validation_{job_id}.zip', 
@@ -59,25 +80,29 @@ def create_app(st_folder):
             ('fac_validation.csv', df3)
         )
 
-    @app.route('/api/Jobs/<int:job_id>/Para', methods=['GET'])
+    @app.route('/api/para/<int:job_id>', methods=['GET'])
     def get_job_para(job_id):
         ret= PatJob.get_job_para(job_id)
         if ret:
             return ret
 
-    @app.route('/api/Jobs/<int:job_id>/Status', methods=['GET'])
+    @app.route('/api/status/<int:job_id>', methods=['GET'])
     def get_job_status(job_id):
         ret= PatJob.get_job_status(job_id)
         if ret:
             return ret
     
-    @app.route('/api/Jobs/<int:job_id>/Result', methods=['GET'])
-    def results(job_id):
-        df = PatJob.get_results(job_id)
-        if df is not None:
-            return send_zip_file(f"pat_premium_{job_id}.zip", (f'pat_premium.csv', df))
+    @app.route('/api/result/<job_lst>', methods=['GET'])
+    def results(job_lst):
+        lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
+        lst= [a for a in filter(lambda x: x>0, lst)]
 
-    @app.route('/api/Jobs/<int:job_id>', methods=['DELETE'])
+        if len(lst)>0:
+            df = PatJob.get_results(lst)
+            if df is not None:
+                return send_zip_file("pat_results.zip", ('pat_results.csv', df))
+
+    @app.route('/api/job/<int:job_id>', methods=['DELETE'])
     def delete(job_id):
         df= PatJob.delete(job_id)
         if df is not None:
@@ -98,7 +123,7 @@ def create_app(st_folder):
     
     
     
-    @app.route('/api/dblist/<sever>', methods=['GET'])
+    @app.route('/api/db_list/<sever>', methods=['GET'])
     def get_db_list(sever):
         edm,rdm = SqlHelper.get_db_list(sever)
         return json.dumps( {'edm': edm.name.to_list(), 'rdm': rdm.name.to_list() })        

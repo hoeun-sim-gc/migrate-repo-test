@@ -1,4 +1,4 @@
-import React, { useState, useContext, useCallback } from 'react';
+import React, { useState, useContext, useCallback, useRef } from 'react';
 import {useHistory} from 'react-router-dom';
 
 import Tooltip from '@mui/material/Tooltip';
@@ -22,6 +22,8 @@ import WbMenu from '../../app/menu';
 import { convertTime } from '../../app/theme'
 
 import './index.css';
+import { Checkbox } from '@mui/material';
+import FormControlLabel from '@mui/material/FormControlLabel';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -68,17 +70,22 @@ export default function HomePage(props) {
   const classes = useStyles();
   const theme = useTheme();
 
+  const tableRef = React.useRef(null);
+
   const [user,] = useContext(UserContext);
 
+  const [multiSel, setMultiSel]=useState(false);
+
   const [loadingJobList, setLoadingJobList] = useState(false);
-  const [selectedJob, setSelectedJob] = useState(null);
+  const [currentJob, setCurrentJob] = useState(null);
   const [jobList, setJobList] = useState([]);
+  const [selectedJob, setSelectedJob] = useState([]);
 
   const [loadingJobPara, setLoadingJobPara] = useState(false);
-  const [selectedPara, setSelectedPara] = useState(null);
+  const [currentPara, setCurrentPara] = useState(null);
 
   const [loadingJobSum, setLoadingJobSum] = useState(false);
-  const [selectedSum, setSelectedSum] = useState([]);
+  const [currentSum, setCurrentSum] = useState([]);
 
   const [downloadingResults, setDownloadingResults] = useState(false);
   const [downloadingDatafile, setDownloadingDatafile] = useState(false);
@@ -87,6 +94,9 @@ export default function HomePage(props) {
 
   React.useEffect(() => {
     setLoadingJobList(true);
+
+    var m_sel = localStorage.getItem('job_selection');
+    setMultiSel(m_sel=='checkbox');
 
     const interval = setInterval(() => setLoadingJobList(true), 60000);
     return () => {
@@ -98,7 +108,7 @@ export default function HomePage(props) {
   React.useEffect(() => {
     if (!loadingJobList) return;
     
-    const request = '/api/Jobs';
+    const request = '/api/job';
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -124,22 +134,22 @@ export default function HomePage(props) {
   }, [loadingJobList]);
 
   React.useEffect(() => {
-    setSelectedPara('');
+    setCurrentPara('');
     setLoadingJobPara(true);
 
-    setSelectedSum([]);
+    setCurrentSum([]);
     setLoadingJobSum(true);
-  }, [selectedJob]);
+  }, [currentJob]);
 
   //job para
   React.useEffect(() => {
     if (!loadingJobPara) return;
-    if (!selectedJob) {
+    if (!currentJob) {
       setLoadingJobPara(false);
       return;
     }
 
-    const request = '/api/Jobs/' + selectedJob.job_id+'/Para';
+    const request = '/api/para/' + currentJob.job_id
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -147,7 +157,7 @@ export default function HomePage(props) {
       throw new TypeError("Oops, we haven't got data!");
     })
       .then(data => {
-        setSelectedPara(JSON.stringify(data, null,'  '));
+        setCurrentPara(JSON.stringify(data, null,'  '));
       })
       .catch(error => {
         console.log(error);
@@ -156,17 +166,17 @@ export default function HomePage(props) {
         setLoadingJobPara(false);
       });
     // eslint-disable-next-line
-  }, [loadingJobPara, selectedJob]);
+  }, [loadingJobPara, currentJob]);
 
   //job summary
   React.useEffect(() => {
     if (!loadingJobSum) return;
-    if (!selectedJob) {
+    if (!currentJob) {
       setLoadingJobSum(false);
       return;
     }
 
-    const request = '/api/Jobs/' + selectedJob.job_id;
+    const request = '/api/job/' + currentJob.job_id;
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -174,7 +184,7 @@ export default function HomePage(props) {
       throw new TypeError("Oops, we haven't got data!");
     })
       .then(data => {
-        setSelectedSum(data);
+        setCurrentSum(data);
       })
       .catch(error => {
         console.log(error);
@@ -183,18 +193,20 @@ export default function HomePage(props) {
         setLoadingJobSum(false);
       });
     // eslint-disable-next-line
-  }, [loadingJobSum, selectedJob]);
+  }, [loadingJobSum, currentJob]);
 
   //results
   React.useEffect(() => {
     if (!downloadingResults) return;
-    if (!selectedJob || selectedJob.status !== 'finished') {
+    
+    var lst= tableRef.current.selectionContext.selected;
+    if(lst.length<=0) {
       setDownloadingResults(false);
       alert("No analysis is selected!");
       return;
     }
 
-    let request = 'api/Jobs/' + selectedJob.job_id+"/Result";
+    let request = 'api/result/' + lst.join('_');
     fetch(request).then(response => {
       if (response.ok) {
         return response.blob();
@@ -205,7 +217,7 @@ export default function HomePage(props) {
         var url = window.URL.createObjectURL(blob);
         var a = document.createElement('a');
         a.href = url;
-        a.download = "pat_result_" + selectedJob.job_id + ".zip";
+        a.download = "pat_result_" + currentJob.job_id + ".zip";
         document.body.appendChild(a); // we need to append the element to the dom -> otherwise it will not work in firefox
         a.click();
         a.remove();  //afterwards we remove the element again   
@@ -224,13 +236,13 @@ export default function HomePage(props) {
   //data file
   React.useEffect(() => {
     if (!downloadingDatafile) return;
-    if (!selectedJob) {
+    if (!currentJob) {
       setDownloadingDatafile(false);
       alert("No analysis is selected!");
       return;
     }
 
-    let request = 'api/Jobs/' + selectedJob.job_id+"/Validation";
+    let request = 'api/valid/' + currentJob.job_id;
     fetch(request).then(response => {
       if (response.ok) {
         return response.blob();
@@ -241,7 +253,7 @@ export default function HomePage(props) {
         var url = window.URL.createObjectURL(blob);
         var a = document.createElement('a');
         a.href = url;
-        a.download = "pat_validation" + selectedJob.job_id + ".zip";
+        a.download = "pat_validation" + currentJob.job_id + ".zip";
         document.body.appendChild(a); // we need to append the element to the dom -> otherwise it will not work in firefox
         a.click();
         a.remove();  //afterwards we remove the element again   
@@ -279,19 +291,27 @@ export default function HomePage(props) {
       showTotal: true,
       hideSizePerPage: true
     };
-
-
+  };
+  
+  const handleSelChange = (event) => {
+    setMultiSel(event.target.checked);
+    localStorage.setItem('job_selection', event.target.checked?'checkbox':'radio');
+    window.location.reload(false);
   };
 
-  const selectRow = {
-    mode: 'radio',
-    clickToSelect: true,
-    style: { backgroundColor: theme.palette.action.selected, fontWeight: 'bold' },
-    onSelect: (row, isSelect) => {
-      if (isSelect) {
-        setSelectedJob(row);
+  const get_select_row = ()=>{
+    var sel = localStorage.getItem('job_selection');
+
+    return  {
+      mode: sel,
+      clickToSelect: true,
+      style: { backgroundColor: theme.palette.action.selected, fontWeight: 'bold' },
+      onSelect: (row, isSelect) => {
+        if (isSelect) {
+          setCurrentJob(row);
+        }
       }
-    }
+    };
   };
 
   const { SearchBar } = Search;
@@ -334,7 +354,7 @@ export default function HomePage(props) {
           <Tooltip title="New Analysis based on This"  >
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
-              onClick={(e) => { handleGoJob(selectedJob?.job_id); }} >
+              onClick={(e) => { handleGoJob(currentJob?.job_id); }} >
               New Analysis
             </Link>
           </Tooltip>
@@ -353,14 +373,15 @@ export default function HomePage(props) {
                   <div justify='flex-end'>
                     <Grid container justify='flex-end'>
                       <Grid item md={6} container justify='flex-end'>
+                        <FormControlLabel control={<Checkbox checked={multiSel} onChange={handleSelChange} />} label="Multiple Selection" />
                         <SearchBar  {...props.searchProps} style={{ height: '26px' }} />
                       </Grid>
                     </Grid>
                     <BootstrapTable classes={classes.table}
-                      //ref={tableRef} 
+                      ref={tableRef} 
                       {...props.baseProps}
                       rowClasses={classes.table_row}
-                      selectRow={selectRow}
+                      selectRow={get_select_row()}
                       pagination={paginationFactory(get_options())}
                       striped
                       hover
@@ -377,8 +398,9 @@ export default function HomePage(props) {
       <div class="para_col para_container1">
         <div class="single_row">
           <h5>Parameters:</h5>
+          <span>{currentJob?.job_id}</span>
         </div>
-      <textarea value={selectedPara}
+      <textarea value={currentPara}
           readOnly={true}
           class="para_row"
           style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
@@ -393,7 +415,7 @@ export default function HomePage(props) {
               </tr>
             </thead>
             <tbody>
-              {selectedSum.map(row => (
+              {currentSum.map(row => (
                 <tr key={row.item}>
                   <td>{row.item}</td>
                   <td>{row.cnt}</td>

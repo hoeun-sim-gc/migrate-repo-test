@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useRef } from 'react';
 import { useParams, useHistory } from "react-router-dom";
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import {
@@ -94,7 +94,8 @@ const useStyles = makeStyles((theme) => ({
 
 export default function JobPage(props) {
   const { job_id } = useParams();
-  const history = useHistory()
+  const history = useHistory();
+  const inputFile =useRef(null);
 
   const classes = useStyles();
   const theme = useTheme();
@@ -140,12 +141,11 @@ export default function JobPage(props) {
   const [anlsList, setAnlsList] = useState([]);
 
   const [jobFile, setJobFile] = useState('')
+  const [batchFile, setBatchFile] = useState('')
   const [uploadingJob, setUploadingJob] = useState(false);
 
   const [currentJob, setCurrentJob] = useState({job_id:job_id,status:'',finished:0})
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
-
-
 
   React.useEffect(() => {
     setLoadingServerList(true);
@@ -176,7 +176,7 @@ export default function JobPage(props) {
 
     //reference 
     if(job_id && job_id >0) {
-      const request = '/api/Jobs/' + job_id+'/Para';
+      const request = '/api/para/' + job_id;
       fetch(request).then(response => {
         if (response.ok) {
           return response.json();
@@ -231,7 +231,7 @@ export default function JobPage(props) {
       return;
     }
 
-    const request = '/api/dblist/' + jobParameter.server;
+    const request = '/api/db_list/' + jobParameter.server;
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -406,9 +406,12 @@ export default function JobPage(props) {
     let para= jobParameter;
     para['job_guid'] = uuidv4();
     form_data.append('para',JSON.stringify(para));
-    if(jobFile) form_data.append("data", jobFile);
+    
+    //if batch submit, ignore the data correction file   
+    if(batchFile) form_data.append("batch", batchFile);
+    else if(jobFile) form_data.append("data", jobFile); 
 
-    let request = 'api/Jobs'
+    let request = 'api/job'
     fetch(request, {
       method: "POST",
       body: form_data
@@ -456,7 +459,7 @@ export default function JobPage(props) {
       return;
     }
 
-    const request = '/api/Jobs/' + currentJob.job_id + '/Status';
+    const request = '/api/status/' + currentJob.job_id;
     fetch(request).then(response => {
       if (response.ok) {
         return response.text();
@@ -571,9 +574,22 @@ export default function JobPage(props) {
                 <Grid md={4}>
                   <MenuList>
                     <MenuItem onClick={(e) => { 
-                      if(ValidateJob()) setUploadingJob(true);
-                    }}>Submit New Analysis</MenuItem>
+                      if(ValidateJob()) 
+                      {
+                        setBatchFile('');
+                        setUploadingJob(true);
+                      }
+                    }}>New Analysis</MenuItem>
+                    <MenuItem onClick={(e) => { 
+                      if(ValidateJob()) inputFile.current.click();
+                    }}>Batch Analyses</MenuItem>
                   </MenuList>
+                  <input type='file' id='file' ref={inputFile} style={{ display: 'none' }} onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      setBatchFile(e.target.files[0]);
+                      setUploadingJob(true);
+                    }
+                  }} />
                 </Grid>
               </Grid>
             </CardContent>

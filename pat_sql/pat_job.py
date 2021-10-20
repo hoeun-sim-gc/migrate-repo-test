@@ -158,11 +158,12 @@ class PatJob:
         return pd.concat((summary,summary1), ignore_index = True, axis = 0)
 
     @classmethod
-    def get_results(cls, job_id):
+    def get_results(cls, job_lst):
         with pyodbc.connect(cls.job_conn) as conn:
             df = pd.read_sql_query(f"""select Limit, Retention, Premium, Participation, AOI, LocationIDStack, 
                                             RatingGroup, OriginalPolicyID, PseudoPolicyID, PseudoLayerID, PolLAS, DedLAS
-                                       from pat_premium where job_id = {job_id}""", conn)
+                                       from pat_premium where job_id in ({','.join([f'{a}' for a in job_lst])})
+                                       order by job_id, LocationIDStack, OriginalPolicyID""", conn)
             return df
 
     @classmethod
