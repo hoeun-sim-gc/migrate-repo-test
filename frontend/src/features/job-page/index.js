@@ -895,8 +895,10 @@ export default function JobPage(props) {
                     <DatePicker
                       color ={theme.palette.text.background}
                       label="Average Accident Date"
+                      value={jobParameter.average_accident_date}
+                      format="MM/DD/YYYY"
                       onChange={(newValue) => {
-                        setJobParameter({ ...jobParameter, average_accident_date: newValue });
+                        setJobParameter({ ...jobParameter, average_accident_date: newValue.toLocaleDateString('en-US') });
                       }}
                       renderInput={(params) => <TextField {...params} />}
                     />
