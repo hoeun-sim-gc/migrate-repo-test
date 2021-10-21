@@ -1,14 +1,6 @@
-import React, { useState, useContext, useRef } from 'react';
-import { makeStyles, useTheme } from '@material-ui/core/styles';
-import {
-  Grid, Card, CardContent,
-  InputLabel, FormControl, Select, Divider,
-  Typography,
-  MenuList, MenuItem
-} from '@material-ui/core';
-import ReactSpeedometer from "react-d3-speedometer"
+import React from 'react';
+import { useTheme } from '@material-ui/core/styles';
 
-import { PulseLoader } from "react-spinners";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-bootstrap-table-next/dist/react-bootstrap-table2.min.css';
 
@@ -18,10 +10,6 @@ import "./index.css";
 
 export default function GuidePage(props) {
   const theme = useTheme();
-
-  const [user,] = useContext(UserContext);
-
-  const items = [...Array(100)].map((val, i) => `Item ${i}`);
 
   return (
     <div class="pat_container">

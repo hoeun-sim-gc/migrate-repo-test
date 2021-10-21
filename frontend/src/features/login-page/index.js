@@ -1,6 +1,6 @@
 import React, { useState, useContext } from "react";
 import { useHistory } from "react-router-dom";
-import { Form, Button, FormGroup, FormControl } from "react-bootstrap";
+import { Button, FormGroup, FormControl } from "react-bootstrap";
 
 import { UserContext } from "../../app/user-context";
 

@@ -1,10 +1,9 @@
-import React, { useState, useContext } from "react";
+import React, { useState } from "react";
 import Switch from '@material-ui/core/Switch';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import { Form, Button, FormGroup, FormControl } from "react-bootstrap";
 
 import "./index.css";
-import { Grid } from "@material-ui/core";
 
 export default function Settings(props) {
   const [checked, setChecked] = React.useState(props.theme==='dark');

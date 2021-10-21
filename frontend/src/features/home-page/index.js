@@ -5,7 +5,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Link from '@mui/material/Link';
 
 import { makeStyles, useTheme } from '@material-ui/core/styles';
-import {Grid,Button} from '@material-ui/core';
+import {Divider, Grid} from '@material-ui/core';
 
 import { PulseLoader } from "react-spinners";
 import BootstrapTable from 'react-bootstrap-table-next';
@@ -14,11 +14,8 @@ import ToolkitProvider, { Search } from 'react-bootstrap-table2-toolkit';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-bootstrap-table-next/dist/react-bootstrap-table2.min.css';
 
-import useClippy from 'use-clippy';
-
 import { UserContext } from "../../app/user-context";
 import columns from './header';
-import WbMenu from '../../app/menu';
 import { convertTime } from '../../app/theme'
 
 import './index.css';
@@ -70,7 +67,7 @@ export default function HomePage(props) {
   const classes = useStyles();
   const theme = useTheme();
 
-  const tableRef = React.useRef(null);
+  const tableRef = useRef(null);
 
   const [user,] = useContext(UserContext);
 
@@ -79,7 +76,6 @@ export default function HomePage(props) {
   const [loadingJobList, setLoadingJobList] = useState(false);
   const [currentJob, setCurrentJob] = useState(null);
   const [jobList, setJobList] = useState([]);
-  const [selectedJob, setSelectedJob] = useState([]);
 
   const [loadingJobPara, setLoadingJobPara] = useState(false);
   const [currentPara, setCurrentPara] = useState(null);
@@ -90,13 +86,9 @@ export default function HomePage(props) {
   const [downloadingResults, setDownloadingResults] = useState(false);
   const [downloadingDatafile, setDownloadingDatafile] = useState(false);
 
-  const [clipboard, setClipboard] = useClippy();
-
   React.useEffect(() => {
     setLoadingJobList(true);
-
-    var m_sel = localStorage.getItem('job_selection');
-    setMultiSel(m_sel=='checkbox');
+    setMultiSel(localStorage.getItem('job_multi_sel')==='true');
 
     const interval = setInterval(() => setLoadingJobList(true), 60000);
     return () => {
@@ -288,20 +280,18 @@ export default function HomePage(props) {
       hidePageListOnlyOnePage: true,
       sizePerPageList: [5,10,15,20,25,30,40,50],
       alwaysShowAllBtns: true,
-      showTotal: true,
-      hideSizePerPage: true
+      showTotal: true
     };
   };
   
   const handleSelChange = (event) => {
     setMultiSel(event.target.checked);
-    localStorage.setItem('job_selection', event.target.checked?'checkbox':'radio');
+    localStorage.setItem('job_multi_sel', event.target.checked);
     window.location.reload(false);
   };
 
   const get_select_row = ()=>{
-    var sel = localStorage.getItem('job_selection');
-
+    var sel = multiSel?'checkbox':'radio';
     return  {
       mode: sel,
       clickToSelect: true,
@@ -334,24 +324,25 @@ export default function HomePage(props) {
             <Link className={classes.buttonLink} style={{padding:'10px 10px 10px 15px' }}
             component="button"
               onClick={(e) => { setDownloadingResults(true); }} >
-              Results
+              Download
             </Link>
           </Tooltip>
           <Tooltip title="Dowload Validation Data">
             <Link className={classes.buttonLink} style={{padding:'10px' }}
               component="button"
               onClick={(e) => { setDownloadingDatafile(true); }} >
-              Validation
+              Validate
             </Link>
           </Tooltip>
-          <Tooltip title="Populate Results back to EDM">
+          <Tooltip title="Populate allocated premium back to EDM">
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
               onClick={(e) => { alert("This option hasn't been implemented yet!"); }} >
-              Populate
+              Populate EDM
             </Link>
           </Tooltip>
-          <Tooltip title="New Analysis based on This"  >
+          <Divider orientation="vertical" flexItem />
+          <Tooltip title="New analysis copy the selected"  >
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
               onClick={(e) => { handleGoJob(currentJob?.job_id); }} >
@@ -360,7 +351,7 @@ export default function HomePage(props) {
           </Tooltip>
         </div>
         <Grid container className={classes.root} spacing={2}>
-          <Grid item md={12} style={{ marginTop: '-30px'}}>
+          <Grid item md={12} style={{ marginTop: '-40px'}}>
             <ToolkitProvider
               keyField="job_id"
               data={jobList}
@@ -372,7 +363,7 @@ export default function HomePage(props) {
                 props => (
                   <div justify='flex-end'>
                     <Grid container justify='flex-end'>
-                      <Grid item md={6} container justify='flex-end'>
+                      <Grid item md={6} container justify='flex-end' alignItems='center' >
                         <FormControlLabel control={<Checkbox checked={multiSel} onChange={handleSelChange} />} label="Multiple Selection" />
                         <SearchBar  {...props.searchProps} style={{ height: '26px' }} />
                       </Grid>
@@ -395,7 +386,7 @@ export default function HomePage(props) {
 
         </Grid>
       </div>
-      <div class="para_col para_container1">
+      <div class="para_col para_container1" style={{ marginTop: '5px'}} >
         <div class="single_row">
           <h5>Parameters:</h5>
           <span>{currentJob?.job_id}</span>

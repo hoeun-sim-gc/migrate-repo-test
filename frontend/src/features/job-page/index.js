@@ -3,7 +3,7 @@ import { useParams, useHistory } from "react-router-dom";
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import {
   Grid, Card, CardContent,
-  InputLabel, FormControl, Select, Divider,
+  InputLabel, FormControl, Select,
   Typography, Button, TextField, Box,
   MenuList, MenuItem
 } from '@material-ui/core';
@@ -26,7 +26,6 @@ import 'react-bootstrap-table-next/dist/react-bootstrap-table2.min.css';
 import { UserContext } from "../../app/user-context";
 
 import "./index.css";
-import { style } from '@mui/system';
 
 import { v4 as uuidv4 } from 'uuid';
 
@@ -513,7 +512,7 @@ export default function JobPage(props) {
         else {
           if (j > 0) {
             var newValue = costs[j - 1];
-            if (s1.charAt(i - 1) != s2.charAt(j - 1))
+            if (s1.charAt(i - 1) !== s2.charAt(j - 1))
               newValue = Math.min(Math.min(newValue, lastValue),
                 costs[j]) + 1;
             costs[j - 1] = lastValue;
@@ -579,10 +578,10 @@ export default function JobPage(props) {
                         setBatchFile('');
                         setUploadingJob(true);
                       }
-                    }}>New Analysis</MenuItem>
+                    }}>Submit Analysis</MenuItem>
                     <MenuItem onClick={(e) => { 
                       if(ValidateJob()) inputFile.current.click();
-                    }}>Batch Analyses</MenuItem>
+                    }}>Batch Submit</MenuItem>
                   </MenuList>
                   <input type='file' id='file' ref={inputFile} style={{ display: 'none' }} onChange={(e) => {
                     if (e.target.files && e.target.files.length > 0) {
