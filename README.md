@@ -6,9 +6,13 @@ Premium Allocation Tool into a more reliable service and easier to integrate wit
 * 
 
 # Getting Started
+--In root folder "premium-allocation-tool"
 python -m pip install --upgrade pip
-pip3 install poetry==1.1.2
+pip install poetry==1.1.2
 poetry install
+
+--In subfolder "frontend"
+yarn install
 
 # Build and Test
 cd frentend
