@@ -635,18 +635,17 @@ class PatJob:
 
             # Location record non numeric entry
             cur.execute(f"""update pat_location set flag = flag | {PatFlag.FlagLocNA}
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                and (AOI is null or RatingGroup is null or RatingGroup = 0)""")
+                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0 
+                                and (AOI is null or LocationIDStack is null)""")
             
             # Location record negative field
             cur.execute(f"""update pat_location set flag = flag | {PatFlag.FlagLocNeg}
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                and (AOI <0 or RatingGroup < 0)""")
+                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0 and AOI < 0""")
 
             # Location record rating group out of range
             cur.execute(f"""update pat_location set flag = flag | {PatFlag.FlagLocRG}
                             where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                and (RatingGroup < {min_psold_rg} or RatingGroup > {max_psold_rg})""")
+                                and (RatingGroup is null or RatingGroup < {min_psold_rg} or RatingGroup > {max_psold_rg})""")
 
             cur.commit()
 
