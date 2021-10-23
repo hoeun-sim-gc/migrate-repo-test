@@ -16,6 +16,8 @@ import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { Checkbox } from '@mui/material';
+import FormControlLabel from '@mui/material/FormControlLabel';
 
 import ReactSpeedometer from "react-d3-speedometer"
 
@@ -26,6 +28,7 @@ import 'react-bootstrap-table-next/dist/react-bootstrap-table2.min.css';
 import { UserContext } from "../../app/user-context";
 
 import "./index.css";
+import ValidRules from "./valid-flag";
 
 import { v4 as uuidv4 } from 'uuid';
 
@@ -94,7 +97,7 @@ const useStyles = makeStyles((theme) => ({
 export default function JobPage(props) {
   const { job_id } = useParams();
   const history = useHistory();
-  const inputFile =useRef(null);
+  const inputFile = useRef(null);
 
   const classes = useStyles();
   const theme = useTheme();
@@ -108,6 +111,7 @@ export default function JobPage(props) {
     portinfoid: 0,
     perilid: 0,
     analysisid: 0,
+
     type_of_rating: 'PSOLD',
     peril_subline: 'All Perils',
     subject_premium: 1e8,
@@ -118,12 +122,17 @@ export default function JobPage(props) {
     additional_coverage: 2.0,
     deductible_treatment: 'Retains Limit',
     data_correction: false,
+    
     error_action: 'Continue',
-    job_name:'Test_PAT',
+    valid_rules: -1,
+    defReg: 0, 
+
+    job_name: 'Test_PAT',
     user_name: user?.name,
     user_email: user?.email
   });
 
+  const [inpExpanded, setInpExpanded] = useState(true);
   const [loadingServerList, setLoadingServerList] = useState(false);
   const [serverList, setServerList] = useState();
 
@@ -143,7 +152,7 @@ export default function JobPage(props) {
   const [batchFile, setBatchFile] = useState('')
   const [uploadingJob, setUploadingJob] = useState(false);
 
-  const [currentJob, setCurrentJob] = useState({job_id:job_id,status:'',finished:0})
+  const [currentJob, setCurrentJob] = useState({ job_id: job_id, status: '', finished: 0 })
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
 
   React.useEffect(() => {
@@ -164,7 +173,7 @@ export default function JobPage(props) {
     let lst = [];
     let js = localStorage.getItem('Server_List')
     if (js) lst = JSON.parse(js);
-    
+
     var svr = localStorage.getItem('currentServer');
     if (svr) {
       lst.push(svr)
@@ -174,7 +183,7 @@ export default function JobPage(props) {
     setServerList(lst);
 
     //reference 
-    if(job_id && job_id >0) {
+    if (job_id && job_id > 0) {
       const request = '/api/para/' + job_id;
       fetch(request).then(response => {
         if (response.ok) {
@@ -182,29 +191,29 @@ export default function JobPage(props) {
         }
         throw new TypeError("Oops, we haven't got data!");
       })
-      .then(data => {
-        delete data.job_id;
-        delete data.job_guid;
-        delete data.data_correction;
-        setJobParameter(data);
-        
-        if( 'server' in data) svr= data['server'];
-        else svr = localStorage.getItem('currentServer');
-        if (svr) {
-          lst.push(svr)
-          lst = [...new Set(lst)].sort();
-          localStorage.setItem("Server_List", JSON.stringify(lst));
+        .then(data => {
+          delete data.job_id;
+          delete data.job_guid;
+          delete data.data_correction;
+          setJobParameter(data);
 
-          setDbList([]);
-          setLoadingDbList(true);
-        }
-      })
-      .catch(error => {
-        console.log(error);
-      })
-      .then(() => {
-        setLoadingServerList(false);
-      });
+          if ('server' in data) svr = data['server'];
+          else svr = localStorage.getItem('currentServer');
+          if (svr) {
+            lst.push(svr)
+            lst = [...new Set(lst)].sort();
+            localStorage.setItem("Server_List", JSON.stringify(lst));
+
+            setDbList([]);
+            setLoadingDbList(true);
+          }
+        })
+        .catch(error => {
+          console.log(error);
+        })
+        .then(() => {
+          setLoadingServerList(false);
+        });
     }
     else {
       setJobParameter({ ...jobParameter, server: svr, edm: '', rdm: '', portinfoid: 0, perilid: 0, analysisid: 0 });
@@ -239,13 +248,11 @@ export default function JobPage(props) {
     })
       .then(data => {
         setDbList(data);
-        if (!data.edm.includes(jobParameter.edm))
-        {
-          setJobParameter({ ...jobParameter, edm: data.edm[0], portinfoid: 0, perilid: 0});
+        if (!data.edm.includes(jobParameter.edm)) {
+          setJobParameter({ ...jobParameter, edm: data.edm[0], portinfoid: 0, perilid: 0 });
         }
-        if (!data.rdm.includes(jobParameter.rdm))
-        {
-          setJobParameter({ ...jobParameter, rdm: data.rdm[0], analysisid: 0});
+        if (!data.rdm.includes(jobParameter.rdm)) {
+          setJobParameter({ ...jobParameter, rdm: data.rdm[0], analysisid: 0 });
         }
         setLoadingPortList(true);
         setLoadingAnlsList(true);
@@ -276,10 +283,9 @@ export default function JobPage(props) {
     })
       .then(data => {
         setPortList(data);
-        if (data.length > 0) 
-        {
+        if (data.length > 0) {
           if (data.filter(e => e.portinfoid === jobParameter.portinfoid).length <= 0) {
-            setJobParameter({ ...jobParameter, portinfoid: data[0].portinfoid, perilid:0 })
+            setJobParameter({ ...jobParameter, portinfoid: data[0].portinfoid, perilid: 0 })
           }
         }
 
@@ -311,10 +317,9 @@ export default function JobPage(props) {
     })
       .then(data => {
         setPerilList(data);
-        if (data.length > 0)
-        {
-          if(!data.includes(jobParameter.perilid)) setJobParameter({ ...jobParameter, perilid: data[0] })
-        } 
+        if (data.length > 0) {
+          if (!data.includes(jobParameter.perilid)) setJobParameter({ ...jobParameter, perilid: data[0] })
+        }
 
         setLoadingPerilList(true);
       })
@@ -348,7 +353,7 @@ export default function JobPage(props) {
         else data = [{ id: 0, name: '' }]
 
         if (data.filter(r => r.id === jobParameter.analysisid).length <= 0) {
-          setJobParameter({ ...jobParameter, analysisid: 0})
+          setJobParameter({ ...jobParameter, analysisid: 0 })
         }
 
         setAnlsList(data);
@@ -365,27 +370,27 @@ export default function JobPage(props) {
   const ValidateJob = () => {
     if (!jobParameter) return false;
 
-    if (!jobParameter.server || !jobParameter.edm || jobParameter.portinfoid<=0){
+    if (!jobParameter.server || !jobParameter.edm || jobParameter.portinfoid <= 0) {
       console.log("No input data!");
       return false;
     }
 
-    if (jobParameter.perilid<=0){
+    if (jobParameter.perilid <= 0) {
       console.log("Need peril id!");
       return false;
     }
 
-    if (jobParameter.subject_premium <=0){
+    if (jobParameter.subject_premium <= 0) {
       console.log("Need subject premium!");
       return false;
     }
 
-    if (jobParameter.loss_alae_ratio <=0){
+    if (jobParameter.loss_alae_ratio <= 0) {
       console.log("Loss ALAE error!");
       return false;
     }
 
-    if (!jobParameter.job_name){
+    if (!jobParameter.job_name) {
       console.log("Need job name!");
       return false;
     }
@@ -402,13 +407,13 @@ export default function JobPage(props) {
     }
 
     let form_data = new FormData();
-    let para= jobParameter;
+    let para = jobParameter;
     para['job_guid'] = uuidv4();
-    form_data.append('para',JSON.stringify(para));
-    
+    form_data.append('para', JSON.stringify(para));
+
     //if batch submit, ignore the data correction file   
-    if(batchFile) form_data.append("batch", batchFile);
-    else if(jobFile) form_data.append("data", jobFile); 
+    if (batchFile) form_data.append("batch", batchFile);
+    else if (jobFile) form_data.append("data", jobFile);
 
     let request = 'api/job'
     fetch(request, {
@@ -425,14 +430,14 @@ export default function JobPage(props) {
         if (res && res.length > 0) {
           try {
             var aid = parseInt(res[0].substring(20, res[0].length))
-            if(aid>0){
-              setCurrentJob({job_id:aid,status:'',finished:0});
+            if (aid > 0) {
+              setCurrentJob({ job_id: aid, status: '', finished: 0 });
               setLoadingCurrentJob(true);
-              history.push('/job/'+aid)
+              history.push('/job/' + aid)
             }
           }
           catch (err) { }
-        }        
+        }
       })
       .catch(error => {
         console.log(error);
@@ -446,10 +451,10 @@ export default function JobPage(props) {
   //get current job status 
   let status_percent = {
     'received': 10,
-    'data_extracted':40,
-    'net_of_fac':60,
-    'allocated':90,
-    'finished':100
+    'data_extracted': 40,
+    'net_of_fac': 60,
+    'allocated': 90,
+    'finished': 100
   }
   React.useEffect(() => {
     if (!loadingCurrentJob) return;
@@ -467,11 +472,11 @@ export default function JobPage(props) {
     })
       .then(data => {
         if (data) {
-          var perc= data in status_percent? status_percent[data]:0;
-          setCurrentJob({...currentJob,status:data,finished:perc}) 
+          var perc = data in status_percent ? status_percent[data] : 0;
+          setCurrentJob({ ...currentJob, status: data, finished: perc })
         }
-        else{
-          setCurrentJob({...currentJob,status:'',finished:0}) 
+        else {
+          setCurrentJob({ ...currentJob, status: '', finished: 0 })
         }
 
       })
@@ -547,7 +552,7 @@ export default function JobPage(props) {
                     Current Analysys
                   </Typography>
                   <Typography variant='h6' color="textSecondary" gutterBottom>
-                    {currentJob && currentJob.job_id>0?currentJob.job_id: ''}
+                    {currentJob && currentJob.job_id > 0 ? currentJob.job_id : ''}
                   </Typography>
                   <div className={classes.odometer} >
                     <ReactSpeedometer
@@ -556,7 +561,7 @@ export default function JobPage(props) {
                       marginTop={50}
                       marginBottom={50}
                       needleHeightRatio={0.7}
-                      value={currentJob && currentJob.job_id>0? currentJob.finished: 0}
+                      value={currentJob && currentJob.job_id > 0 ? currentJob.finished : 0}
                       maxValue={100}
                       segments={4}
                       startColor="green"
@@ -564,7 +569,7 @@ export default function JobPage(props) {
                       needleColor="red"
                       needleTransitionDuration={2000}
                       needleTransition="easeElastic"
-                      currentValueText={currentJob && currentJob.job_id>0? currentJob.status: 'Not yet submitted'}
+                      currentValueText={currentJob && currentJob.job_id > 0 ? currentJob.status : 'Not yet submitted'}
                       currentValuePlaceholderStyle={'#{value}'}
                       textColor={theme.palette.text.primary}
                     />
@@ -572,15 +577,14 @@ export default function JobPage(props) {
                 </Grid>
                 <Grid md={4}>
                   <MenuList>
-                    <MenuItem onClick={(e) => { 
-                      if(ValidateJob()) 
-                      {
+                    <MenuItem onClick={(e) => {
+                      if (ValidateJob()) {
                         setBatchFile('');
                         setUploadingJob(true);
                       }
                     }}>Submit Analysis</MenuItem>
-                    <MenuItem onClick={(e) => { 
-                      if(ValidateJob()) inputFile.current.click();
+                    <MenuItem onClick={(e) => {
+                      if (ValidateJob()) inputFile.current.click();
                     }}>Batch Submit</MenuItem>
                   </MenuList>
                   <input type='file' id='file' ref={inputFile} style={{ display: 'none' }} onChange={(e) => {
@@ -602,7 +606,8 @@ export default function JobPage(props) {
       </div>
       <div class="job_right_col">
         <div>
-          <Accordion expanded
+          <Accordion expanded={inpExpanded}
+            onChange={(event, isExpanded) => {setInpExpanded(isExpanded);}}
             style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
@@ -788,14 +793,13 @@ export default function JobPage(props) {
             </AccordionDetails>
           </Accordion>
 
-          <Accordion expanded
-            style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
+          <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
               aria-controls="other-content"
               id="other-header"
             >
-              <Typography>Allocation Options: </Typography>
+              <Typography>Allocation Parameters: </Typography>
             </AccordionSummary>
             <AccordionDetails>
               <div>
@@ -907,8 +911,7 @@ export default function JobPage(props) {
               <div>
                 <FormControl className={classes.formControl}>
                   <LocalizationProvider dateAdapter={AdapterDateFns}>
-                    <DatePicker
-                      color ={theme.palette.text.background}
+                    <DatePicker 
                       label="Average Accident Date"
                       value={jobParameter.average_accident_date}
                       format="MM/DD/YYYY"
@@ -987,58 +990,17 @@ export default function JobPage(props) {
 
             </AccordionDetails>
           </Accordion>
-          <Accordion expanded
-            style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
+          <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
               aria-controls="corr-content"
               id="corr-header">
-              <Typography>Data Correction</Typography>
+              <Typography>Data Validation</Typography>
             </AccordionSummary>
             <AccordionDetails>
-              <FormControl className={classes.formControl}>
-                <Box
-                  component="form"
-                  sx={{
-                    '& > :not(style)': { m: 1, width: '58ch' }
-                  }}
-                  noValidate
-                  autoComplete="off"
-                >
-                  <TextField id="alae-basic" label="Data Correction" variant="standard" readOnly
-                    value={jobFile? jobFile.name: "No Correction"}
-                  />
-                </Box>
-                <div class="row" style={{ alignItems: 'center' }} >
-                    <div class="col-md-4 align-left vertical-align-top">
-                        <Button variant="raised" component="label" className={classes.button}>
-                          Add File
-                          <input hidden
-                              className={classes.input}
-                              style={{ display: 'none' }}
-                              id="raised-button-file"
-                              type="file"
-                              onChange={(e) => {
-                                if (e.target.files && e.target.files.length > 0) {
-                                  setJobFile(e.target.files[0]);
-                                  setJobParameter({...jobParameter,data_correction:true})
-                                }
-                              }}
-                            />
-                        </Button>
-                    </div>
-                    <div class="col-md-4 align-left vertical-align-top">
-                      <Button variant="raised" component="span" className={classes.button}
-                        onClick={(e) => { setJobFile('');setJobParameter({...jobParameter,data_correction:false}) }}>
-                        Remove File
-                      </Button>
-                    </div>
-                  </div>
-              </FormControl>
-              <div>
-              <FormControl className={classes.formControl}>
+            < FormControl className={classes.formControl}>
                 <InputLabel shrink id="error-placeholder-label">
-                  Error Action
+                  Action On Error
                 </InputLabel>
                 <Select
                   labelId="error-placeholder-label"
@@ -1057,11 +1019,87 @@ export default function JobPage(props) {
                     })}
                 </Select>
               </FormControl>
+              <FormControl className={classes.formControl}>
+                <Box
+                  component="form"
+                  sx={{
+                    '& > :not(style)': { m: 1, width: '40ch' }
+                  }}
+                  noValidate
+                  autoComplete="off"
+                >
+                  <TextField id="alae-basic" label="Data Correction File" variant="standard" readOnly
+                    value={jobFile ? jobFile.name : "No Correction"}
+                  />
+                </Box>
+                <div class="row" style={{ alignItems: 'center' }} >
+                  <div class="col-md-4 align-left vertical-align-top">
+                    <Button variant="raised" component="label" className={classes.button}>
+                      Add
+                      <input hidden
+                        className={classes.input}
+                        style={{ display: 'none' }}
+                        id="raised-button-file"
+                        type="file"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            setJobFile(e.target.files[0]);
+                            setJobParameter({ ...jobParameter, data_correction: true })
+                          }
+                        }}
+                      />
+                    </Button>
+                  </div>
+                  <div class="col-md-4 align-left vertical-align-top">
+                    <Button variant="raised" component="span" className={classes.button}
+                      onClick={(e) => { setJobFile(''); setJobParameter({ ...jobParameter, data_correction: false }) }}>
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              </FormControl>
+              <FormControl className={classes.formControl}>
+                <Box
+                  component="form"
+                  sx={{
+                    '& > :not(style)': { m: 1, width: '24ch' }
+                  }}
+                  noValidate
+                  autoComplete="off"
+                >
+                  <TextField id="alae-basic" label="Default Rating Region" variant="standard" 
+                    value={jobParameter.defReg && jobParameter.defReg>0 ? jobParameter.defReg : "None"}
+                    onChange={event => {
+                      if (jobParameter.defReg !== event.target.value) {
+                        setJobParameter({ ...jobParameter, defReg: event.target.value });
+                      }
+                    }}
+                  />
+                </Box>
+              </FormControl>
+              <div>
+                <ul style={{ listStyleType: "none" }}> 
+                {
+                    Object.entries(ValidRules).map((n) => {
+                      return <li><FormControlLabel control={
+                        <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
+                          checked={jobParameter.valid_rules & n[1].value}
+                          onChange={event => {
+                            var f= n[1].value;
+                            if ((jobParameter.valid_rules & f !== 0) !== event.target.checked) {
+                              setJobParameter({ ...jobParameter, valid_rules: 
+                                  event.target.checked? jobParameter.valid_rules | f:
+                                                      jobParameter.valid_rules & (~f) });
+                            }
+                          }} 
+                        />} label={n[1].descr}
+                      /></li>
+                    })}
+                </ul>
               </div>
             </AccordionDetails>
           </Accordion>
-          <Accordion expanded
-            style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
+          <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
               aria-controls="corr-content"
@@ -1087,7 +1125,7 @@ export default function JobPage(props) {
                     }}
                   />
                 </Box>
-               </FormControl>
+              </FormControl>
             </AccordionDetails>
           </Accordion>
         </div>

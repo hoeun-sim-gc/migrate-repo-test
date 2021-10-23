@@ -324,29 +324,29 @@ export default function HomePage(props) {
             <Link className={classes.buttonLink} style={{padding:'10px 10px 10px 15px' }}
             component="button"
               onClick={(e) => { setDownloadingResults(true); }} >
-              Download
+              Results
             </Link>
           </Tooltip>
           <Tooltip title="Dowload Validation Data">
             <Link className={classes.buttonLink} style={{padding:'10px' }}
               component="button"
               onClick={(e) => { setDownloadingDatafile(true); }} >
-              Validate
+              Validation
             </Link>
           </Tooltip>
           <Tooltip title="Populate allocated premium back to EDM">
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
               onClick={(e) => { alert("This option hasn't been implemented yet!"); }} >
-              Populate EDM
+              EDM
             </Link>
           </Tooltip>
           <Divider orientation="vertical" flexItem />
-          <Tooltip title="New analysis copy the selected"  >
+          <Tooltip title="New analysis copying this selected"  >
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
               onClick={(e) => { handleGoJob(currentJob?.job_id); }} >
-              New Analysis
+              New
             </Link>
           </Tooltip>
         </div>
