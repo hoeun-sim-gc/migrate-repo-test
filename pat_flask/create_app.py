@@ -24,36 +24,19 @@ def create_app(st_folder):
     def submit_job():
         js = None
         data = None
-        batch = None
         if request.files:
             if 'data' in request.files.keys():
                 data = request.files['data']
-            if 'batch' in request.files.keys():
-                batch = pd.read_csv(request.files['batch'])
         if request.form and 'para' in request.form.keys():
             js = json.loads(request.form['para'])
         else:
             js = request.json 
 
         if js:
-            if batch is None or len(batch) <= 0:
-                job = PatJob(js,data)
-                if job.job_id and job.job_id > 0:
-                    job.process_job_async()
-                    return f'Analysis submitted: {job.job_id}'
-            else:
-                n = 0
-                for index, row in batch.iterrows():
-                    js['job_guid'] = str(uuid.uuid4())
-                    for c in batch.columns:
-                        js[c] = row[c]
-
-                    job = PatJob(js)
-                    if job.job_id and job.job_id > 0:
-                        job.process_job_async()
-                        n += 1
-
-                return f"Maultiple analyses submitted! ({n})"
+            job = PatJob(js,data)
+            if job.job_id and job.job_id > 0:
+                job.process_job_async()
+                return f'Analysis submitted: {job.job_id}'
     
         return "Submission failed!"
             

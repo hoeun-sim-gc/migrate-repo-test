@@ -19,6 +19,12 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { Checkbox } from '@mui/material';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogContentText from '@mui/material/DialogContentText';
+import DialogTitle from '@mui/material/DialogTitle';
+
 import ReactSpeedometer from "react-d3-speedometer"
 
 import { PulseLoader } from "react-spinners";
@@ -151,6 +157,7 @@ export default function JobPage(props) {
   const [jobFile, setJobFile] = useState('')
   const [batchFile, setBatchFile] = useState('')
   const [uploadingJob, setUploadingJob] = useState(false);
+  const [confirm, setConfirm] = React.useState(false);
 
   const [currentJob, setCurrentJob] = useState({ job_id: job_id, status: '', finished: 0 })
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
@@ -405,16 +412,52 @@ export default function JobPage(props) {
       setUploadingJob(false);
       return;
     }
-
-    let form_data = new FormData();
-    let para = jobParameter;
-    para['job_guid'] = uuidv4();
-    form_data.append('para', JSON.stringify(para));
-
+  
     //if batch submit, ignore the data correction file   
-    if (batchFile) form_data.append("batch", batchFile);
-    else if (jobFile) form_data.append("data", jobFile);
+    if (batchFile) {
+      var fr=new FileReader();
+      fr.onload=function(){
+        var lns= fr.result.split(/\r?\n/g);
+        var head = lns[0].split(',');
+        var n = head.length;
+        lns.slice(1).forEach(ln => {
+          var col = ln.split(',');
+          if (col.length === n){
+            var js = jobParameter;
+            for(var i =0;i<n;i++){
+              if (typeof(js[head[i]]) === 'number') js[head[i]] = Number(col[i]);
+              else js[head[i]] = col[i];
+            }
 
+            let form_data = new FormData();
+            js['job_guid'] = uuidv4();
+            form_data.append('para', JSON.stringify(js));
+
+            post_job(form_data)
+          }        
+        });
+      }
+      fr.readAsText(batchFile);
+
+    }
+    else 
+    {
+      let form_data = new FormData();
+      let js = jobParameter;
+      js['job_guid'] = uuidv4();
+      delete js.portfolioid
+
+      form_data.append('para', JSON.stringify(js));
+      if (jobFile) form_data.append("data", jobFile);
+      post_job(form_data)
+    }
+
+    // eslint-disable-next-line
+  }, [uploadingJob]);
+
+
+  const post_job = (form_data) =>
+  {
     let request = 'api/job'
     fetch(request, {
       method: "POST",
@@ -445,8 +488,7 @@ export default function JobPage(props) {
       .then(() => {
         setUploadingJob(false);
       });
-    // eslint-disable-next-line
-  }, [uploadingJob]);
+  };
 
   //get current job status 
   let status_percent = {
@@ -531,6 +573,14 @@ export default function JobPage(props) {
     return costs[s2.length];
   };
 
+  const handleSubmit = (isOK) => {
+    setConfirm(false);
+    if (isOK && ValidateJob()) {
+      setBatchFile('');
+      setUploadingJob(true);
+    }
+  };
+
   return (
     <div class="job_container">
       {(loadingServerList || loadingDbList || loadingPortList || loadingPerilList || loadingDbList || uploadingJob || loadingCurrentJob) &&
@@ -577,11 +627,8 @@ export default function JobPage(props) {
                 </Grid>
                 <Grid md={4}>
                   <MenuList>
-                    <MenuItem onClick={(e) => {
-                      if (ValidateJob()) {
-                        setBatchFile('');
-                        setUploadingJob(true);
-                      }
+                    <MenuItem onClick={() => {
+                      setConfirm(true);
                     }}>Submit Analysis</MenuItem>
                     <MenuItem onClick={(e) => {
                       if (ValidateJob()) inputFile.current.click();
@@ -597,6 +644,25 @@ export default function JobPage(props) {
               </Grid>
             </CardContent>
           </Card>
+          <Dialog
+            open={confirm}
+            onClose={() => { setConfirm(false); }}
+            aria-labelledby="alert-dialog-title"
+            aria-describedby="alert-dialog-description"
+          >
+            <DialogTitle id="alert-dialog-title">
+              {"Warning"}
+            </DialogTitle>
+            <DialogContent>
+              <DialogContentText id="alert-dialog-description">
+                Do you really want to submit a new analysis?
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+              <Button style={{ color: 'black' }} onClick={() => { handleSubmit(true) }} autoFocus>Yes</Button>
+              <Button style={{ color: 'black' }} onClick={() => { handleSubmit(false) }} > Cancel </Button>
+            </DialogActions>
+          </Dialog>
         </div>
         <textarea value={paraString}
           readOnly={true}

@@ -558,7 +558,7 @@ class PatJob:
             if len(df_corr) >0:
                 df_pol.set_index('PseudoPolicyID', inplace=True)
                 df_pol.update(df_corr.set_index('PseudoPolicyID'))
-                df_pol.reset_index()
+                df_pol.reset_index(inplace = True, drop=False)
 
         df_pol['flag'] = PatFlag.FlagActive
         # Policies with inconsistant limit/participation alegebra
@@ -622,7 +622,7 @@ class PatJob:
             if len(df_corr) >0:
                 df_loc.set_index('PseudoPolicyID', inplace=True)
                 df_loc.update(df_corr.set_index('PseudoPolicyID'))
-                df_loc.reset_index()
+                df_loc.reset_index(inplace = True, drop=False)
 
         df_loc['flag'] = PatFlag.FlagActive
         # Location record duplications
@@ -679,9 +679,9 @@ class PatJob:
             df_corr = pd.read_sql_query(f"""select * from pat_facultative 
                 where job_id = {self.job_id} and (flag & {PatFlag.FlagCorrected}) !=0""", j_conn)
             if len(df_corr) >0:
-                df_fac.set_index(['PseudoPolicyID', 'FacKey'],drop=False, inplace=True)
+                df_fac.set_index(['PseudoPolicyID', 'FacKey'], drop=False, inplace=True)
                 df_fac.update(df_corr.set_index(['PseudoPolicyID', 'FacKey']))
-                df_fac.reset_index(drop=True)
+                df_fac.reset_index(inplace = True, drop=True)
 
         
         df_fac['flag'] = PatFlag.FlagActive
