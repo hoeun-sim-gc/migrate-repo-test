@@ -77,6 +77,7 @@ create table pat_flag(
 create table pat_policy(
     job_id int not null,
     OriginalPolicyID int,
+    ACCGRPID int,
     PseudoPolicyID varchar(50),
     PolRetainedLimit float,
     PolLimit float,
@@ -85,7 +86,7 @@ create table pat_policy(
     PolPremium float,
     flag int
 );
-create index idx_pat_policy on pat_policy (job_id asc);
+create clustered index idx_pat_policy on pat_policy (job_id asc);
 
 create table pat_location(
     job_id int not null,
@@ -97,7 +98,7 @@ create table pat_location(
     RatingGroup int,
     flag int
 );
-create index idx_pat_location on pat_location (job_id asc);
+create clustered index idx_pat_location on pat_location (job_id asc);
 
 create table pat_facultative(
     job_id int not null,
@@ -108,7 +109,7 @@ create table pat_facultative(
     FacKey int,
     flag int
 );
-create index idx_pat_facultative on pat_facultative (job_id asc);
+create clustered index idx_pat_facultative on pat_facultative (job_id asc);
 
 create table pat_premium(
     job_id int,
@@ -120,9 +121,10 @@ create table pat_premium(
     LocationIDStack varchar(20),
     RatingGroup int,
     OriginalPolicyID int,
+    ACCGRPID int,
     PseudoPolicyID varchar(50),
     PseudoLayerID int,
     PolLAS float,
     DedLAS float
 );
-create index idx_pat_premium on pat_premium (job_id asc);
+create clustered index idx_pat_premium on pat_premium (job_id asc);

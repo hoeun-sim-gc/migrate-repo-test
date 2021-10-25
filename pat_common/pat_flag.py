@@ -60,7 +60,7 @@ class PatFlag(IntFlag):
         
     def set_flag(self, df, mask):
         if np.any(mask):
-            df.loc[mask,['status']] |= self.value
+            df.loc[mask,['flag']] |= self.value
 
 class ValidRule(IntFlag):
     ValidAoi = 0x00000001   # If multiple AOIs, use the highest

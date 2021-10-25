@@ -1,5 +1,6 @@
 import os
 import json
+import uuid  
 import logging
 import threading
 from datetime import datetime
@@ -71,8 +72,8 @@ class PatJob:
 
             if data:
                 self.logger.info("Save data correction...")
-                self.__save_data_correction(data)
-                self.logger.info("Save data correction...OK")
+                n = self.__save_data_correction(data)
+                self.logger.info(f"Save data correction...OK ({n})")
 
     def __register_job(self):
         with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
@@ -107,6 +108,7 @@ class PatJob:
                         df = df.drop(columns=['Notes'])
 
                         to_sql(df,t, creds, index=False, if_exists='append')
+                        return len(df)
 
     def __update_status(self, st):
         with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
@@ -161,9 +163,20 @@ class PatJob:
     def get_results(cls, job_lst):
         with pyodbc.connect(cls.job_conn) as conn:
             df = pd.read_sql_query(f"""select Limit, Retention, Premium, Participation, AOI, LocationIDStack, 
-                                            RatingGroup, OriginalPolicyID, PseudoPolicyID, PseudoLayerID, PolLAS, DedLAS
+                                            RatingGroup, OriginalPolicyID, ACCGRPID, PseudoPolicyID, PseudoLayerID, PolLAS, DedLAS
                                        from pat_premium where job_id in ({','.join([f'{a}' for a in job_lst])})
-                                       order by job_id, LocationIDStack, OriginalPolicyID""", conn)
+                                       order by job_id, LocationIDStack, OriginalPolicyID, ACCGRPID""", conn)
+
+            df.rename(columns={
+                'Premium':'Allocated_Premium',
+                'RatingGroup':'Rating_Group',
+                'OriginalPolicyID':'Original_Policy_ID',
+                'PseudoLayerID': 'Pseudo_Layer_ID',
+                'PolLAS':'PolicyLAS',
+                'DedLAS':'DeductibleLAS',
+                'LocationIDStack':'Original_Location_ID'
+                }, inplace=True)
+
             return df
 
     @classmethod
@@ -211,8 +224,7 @@ class PatJob:
 
     # deamon  
     def process_job_async(self):
-        d = threading.Thread(name='pat-daemon', target=self.perform_analysis)
-        d.setDaemon(True)
+        d = threading.Thread(name='pat-daemon', target=self.perform_analysis,daemon=True)
         d.start()
 
         return True
@@ -233,7 +245,12 @@ class PatJob:
         # start calculation
         self.logger.info("create the net of FAC layer stack ...")
         df_facnet = self.__net_of_fac()
-        self.logger.info("create the net of FAC layer stack...OK")
+        if len(df_facnet)<=0:
+            self.logger.warning("Nothing to allocate! Finished.")
+            self.__update_status("finished")
+            return 
+
+        self.logger.info(f"create the net of FAC layer stack...OK ({len(df_facnet)})")
         self.__update_status("net_of_fac")
 
         self.logger.info("Allocate premium with PSOLD...")
@@ -261,27 +278,32 @@ class PatJob:
             if self.__verify_edm_rdm(conn) != 'ok': return
             self.logger.debug("Verify input data base info...OK")
 
+            suffix = str(uuid.uuid4())[0:8]
+            self.logger.debug(f"Temptable suffix: {self.job_id} , {suffix}")
+
             self.logger.debug("Create temp tables...")
-            self.__create_temp_tables(conn)
+            self.__create_temp_tables(conn, suffix)
             self.logger.debug("Create temp tables...OK")
             
             self.logger.debug("Extract policy table...")
-            self.__extract_policy(conn)
-            self.logger.debug("Extract policy table...OK")
+            n = self.__extract_policy(conn, suffix)
+            self.logger.debug(f"Extract policy table...OK ({n})")
             
             self.logger.debug("Extract location table...")
-            self.__extract_location(conn)
-            self.logger.debug("Extract location table...OK")
+            n = self.__extract_location(conn, suffix)
+            self.logger.debug(f"Extract location table...OK ({n})")
             
             self.logger.debug("Extract fac table...")
-            self.__extract_fac(conn)
-            self.logger.debug("Extract fac table...OK")
+            n = self.__extract_fac(conn, suffix)
+            self.logger.debug(f"Extract fac table...OK ({n})")
 
-            self.__delete_temp_tables(conn)
+            with conn.cursor() as cur:            
+                cur.execute(f"drop table #sqlpremalloc_{suffix}")
+                cur.commit()
 
-            self.logger.debug("Some extra data checking...")
-            self.__extra_data_check()
-            self.logger.debug("Some extra data checking...OK")
+        self.logger.debug("Some extra data checking...")
+        self.__extra_data_check()
+        self.logger.debug("Some extra data checking...OK")
 
     def __verify_edm_rdm(self, conn):
         # Check that PerilID is valid
@@ -313,7 +335,7 @@ class PatJob:
 
         return 'ok'
     
-    def __create_temp_tables(self, conn):
+    def __create_temp_tables(self, conn, suffix:str):
         with conn.cursor() as cur:
             # policy_standard
             cur.execute(f"""select p.accgrpid, policyid, policynum, policytype,
@@ -344,7 +366,7 @@ class PatJob:
                     end as polparticipation,
                     p.undcovamt,
                     case when p.blandedamt > p.mindedamt then p.blandedamt else p.mindedamt end as polded, blanpreamt
-                    into #policy_standard
+                    into #policy_standard_{suffix}
                 from portacct as pa 
                     inner join policy as p on pa.accgrpid = p.accgrpid 
                     inner join
@@ -366,8 +388,8 @@ class PatJob:
             # policy_loc_conditions
             cur.execute(f"""select p.accgrpid, p.policyid, p.policytype, p.blanlimamt, p.partof, 
                     p.undcovamt, polded,lc.locid, pc.conditiontype
-                    into #policy_loc_conditions 
-                from #policy_standard as p 
+                    into #policy_loc_conditions_{suffix} 
+                from #policy_standard_{suffix} as p 
                     inner join policyconditions as pc on p.policyid = pc.policyid 
                     inner join locconditions as lc on pc.conditionid = lc.conditionid
                 where conditiontype = 2 and included in (1,2) and p.policytype = {self.para['perilid']}
@@ -379,7 +401,7 @@ class PatJob:
             cur.execute(f"""with incl_locs as 
                 (select p.accgrpid, p.policyid, p.policytype, p.blanlimamt, p.partof, 
                     p.undcovamt, p.polded, lc.locid, pc.conditiontype
-                from #policy_standard as p 
+                from #policy_standard_{suffix} as p 
                     inner join policyconditions as pc on p.policyid = pc.policyid 
                     inner join locconditions as lc on pc.conditionid = lc.conditionid
                 where conditiontype = 1 and included in (1,2) and p.policytype = {self.para['perilid']}
@@ -397,7 +419,7 @@ class PatJob:
                     where lc.valueamt > 0 and lc.peril = {self.para['perilid']}
                     group by l.accgrpid, l.locid) as alllocs on polexcl.accgrpid = alllocs.accgrpid)
 
-                insert into #policy_loc_conditions 
+                insert into #policy_loc_conditions_{suffix} 
                 select all_locs.accgrpid, all_locs.policyid, p.policytype, p.blanlimamt, p.partof, p.undcovamt, 
                     case when p.blandedamt > 0 then p.blandedamt else p.mindedamt end as polded,
                     all_locs.locid, 1 as conditiontype
@@ -422,7 +444,7 @@ class PatJob:
                         sum(case when perspcode = 'rl' then perspvalue else 0  end) as netprecatloss
                     from {self.para['rdm']}..rdm_policy a 
                         inner join {self.para['rdm']}..rdm_eventareadetails b on a.eventid = b.eventid 
-                        inner join #policy_standard as p on a.id = p.policyid
+                        inner join #policy_standard_{suffix} as p on a.id = p.policyid
                     where anlsid = {self.para['analysisid']}
                     group by a.id, res1value, a.eventid, p.blanlimamt, p.partof, p.undcovamt, p.polded
                     having sum(case when perspcode = 'gu' then perspvalue else 0 end) * 
@@ -447,9 +469,9 @@ class PatJob:
                         case when grounduploss < totaltiv then grounduploss * (contval/totaltiv) else contval end as contval,
                         case when grounduploss < totaltiv then grounduploss * (bival/totaltiv) else bival end as bival,
                         a.grossloss as spidergel, blanpreamt
-                        into #sqlpremalloc
+                        into #sqlpremalloc_{suffix}
                     from locpoltotals a 
-                        inner join #policy_standard b on a.policyid = b.policyid
+                        inner join #policy_standard_{suffix} b on a.policyid = b.policyid
                         inner join accgrp as c on b.accgrpid = c.accgrpid 
                         inner join 
                             (select locid, peril,
@@ -460,7 +482,7 @@ class PatJob:
                             from loccvg								
                             where peril = {self.para['perilid']}
                             group by locid, peril) as d on a.locid = d.locid 
-                        left join #policy_loc_conditions as cond on a.policyid = cond.policyid and a.locid = cond.locid
+                        left join #policy_loc_conditions_{suffix} as cond on a.policyid = cond.policyid and a.locid = cond.locid
                     where case when cond.conditiontype is null then 0 else cond.conditiontype end <> 1
                     order by b.accgrpid, a.locid, a.undcovloss""")
             else:
@@ -486,7 +508,7 @@ class PatJob:
                             when l.tiv < p.undcovamt + p.partof + p.polded and l.tiv > p.undcovamt + p.polded 
                                 then (l.tiv - (p.undcovamt + p.polded)) * (p.polparticipation)
                             else p.blanlimamt end as spidergel, p.blanpreamt
-                        into #sqlpremalloc
+                        into #sqlpremalloc_{suffix}
                         from accgrp as a 
                             inner join policy_standard as p on a.accgrpid = p.accgrpid 
                             inner join policy as pol on p.policyid = pol.policyid 
@@ -502,199 +524,181 @@ class PatJob:
                                 ) as l on a.accgrpid = l.accgrpid
                         where l.tiv * ({self.para['additional_coverage']} + 1) > p.undcovamt""")
 
-            cur.execute(f"""update #sqlpremalloc
+            cur.execute(f"""update #sqlpremalloc_{suffix}
                 set bldgval = rev_tiv * (bldgval / origtiv), 
                     contval = rev_tiv * (contval / origtiv), 
                     bival = rev_tiv * (bival / origtiv)
                 where origtiv > rev_tiv + 1""")
-
             cur.commit()
 
-    def __extract_policy(self, conn):
+            cur.execute(f"drop table #policy_standard_{suffix}")
+            cur.execute(f"drop table #policy_loc_conditions_{suffix}")
+
+    def __extract_policy(self, conn, suffix:str):
         retained_lmt = "(locpol.rev_partof - locpol.deductible) * locpol.rev_blanlimamt / locpol.rev_partof" if self.para[
             'deductible_treatment'] == 'Erodes Limit' else "locpol.rev_blanlimamt"
         gross_lmt = "locpol.rev_partof - locpol.deductible" if self.para[
             'deductible_treatment'] == 'Erodes Limit' else "locpol.rev_partof"
-        df_pol = pd.read_sql_query(f"""select locpol.policyid as OriginalPolicyID, 
+        df_pol = pd.read_sql_query(f"""select locpol.policyid as OriginalPolicyID, policy.ACCGRPID, 
                     concat(locpol.policyid, '_', locpol.locid) as PseudoPolicyID, 
                     {retained_lmt} as PolRetainedLimit, 
                     round({gross_lmt}, 2) as PolLimit, 
                     locpol.participation as PolParticipation, 
                     round(locpol.deductible + locpol.undcovamt, 2) as PolRetention, 
                     policy.blanpreamt as PolPremium
-                from #sqlpremalloc as locpol 
+                from #sqlpremalloc_{suffix} as locpol 
                     inner join policy on locpol.policyid = policy.policyid""", conn)
+        if len(df_pol)<=0:
+            return 0
 
+        # Correction
+        with pyodbc.connect(self.job_conn) as j_conn:
+            df_corr = pd.read_sql_query(f"""select * from pat_policy 
+                where job_id = {self.job_id} and (flag & {PatFlag.FlagCorrected}) !=0""", j_conn)
+            if len(df_corr) >0:
+                df_pol.set_index('PseudoPolicyID', inplace=True)
+                df_pol.update(df_corr.set_index('PseudoPolicyID'))
+                df_pol.reset_index()
+
+        df_pol['flag'] = PatFlag.FlagActive
+        # Policies with inconsistant limit/participation alegebra
+        mask = np.abs(np.round(df_pol.PolRetainedLimit - df_pol.PolLimit * df_pol.PolParticipation, 1)) > 2
+        PatFlag.FlagPolLimitParticipation.set_flag(df_pol, mask)
+        mask = ~mask
+        df_pol.loc[mask,['PolParticipation']] = df_pol.PolRetainedLimit[mask] / df_pol.PolLimit[mask] 
+
+        # Duplicate Policies 
+        mask = df_pol.PseudoPolicyID.duplicated(keep=False)
+        PatFlag.FlagPolDupe.set_flag(df_pol, mask)
+
+        # Policies with nonNumeric Fields
+        mask = np.sum(np.isnan(df_pol[["PolLimit", "PolRetention", "PolRetainedLimit", "PolParticipation", "PolPremium"]]), axis=1) > 0
+        PatFlag.FlagPolNA.set_flag(df_pol, mask)
+
+        # Policies with negative fields
+        mask = np.sum(df_pol[["PolLimit", "PolRetention", "PolRetainedLimit",
+                      "PolParticipation", "PolPremium"]] < 0, axis=1) > 0
+        PatFlag.FlagPolNeg.set_flag(df_pol, mask)
+        
+        # Policies with excess participation
+        mask = np.round(df_pol.PolParticipation, 2) > 1
+        PatFlag.FlagPolParticipation.set_flag(df_pol, mask)
+
+        # Save to DB 
         df_pol['job_id'] = self.job_id
         creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
         to_sql(df_pol, "pat_policy", creds, index=False, if_exists='append')
 
-        # normalize policy
-        with pyodbc.connect(self.job_conn) as j_conn, j_conn.cursor() as cur:
-            cur.execute(f"""update pat_policy set flag = 0 where job_id = {self.job_id} and flag is null""")
-            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagActive}
-                from (SELECT *, ROW_NUMBER() over (partition by PseudoPolicyID order by flag desc) as idx
-                      FROM pat_policy
-                      where job_id = {self.job_id}
-                      ) a
-                where a.idx = 1""")
+        return len(df_pol)
 
-            cur.execute(f"""update pat_policy set PolParticipation = PolRetainedLimit / PolLimit
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                and round(PolRetainedLimit - PolLimit * PolParticipation, 1) <= 2""")
-            
-            # Duplicate Policies 
-            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagPolDupe}
-                            from pat_policy a
-                                join (select PseudoPolicyID from pat_policy 
-                                    where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                    group by PseudoPolicyID having count(*) > 1) b
-                                    on a.PseudoPolicyID = b.PseudoPolicyID
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0""")
-
-            # Policies with nonNumeric Fields
-            cur.execute(f"""update pat_policy set flag = flag | {PatFlag.FlagPolNA}
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                and (PolLimit is null or PolRetention is null or PolRetainedLimit is null or
-                                    PolParticipation is null or PolPremium is null)""")
-            
-            # Policies with negative fields
-            cur.execute(f"""update pat_policy set flag = flag | {PatFlag.FlagPolNeg}
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                and (PolLimit < 0 or PolRetention < 0 or PolRetainedLimit < 0 or
-                                    PolParticipation < 0 or PolPremium < 0)""")
-
-            # Policies with inconsistant limit/participation alegebra
-            cur.execute(f"""update pat_policy set flag = flag | {PatFlag.FlagPolLimitParticipation}
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                and round(PolRetainedLimit - PolLimit * PolParticipation, 1) > 2""") #? check above for same formula 
-
-            # Policies with excess participation
-            cur.execute(f"""update pat_policy set flag = flag | {PatFlag.FlagPolParticipation}
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                and round(PolParticipation, 2) > 1""")
-
-            cur.commit()
-
-    def __extract_location(self, conn):
+    def __extract_location(self, conn, suffix):
         aoi = "locpol.bldgval + locpol.contval + locpol.bival" if self.para[
             'coverage'] == "Building + Contents + Time Element" else "locpol.bldgval + locpol.contval"
         df_loc = pd.read_sql_query(f"""select concat(locpol.policyid, '_', locpol.locid) as PseudoPolicyID, 
                     locpol.locid as LocationIDStack,
                     {aoi} as AOI, 
                     loc.occscheme as occupancy_scheme, loc.occtype as occupancy_code 
-                from #sqlpremalloc as locpol 
+                from #sqlpremalloc_{suffix} as locpol 
                     inner join loc on locpol.locid = loc.locid""", conn)
+        if len(df_loc)<=0:
+            return 0
+
+        # Correction an psold mapping
+        min_psold_rg = 0
+        max_psold_rg = 0
+        with pyodbc.connect(self.job_conn) as j_conn:
+            df_map = pd.read_sql_query(f"""select occscheme as occupancy_scheme, 
+                        occtype occupancy_code, 
+                        psold_rg as RatingGroup
+                        from psold_mapping """, j_conn)
+            min_psold_rg = df_map.RatingGroup.min()
+            max_psold_rg = df_map.RatingGroup.max()
+            df_loc = df_loc.astype({'occupancy_scheme': 'str', 'occupancy_code': 'str'})
+            df_loc = df_loc.merge(df_map, how='left', on=['occupancy_scheme', 'occupancy_code'])
+            df_loc[['RatingGroup']] = df_loc[['RatingGroup']].fillna(value=0)
+
+            df_corr = pd.read_sql_query(f"""select * from pat_location 
+                where job_id = {self.job_id} and (flag & {PatFlag.FlagCorrected}) !=0""", j_conn)
+            if len(df_corr) >0:
+                df_loc.set_index('PseudoPolicyID', inplace=True)
+                df_loc.update(df_corr.set_index('PseudoPolicyID'))
+                df_loc.reset_index()
+
+        df_loc['flag'] = PatFlag.FlagActive
+        # Location record duplications
+        mask = df_loc.PseudoPolicyID.duplicated(keep=False)
+        PatFlag.FlagLocDupe.set_flag(df_loc, mask)
+
+        # duplicate LocationIDStack
+        df = pd.concat([df_loc["LocationIDStack"], np.round(df_loc['AOI'], 1)], axis=1)
+        df = df.dropna(subset=['LocationIDStack']).drop_duplicates(ignore_index=True)
+        df = df.groupby('LocationIDStack').size().reset_index(name='LocIDCount')
+        df = df[df.LocIDCount > 1].reset_index(drop=True)
+        if len(df) > 0:
+            df = df_loc[["LocationIDStack"]].merge(df, on = 'LocationIDStack', how="left")
+            mask = df['LocIDCount'].notna()
+            PatFlag.FlagLocIDDupe.set_flag(df_loc, mask)
+
+        # Location record non numeric entry
+        mask = np.sum(np.isnan(df_loc[["AOI", "RatingGroup"]]), axis=1) > 0
+        PatFlag.FlagLocNA.set_flag(df_loc, mask)
+
+        # Location record negative field
+        mask = np.sum(df_loc[["AOI", "RatingGroup"]] < 0, axis=1) > 0
+        PatFlag.FlagLocNeg.set_flag(df_loc, mask)
         
+        # Location record rating group out of range
+        mask = np.logical_or(df_loc.RatingGroup < min_psold_rg,df_loc.RatingGroup > max_psold_rg)
+        PatFlag.FlagLocRG.set_flag(df_loc, mask)
+
+        # Save to DB
         df_loc['job_id'] = self.job_id
         creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
         to_sql(df_loc, "pat_location", creds, index=False, if_exists='append')
 
-        # normalize location
-        with pyodbc.connect(self.job_conn) as j_conn, j_conn.cursor() as cur:
-            df = pd.read_sql_query(f"""select min(PSOLD_RG) as min_rg, max(PSOLD_RG) as max_rg from psold_mapping""", j_conn)
-            min_psold_rg = df.min_rg[0]
-            max_psold_rg = df.max_rg[0]
-           
-            cur.execute(f"""update pat_location set flag = 0, RatingGroup = 0 where job_id = {self.job_id} and flag is null""")
-            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagActive}
-                from (SELECT *, ROW_NUMBER() over (partition by PseudoPolicyID order by flag desc) as idx
-                      FROM pat_location
-                      where job_id = {self.job_id}
-                      ) a
-                where a.idx = 1""")
+        return len(df_loc)
 
-            # Attach PSOLD mapping
-            cur.execute(f"""update t set t.RatingGroup = m.PSOLD_RG
-                                from pat_location t 
-                                join psold_mapping m on t.occupancy_scheme = m.occscheme
-                                    and t.occupancy_code = m.occtype --? date constraint 
-                                where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0""")
-
-            # Location record duplications
-            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagLocDupe}
-                            from pat_location a
-                                join (select PseudoPolicyID from pat_location 
-                                        where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                        group by PseudoPolicyID having count(*) > 1) b
-                                    on a.PseudoPolicyID = b.PseudoPolicyID 
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0""")
-            
-            # duplicate LocationIDStack
-            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagLocIDDupe}
-                            from pat_location a 
-                                join (select LocationIDStack from 
-                                        (select distinct LocationIDStack, round(aoi, 1) as AOI
-                                         from pat_location
-                                         where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0 and LocationIDStack is not null
-                                        ) a
-                                     group by LocationIDStack
-                                     having count(*) > 1
-                                    ) b on a.LocationIDStack =b.LocationIDStack
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0""")
-
-            # Location record non numeric entry
-            cur.execute(f"""update pat_location set flag = flag | {PatFlag.FlagLocNA}
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0 
-                                and (AOI is null or LocationIDStack is null)""")
-            
-            # Location record negative field
-            cur.execute(f"""update pat_location set flag = flag | {PatFlag.FlagLocNeg}
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0 and AOI < 0""")
-
-            # Location record rating group out of range
-            cur.execute(f"""update pat_location set flag = flag | {PatFlag.FlagLocRG}
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                and (RatingGroup is null or RatingGroup < {min_psold_rg} or RatingGroup > {max_psold_rg})""")
-
-            cur.commit()
-
-    def __extract_fac(self, conn):
+    def __extract_fac(self, conn, suffix:str):
         df_fac = pd.read_sql_query(f"""select concat(locpol.policyid, '_', locpol.locid) as PseudoPolicyID, 
                     round(case when excessamt + layeramt > rev_blanlimamt then rev_blanlimamt - excessamt 
                         else layeramt end, 2) as FacLimit, 
                     excessamt as FacAttachment, pcntreins/100 as FacCeded
-                from #sqlpremalloc as locpol 
+                from #sqlpremalloc_{suffix} as locpol 
                     inner join reinsinf on locpol.policyid = reinsinf.exposureid 
                 where reinsinf.exposrtype = 'pol' and excessamt < rev_blanlimamt 
                     and layeramt > 0 and pcntreins > 0 
                 order by locpol.accgrpid, locpol.locid, locpol.undcovamt, reinsinf.excessamt, FacLimit, pcntreins""", conn)
+        if len(df_fac)<=0:
+            return 0
 
-        # keep the original key (why?)
-        df_fac['FacKey'] = np.arange(1, len(df_fac)+1, dtype=int)
+        # keep the original key (Can we have a better identifier?)
+        df_fac['FacKey'] = np.arange(1, len(df_fac) + 1, dtype=int)
+
+        # Correction
+        with pyodbc.connect(self.job_conn) as j_conn:
+            df_corr = pd.read_sql_query(f"""select * from pat_facultative 
+                where job_id = {self.job_id} and (flag & {PatFlag.FlagCorrected}) !=0""", j_conn)
+            if len(df_corr) >0:
+                df_fac.set_index(['PseudoPolicyID', 'FacKey'],drop=False, inplace=True)
+                df_fac.update(df_corr.set_index(['PseudoPolicyID', 'FacKey']))
+                df_fac.reset_index(drop=True)
+
+        
+        df_fac['flag'] = PatFlag.FlagActive
+        # Fac records with NA entries
+        mask = np.sum(np.isnan(df_fac[["FacLimit", "FacAttachment", "FacCeded"]]), axis=1) > 0
+        PatFlag.FlagFacNA.set_flag(df_fac, mask)
+
+        # Fac records with negative entries
+        mask = np.sum(df_fac[["FacLimit", "FacAttachment", "FacCeded"]] < 0, axis=1) > 0
+        PatFlag.FlagFacNeg.set_flag(df_fac, mask)
+
+        # Save to DB
         df_fac['job_id'] = self.job_id
         creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
         to_sql(df_fac, "pat_facultative", creds, index=False, if_exists='append')
 
-        # normalize location
-        with pyodbc.connect(self.job_conn) as j_conn, j_conn.cursor() as cur:
-            cur.execute(f"""update pat_facultative set flag = 0 where job_id = {self.job_id} and flag is null""")
-            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagActive}
-                from (SELECT *, ROW_NUMBER() over (partition by PseudoPolicyID,FacKey order by flag desc) as idx
-                      FROM pat_facultative
-                      where job_id = {self.job_id}
-                      ) a
-                where a.idx = 1""")
-
-            # Fac records with NA entries
-            cur.execute(f"""update pat_facultative set flag = flag | {PatFlag.FlagFacNA}
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                and (FacLimit is null or FacAttachment is null or FacCeded is null)""")
-
-            # Fac records with negative entries
-            cur.execute(f"""update pat_facultative set flag = flag | {PatFlag.FlagFacNeg}
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0
-                                and (FacLimit < 0 or FacAttachment < 0 or FacCeded < 0)""")
-
-            cur.commit()
-        
-    def __delete_temp_tables(self, conn):
-        with conn.cursor() as cur:
-            cur.execute("drop table #policy_standard")
-            cur.execute("drop table #policy_loc_conditions")
-            # cur.execute("drop table #locpoltotals")
-            cur.execute("drop table #sqlpremalloc")
-            cur.commit()
+        return len(df_fac)
 
     def __extra_data_check(self):
         with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
@@ -704,6 +708,7 @@ class PatJob:
                     left join (select distinct PseudoPolicyID from pat_location where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0) b 
                         on a.PseudoPolicyID = b.PseudoPolicyID
                 where a.job_id = {self.job_id} and (a.flag & {PatFlag.FlagActive}) !=0 and b.PseudoPolicyID is null""")
+            cur.commit()
 
             # Location records with no policy
             cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagLocOrphan}
@@ -711,6 +716,7 @@ class PatJob:
                     left join (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0) b
                         on a.PseudoPolicyID = b.PseudoPolicyID
                 where a.job_id = {self.job_id} and (a.flag & {PatFlag.FlagActive}) !=0 and b.PseudoPolicyID is null""")
+            cur.commit()
 
             # Orphan Fac Records
             cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagFacOrphan}
@@ -718,6 +724,7 @@ class PatJob:
                     left join (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0) b
                         on a.PseudoPolicyID = b.PseudoPolicyID
                 where a.job_id = {self.job_id} and (a.flag & {PatFlag.FlagActive}) !=0 and b.PseudoPolicyID is null""")
+            cur.commit()
                     
             # FacNet combined specific checks
             f = PatFlag.FlagPolNA | PatFlag.FlagPolNeg | PatFlag.FlagFacNA | PatFlag.FlagFacNeg
@@ -746,7 +753,6 @@ class PatJob:
                                 where FacGupAttachment - PolTopLine > 1 or FacGupTopLine - PolTopLine > 1
                             ) b on a.FacKey = b.FacKey
                 where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0""")
-
             cur.commit()
 
     def __need_correction(self):
@@ -774,7 +780,7 @@ class PatJob:
                             and (b.flag & {PatFlag.FlagActive}) !=0 and (b.flag&0xFFFFFFF) = 0 
                             and c.PseudoPolicyID is null
                     )
-                    select OriginalPolicyID, a.PseudoPolicyID, PolRetainedLimit, PolLimit, 
+                    select OriginalPolicyID, ACCGRPID, a.PseudoPolicyID, PolRetainedLimit, PolLimit, 
                         case when PolParticipation > 1 then 1 else PolParticipation end as PolParticipation, 
                         PolRetention, PolPremium,
                         PolLimit + PolRetention as PolTopLine
@@ -782,6 +788,7 @@ class PatJob:
                     from pat_policy a 
                         join good_p b on a.PseudoPolicyID = b.PseudoPolicyID 
                     where a.job_id = {self.job_id} and (a.flag & {PatFlag.FlagActive}) !=0""")
+                cur.commit()
 
                 cur.execute(f"""select a.PseudoPolicyID, PolRetention,PolTopLine, FacCeded,
                         FacLimit / PolParticipation as FacGupLimit,
@@ -791,7 +798,8 @@ class PatJob:
                     from #dfPolUse a 
                         join pat_facultative b on a.PseudoPolicyID = b.PseudoPolicyID 
                     where b.job_id = {self.job_id} and (b.flag & {PatFlag.FlagActive}) !=0""")
-                
+                cur.commit()
+
                 cur.execute(f"""with cte1 as 
                         (select PseudoPolicyID,PolRetention as LayerLow from #dfPolUse
                         union
@@ -809,19 +817,20 @@ class PatJob:
                          join cte2 b on a.PseudoPolicyID = b.PseudoPolicyID and a.LayerKey = b.LayerKey - 1
                          where b.LayerLow - a.LayerLow > 1),
                     cte4 as
-                        (select a.*, b.OriginalPolicyID, b.PolParticipation as Participation, b.PolPremium, 
+                        (select a.*, b.OriginalPolicyID, b.ACCGRPID, b.PolParticipation as Participation, b.PolPremium, 
                             case when c.FacCeded is null then 0 else c.FacCeded end as Ceded
                         from cte3 a
                             Left Join #dfPolUse b ON a.PseudoPolicyID = b.PseudoPolicyID
                             Left Join #dfPolFac c ON a.PseudoPolicyID = c.PseudoPolicyID 
                                 and a.LayerLow >= c.FacGupAttachment and a.LayerHigh <= FacGupTopLine
                     )
-                    select OriginalPolicyID,PseudoPolicyID,LayerLow,LayerHigh,Participation,max(PolPremium) as PolPremium,
+                    select OriginalPolicyID, ACCGRPID,PseudoPolicyID,LayerLow,LayerHigh,Participation,max(PolPremium) as PolPremium,
                         sum(case when Ceded is null then 0 else Ceded end) as Ceded,
                         row_number() OVER (PARTITION BY PseudoPolicyID ORDER BY LayerLow) as LayerID
                         into #dfLayers
                     from cte4
-                    group by PseudoPolicyID,OriginalPolicyID, LayerLow,LayerHigh,Participation""")
+                    group by PseudoPolicyID,OriginalPolicyID, ACCGRPID, LayerLow,LayerHigh,Participation""")
+                cur.commit()
 
                 cur.execute(f"""select distinct PseudoPolicyID into #ceded100 
                                 from #dfLayers where round(Ceded, 4) >1;
@@ -829,11 +838,10 @@ class PatJob:
                             from pat_facultative a 
                                 join #ceded100 b on a.PseudoPolicyID = b.PseudoPolicyID
                             where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0;""")
-
                 cur.commit()
             
             #? why old R code have to include all participation = 0 layers?
-            df_facnet = pd.read_sql_query(f"""select OriginalPolicyID, a.PseudoPolicyID, LayerID as PseudoLayerID,
+            df_facnet = pd.read_sql_query(f"""select OriginalPolicyID, ACCGRPID, a.PseudoPolicyID, LayerID as PseudoLayerID,
                     LayerHigh - LayerLow as Limit, LayerLow as Retention, 
                     PolPremium as OriginalPremium, 
                     case when Ceded >= 1 then 0 else Participation * (1 - Ceded) end as Participation,
@@ -852,7 +860,6 @@ class PatJob:
                                 drop table #dfPolFac;
                                 drop table #dfLayers;
                                 drop table #ceded100""")
-                
                 cur.commit()
         
             return df_facnet
@@ -899,17 +906,8 @@ class PatJob:
 
         # Final
         df_pat = dfLoc[["Limit", "Retention", "Premium", "Participation", "AOI", "LocationIDStack",
-                    "RatingGroup", "OriginalPolicyID", "PseudoPolicyID", "PseudoLayerID", "PolLAS", "DedLAS"]] \
-                .sort_values(by=['OriginalPolicyID', 'PseudoPolicyID', 'PseudoLayerID'])
-        df_pat.rename(columns={
-            'Premium':'Allocated_Premium',
-            'RatingGroup':'Rating_Group',
-            'OriginalPolicyID':'Original_Policy_ID',
-            'PseudoLayerID': 'Pseudo_Layer_ID',
-            'PolLAS':'PolicyLAS',
-            'DedLAS':'DeductibleLAS',
-            'LocationIDStack':'Original_Location_ID'
-            } )
+                    "RatingGroup", "OriginalPolicyID", "ACCGRPID", "PseudoPolicyID", "PseudoLayerID", "PolLAS", "DedLAS"]] \
+                .sort_values(by=['OriginalPolicyID', 'ACCGRPID', 'PseudoPolicyID', 'PseudoLayerID'])
 
         return df_pat
       

@@ -10,7 +10,7 @@ app = create_app('react_build')
 # app.config["DEBUG"] = True
 
 # logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARN)
-# logging.getLogger("werkzeug").setLevel(logging.WARN)
+logging.getLogger("werkzeug").setLevel(logging.WARN)
 fileConfig('logging.cfg')
 app.logger.info("Premium Allocation Tool service started!")    
 
