@@ -15,9 +15,10 @@ class PatWorker(threading.Thread):
     workers=[]
 
     def __init__(self, job_id=0):
-        super(PatWorker, self).__init__(name='pat-worker', target=self.__run_job, daemon=True)
+        super(PatWorker, self).__init__(name='pat-worker', daemon=True, 
+                target=self.__run_job, args=(job_id,))
         self._stop_event = threading.Event()       
-        self.job_id = job_id
+        self.job_id = 0
 
     def stop(self):
         self._stop_event.set()
@@ -36,9 +37,9 @@ class PatWorker(threading.Thread):
             cls.workers.append(d)
             d.start()
 
-    def __run_job(self):
+    def __run_job(self, job_id):
         try:
-            job_id = self.__checkout_job(self.job_id)
+            job_id = self.__checkout_job(job_id)
             while job_id > 0:
                 job = PatJob(job_id)
                 if job.job_id == job_id:
@@ -47,7 +48,8 @@ class PatWorker(threading.Thread):
                         job.perform_analysis(self.stopped)
                     finally:
                         self.job_id = 0
-                        self._stop_event.clear()
+                        if self.stopped():
+                            self._stop_event.clear()
 
                 job_id = self.__checkout_job()
         finally:
@@ -70,12 +72,15 @@ class PatWorker(threading.Thread):
 
             cur.execute(f"""select top 1 job_id from pat_job where status = 'wait_to_start_{flag}'""")
             row =cur.fetchone()
+            cur.commit()
+
             if row is not None:
-                cur.execute(f"""update pat_job set status = 'wait_to_start'
-                    where status = 'wait_to_start_{flag}'""")
+                job_id = row[0]
+
+                cur.execute(f"""update pat_job set status = 'wait_to_start' where job_id ={job_id}""")
                 cur.commit()
 
-                return row[0]
+                return job_id
         
         return 0
 

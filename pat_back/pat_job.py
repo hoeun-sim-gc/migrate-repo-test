@@ -67,7 +67,7 @@ class PatJob:
         with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
             cur.execute(f"""update pat_job set status = '{st.replace("'","''")}', 
                 update_time = '{datetime.utcnow().isoformat()}'
-                where job_id = {self.job_id}""").rowcount
+                where job_id = {self.job_id}""")
             cur.commit()
 
     def perform_analysis(self, stop_cb=None):
@@ -241,6 +241,7 @@ class PatJob:
                         ) as accttiv on p.accgrpid = accttiv.accgrpid
                     where p.policytype = {self.para['perilid']}
                         and pa.portinfoid = {self.para['portinfoid']}""")
+            cur.commit()
 
             # policy_loc_conditions
             cur.execute(f"""select p.accgrpid, p.policyid, p.policytype, p.blanlimamt, p.partof, 
@@ -253,6 +254,7 @@ class PatJob:
                     and (pc.limit < p.partof + p.undcovamt or pc.deductible > 0)
                 group by p.accgrpid, p.policyid, p.policytype, p.blanlimamt, 
                     p.partof, p.undcovamt, p.polded, lc.locid, pc.conditiontype""")
+            cur.commit()
 
             # additional policy_loc_conditions
             cur.execute(f"""with incl_locs as 
@@ -284,6 +286,7 @@ class PatJob:
                     inner join policy as p on all_locs.policyid = p.policyid 
                     left join incl_locs on all_locs.policyid = incl_locs.policyid and all_locs.locid = incl_locs.locid
                 where incl_locs.locid is null""")
+            cur.commit()
 
             # sqlpremalloc
             if 'rdm' in self.para and 'analysisid' in self.para:
@@ -342,6 +345,7 @@ class PatJob:
                         left join #policy_loc_conditions_{suffix} as cond on a.policyid = cond.policyid and a.locid = cond.locid
                     where case when cond.conditiontype is null then 0 else cond.conditiontype end <> 1
                     order by b.accgrpid, a.locid, a.undcovloss""")
+                cur.commit()
             else:
                 cur.execute(f"""select 0 as conditionid, l.locid, a.accgrpid, a.accgrpname, 
                         p.policyid, p.policynum, p.blanlimamt as orig_blanlimamt, 
@@ -380,6 +384,7 @@ class PatJob:
                                 group by loc.accgrpid, loc.locid
                                 ) as l on a.accgrpid = l.accgrpid
                         where l.tiv * ({self.para['additional_coverage']} + 1) > p.undcovamt""")
+                cur.commit()
 
             cur.execute(f"""update #sqlpremalloc_{suffix}
                 set bldgval = rev_tiv * (bldgval / origtiv), 
@@ -388,8 +393,9 @@ class PatJob:
                 where origtiv > rev_tiv + 1""")
             cur.commit()
 
-            cur.execute(f"drop table #policy_standard_{suffix}")
-            cur.execute(f"drop table #policy_loc_conditions_{suffix}")
+            cur.execute(f"""drop table #policy_standard_{suffix};
+                            drop table #policy_loc_conditions_{suffix};""")
+            cur.commit()
 
     def __extract_policy(self, conn, suffix:str):
         retained_lmt = "(locpol.rev_partof - locpol.deductible) * locpol.rev_blanlimamt / locpol.rev_partof" if self.para[
