@@ -197,24 +197,30 @@ class PatHelper:
         return (df1, df2, df3)
 
     @classmethod
-    def process_jobs(cls):
+    def process_jobs(cls, job_id=0):
         try:
-            job_id = cls.checkout_job()
+            job_id = cls.checkout_job(job_id)
 
             while job_id > 0:
                 job = PatJob(job_id)
                 if job.job_id == job_id:
+                    threading.currentThread().name = f"pat-worker-{job_id}"
                     job.perform_analysis()
+                    threading.currentThread().name = f"pat-worker"
 
                 job_id = cls.checkout_job()
         finally:
             cls.workers.remove(threading.currentThread()) 
 
     @classmethod
-    def checkout_job(cls):
+    def checkout_job(cls, job_id =0):
         flag = str(uuid.uuid4())[:8]
         with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-            cur.execute(f"""update pat_job set status = 'wait_to_start_{flag}'
+            if job_id > 0: 
+                cur.execute(f"""update pat_job set status = 'wait_to_start_{flag}'
+                    where job_id ={job_id} and status = 'received'""")
+            else:
+                cur.execute(f"""update pat_job set status = 'wait_to_start_{flag}'
                     where job_id in 
                     (select top 1 job_id from pat_job where status = 'received' order by update_time, job_id)""")
             cur.commit()
@@ -229,3 +235,34 @@ class PatHelper:
                 return row[0]
         
         return 0
+
+    @classmethod
+    def stop_jobs(cls, lst):
+        wlst= []
+        for w in cls.workers:
+            for j in lst:
+                if w.name == f"pat-worker-{j}":
+                    wlst.append(w)
+                    break
+        for w in wlst:
+            cls.workers.remove(w)
+            #? do somehting to kill thread
+
+        with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+            cur.execute(f"""update pat_job set status = 'stopped',
+                update_time = '{datetime.utcnow().isoformat()}'
+                where job_id in ({','.join([f'{j}' for j in lst])})""")
+            cur.commit()
+
+    @classmethod
+    def reset_jobs(cls, lst):
+        jlst= ','.join([f'{j}' for j in lst])
+        with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+            cur.execute(f"""delete from pat_policy where job_id in ({jlst}) and (flag & {PatFlag.FlagCorrected}) ==0;
+                delete from pat_location where job_id in ({jlst}) and (flag & {PatFlag.FlagCorrected}) ==0;
+                delete from pat_facultative where job_id in ({jlst}) and (flag & {PatFlag.FlagCorrected}) ==0;
+                delete from pat_premium where job_id in ({jlst});
+                update pat_job set status = 'received',
+                    update_time = '{datetime.utcnow().isoformat()}'
+                    where job_id in ({jlst});""")
+            cur.commit()

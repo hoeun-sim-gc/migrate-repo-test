@@ -224,6 +224,36 @@ export default function HomePage(props) {
   }, [downloadingResults]);
 
   const handleGoJob = useCallback((job_id) => history.push('/job' + (job_id?'/'+job_id:'') ), [history]);
+  const handleStopJob = ()=>{
+    var lst= tableRef.current.selectionContext.selected;
+    if(lst.length<=0) {
+      setDownloadingResults(false);
+      alert("No analysis is selected!");
+      return;
+    }
+
+    let request = 'api/stop/' + lst.join('_');
+    fetch(request).then(response => {
+      if (response.ok) {
+        setLoadingJobList(true);
+      }
+    });    
+  };
+  const handleResetJob = ()=>{
+    var lst= tableRef.current.selectionContext.selected;
+    if(lst.length<=0) {
+      setDownloadingResults(false);
+      alert("No analysis is selected!");
+      return;
+    }
+
+    let request = 'api/reset/' + lst.join('_');
+    fetch(request).then(response => {
+      if (response.ok) {
+        setLoadingJobList(true);
+      }
+    }); 
+  };
 
   //data file
   React.useEffect(() => {
@@ -342,7 +372,20 @@ export default function HomePage(props) {
             </Link>
           </Tooltip>
           <Divider orientation="vertical" flexItem />
-          <Tooltip title="New analysis copying this selected"  >
+          <Tooltip title="Stop selected analyses"  >
+            <Link className={classes.buttonLink} style={{padding:'10px' }}
+            component="button" onClick={(e) => { handleStopJob(); }} >
+              Stop
+            </Link>
+          </Tooltip>
+          <Tooltip title="Reset selected analyses to their initial state"  >
+            <Link className={classes.buttonLink} style={{padding:'10px' }}
+            component="button"
+              onClick={(e) => { handleResetJob(); }} >
+              Reset
+            </Link>
+          </Tooltip>
+          <Tooltip title="New analysis using settings from selected"  >
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
               onClick={(e) => { handleGoJob(currentJob?.job_id); }} >

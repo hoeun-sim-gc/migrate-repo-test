@@ -45,7 +45,7 @@ def create_app(st_folder):
     @app.route('/api/wakeup', methods=['POST'])
     def wakeup_worker():
         sleep(random() * 5)
-        PatHelper.workers = filter(lambda x: x.is_alive(), PatHelper.workers)
+        PatHelper.workers = [filter(lambda x: x.is_alive(), PatHelper.workers)]
         if len(PatHelper.workers) < AppSettings.MAX_WORKERS: 
             d = threading.Thread(name=f'pat-worker', target=PatHelper.process_jobs,daemon=True)
             PatHelper.workers.append(d)
@@ -98,6 +98,37 @@ def create_app(st_folder):
             if df is not None:
                 return send_zip_file("pat_results.zip", ('pat_results.csv', df))
 
+    @app.route('/api/stop/<job_lst>', methods=['POST'])
+    def stop_job(job_lst):
+        lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
+        lst= [a for a in filter(lambda x: x>0, lst)]
+
+        if len(lst)>0:
+            PatHelper.stop_jobs(lst)
+            
+        return "ok"
+    
+    @app.route('/api/reset/<job_lst>', methods=['POST'])
+    def reset_job(job_lst):
+        lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
+        lst= [a for a in filter(lambda x: x>0, lst)]
+
+        if len(lst)>0:
+            PatHelper.reset_jobs(lst)
+            
+        return "ok"
+
+    @app.route('/api/run<int:job_id>', methods=['POST'])
+    def run_job(job_id):
+        sleep(random() * 5)
+        PatHelper.workers = filter(lambda x: x.is_alive(), PatHelper.workers)
+        if len(PatHelper.workers) < AppSettings.MAX_WORKERS: 
+            d = threading.Thread(name=f'pat-worker', target=PatHelper.process_jobs, args=job_id, daemon=True)
+            PatHelper.workers.append(d)
+            d.start()            
+ 
+        return "ok"
+
     @app.route('/api/job/<int:job_id>', methods=['DELETE'])
     def delete(job_id):
         df= PatHelper.delete(job_id)
@@ -115,8 +146,7 @@ def create_app(st_folder):
             return send_file(zip_buffer, mimetype='application/zip', attachment_filename=name, as_attachment=True, cache_timeout=0)
         except Exception as e:
             logging.warning(f"Download data file: \n{e}")
-
-       
+      
     
     @app.route('/api/db_list/<sever>', methods=['GET'])
     def get_db_list(sever):
