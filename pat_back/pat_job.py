@@ -2,9 +2,7 @@ import os
 import json
 import uuid  
 import logging
-import threading
 from datetime import datetime
-import zipfile
 from flask.helpers import _split_blueprint_path
 
 import numpy as np
@@ -72,11 +70,15 @@ class PatJob:
                 where job_id = {self.job_id}""").rowcount
             cur.commit()
 
-    def perform_analysis(self):
+    def perform_analysis(self, stop_cb=None):
         self.logger.info("Import data...")
         self.__update_status("extracting_data")
         self.__extract_edm_rdm()
         self.logger.info("Import data...OK")
+        if stop_cb and stop_cb():
+            self.logger.warning("User stopped the analysis")
+            self.__update_status('stopped')
+            return
 
         if self.__need_correction():
             if 'error_action' in self.para and self.para['error_action'] == 'stop':
@@ -84,6 +86,10 @@ class PatJob:
                 return
             else:
                 self.logger.warning("Skip erroneous data and continue")
+        if stop_cb and stop_cb():
+            self.logger.warning("User stopped the analysis")
+            self.__update_status('stopped')
+            return
         
         # start calculation
         self.__update_status("net_of_fac")
@@ -94,11 +100,19 @@ class PatJob:
             self.__update_status("finished")
             return 
         self.logger.info(f"create the net of FAC layer stack...OK ({len(df_facnet)})")
+        if stop_cb and stop_cb():
+            self.logger.warning("User stopped the analysis")
+            self.__update_status('stopped')
+            return
 
         self.__update_status("allocating")
         self.logger.info("Allocate premium with PSOLD...")
         df_pat = self.__allocate_with_psold(df_facnet)
         self.logger.info("Allocate premium with PSOLD...OK")
+        if stop_cb and stop_cb():
+            self.logger.warning("User stopped the analysis")
+            self.__update_status('stopped')
+            return
 
         # save results
         self.__update_status("upload_results")

@@ -3,15 +3,10 @@ import zipfile
 import logging
 import json
 
-import threading
-from time import sleep
-from random import random
-
 import pandas as pd
 from flask import Flask, request, send_file
 
-from pat_back.settings import AppSettings
-
+from .pat_worker import PatWorker
 from .pat_helper import PatHelper
 from .sql_helper import SqlHelper
 
@@ -44,13 +39,7 @@ def create_app(st_folder):
 
     @app.route('/api/wakeup', methods=['POST'])
     def wakeup_worker():
-        sleep(random() * 5)
-        PatHelper.workers = [filter(lambda x: x.is_alive(), PatHelper.workers)]
-        if len(PatHelper.workers) < AppSettings.MAX_WORKERS: 
-            d = threading.Thread(name=f'pat-worker', target=PatHelper.process_jobs,daemon=True)
-            PatHelper.workers.append(d)
-            d.start()            
- 
+        PatWorker.start_worker()
         return "ok"
             
     @app.route('/api/job', methods=['GET'])
@@ -91,7 +80,7 @@ def create_app(st_folder):
     @app.route('/api/result/<job_lst>', methods=['GET'])
     def results(job_lst):
         lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
-        lst= [a for a in filter(lambda x: x>0, lst)]
+        lst= [a for a in lst if a>0]
 
         if len(lst)>0:
             df = PatHelper.get_results(lst)
@@ -101,32 +90,28 @@ def create_app(st_folder):
     @app.route('/api/stop/<job_lst>', methods=['POST'])
     def stop_job(job_lst):
         lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
-        lst= [a for a in filter(lambda x: x>0, lst)]
+        lst= [a for a in lst if a>0]
 
         if len(lst)>0:
-            PatHelper.stop_jobs(lst)
+            PatWorker.stop_jobs(lst)
+            PatHelper.cancel_jobs(lst)
             
         return "ok"
     
     @app.route('/api/reset/<job_lst>', methods=['POST'])
     def reset_job(job_lst):
         lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
-        lst= [a for a in filter(lambda x: x>0, lst)]
+        lst= [a for a in lst if a>0]
 
         if len(lst)>0:
+            PatWorker.stop_jobs(lst)
             PatHelper.reset_jobs(lst)
             
         return "ok"
 
-    @app.route('/api/run<int:job_id>', methods=['POST'])
+    @app.route('/api/run/<int:job_id>', methods=['POST'])
     def run_job(job_id):
-        sleep(random() * 5)
-        PatHelper.workers = filter(lambda x: x.is_alive(), PatHelper.workers)
-        if len(PatHelper.workers) < AppSettings.MAX_WORKERS: 
-            d = threading.Thread(name=f'pat-worker', target=PatHelper.process_jobs, args=job_id, daemon=True)
-            PatHelper.workers.append(d)
-            d.start()            
- 
+        PatWorker.start_worker(job_id)     
         return "ok"
 
     @app.route('/api/job/<int:job_id>', methods=['DELETE'])

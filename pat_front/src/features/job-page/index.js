@@ -494,6 +494,7 @@ export default function JobPage(props) {
   let status_percent = {
     'received': 0,
     'error': 0,
+    'cancelled':0,
     'stoppped': 0,
     'wait_to_start': 0,
     'started': 5,

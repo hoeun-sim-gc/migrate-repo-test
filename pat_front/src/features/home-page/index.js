@@ -5,7 +5,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Link from '@mui/material/Link';
 
 import { makeStyles, useTheme } from '@material-ui/core/styles';
-import {Divider, Grid} from '@material-ui/core';
+import {Divider, Grid, Button} from '@material-ui/core';
 
 import { PulseLoader } from "react-spinners";
 import BootstrapTable from 'react-bootstrap-table-next';
@@ -13,6 +13,12 @@ import paginationFactory from 'react-bootstrap-table2-paginator';
 import ToolkitProvider, { Search } from 'react-bootstrap-table2-toolkit';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-bootstrap-table-next/dist/react-bootstrap-table2.min.css';
+
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogContentText from '@mui/material/DialogContentText';
+import DialogTitle from '@mui/material/DialogTitle';
 
 import { UserContext } from "../../app/user-context";
 import columns from './header';
@@ -72,6 +78,7 @@ export default function HomePage(props) {
   const [user,] = useContext(UserContext);
 
   const [multiSel, setMultiSel]=useState(false);
+  const [confirm, setConfirm] = React.useState('');
 
   const [loadingJobList, setLoadingJobList] = useState(false);
   const [currentJob, setCurrentJob] = useState(null);
@@ -223,7 +230,8 @@ export default function HomePage(props) {
     // eslint-disable-next-line
   }, [downloadingResults]);
 
-  const handleGoJob = useCallback((job_id) => history.push('/job' + (job_id?'/'+job_id:'') ), [history]);
+  const ndleNewJob = useCallback((job_id) => history.push('/job' + (job_id?'/'+job_id:'') ), [history]);
+  
   const handleStopJob = ()=>{
     var lst= tableRef.current.selectionContext.selected;
     if(lst.length<=0) {
@@ -233,12 +241,13 @@ export default function HomePage(props) {
     }
 
     let request = 'api/stop/' + lst.join('_');
-    fetch(request).then(response => {
+    fetch(request,{method: "POST"}).then(response => {
       if (response.ok) {
         setLoadingJobList(true);
       }
     });    
   };
+
   const handleResetJob = ()=>{
     var lst= tableRef.current.selectionContext.selected;
     if(lst.length<=0) {
@@ -248,7 +257,16 @@ export default function HomePage(props) {
     }
 
     let request = 'api/reset/' + lst.join('_');
-    fetch(request).then(response => {
+    fetch(request, {method: "POST"}).then(response => {
+      if (response.ok) {
+        setLoadingJobList(true);
+      }
+    }); 
+  };
+
+  const handleRunJob = (id)=>{
+    let request = 'api/run/' + id;
+    fetch(request, {method: "POST"}).then(response => {
       if (response.ok) {
         setLoadingJobList(true);
       }
@@ -265,7 +283,7 @@ export default function HomePage(props) {
     }
 
     let request = 'api/valid/' + currentJob.job_id;
-    fetch(request).then(response => {
+    fetch(request, {method: "POST"}).then(response => {
       if (response.ok) {
         return response.blob();
       }
@@ -318,6 +336,16 @@ export default function HomePage(props) {
     setMultiSel(event.target.checked);
     localStorage.setItem('job_multi_sel', event.target.checked);
     window.location.reload(false);
+  };
+
+  const handleSubmit = (isOK) => {
+    var it = confirm
+    setConfirm('');
+    if (isOK) {
+      if(it === "reset the selected jobs to initial state" ) handleResetJob()
+      else if(it === "stop the selected jobs" ) handleStopJob()
+      else if(it === "run the selected job"  && currentJob) handleRunJob(currentJob.job_id);
+    }
   };
 
   const get_select_row = ()=>{
@@ -374,24 +402,49 @@ export default function HomePage(props) {
           <Divider orientation="vertical" flexItem />
           <Tooltip title="Stop selected analyses"  >
             <Link className={classes.buttonLink} style={{padding:'10px' }}
-            component="button" onClick={(e) => { handleStopJob(); }} >
+            component="button" onClick={(e) => { setConfirm("stop the selected jobs"); }} >
               Stop
             </Link>
           </Tooltip>
           <Tooltip title="Reset selected analyses to their initial state"  >
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
-              onClick={(e) => { handleResetJob(); }} >
+              onClick={(e) => { setConfirm("reset the selected jobs to initial state"); }} >
               Reset
+            </Link>
+          </Tooltip>
+          <Tooltip title="Run selected analysis"  >
+            <Link className={classes.buttonLink} style={{padding:'10px' }}
+            component="button" onClick={(e) => { setConfirm("run the selected job"); }} >
+              Run
             </Link>
           </Tooltip>
           <Tooltip title="New analysis using settings from selected"  >
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
-              onClick={(e) => { handleGoJob(currentJob?.job_id); }} >
+              onClick={(e) => { ndleNewJob(currentJob?.job_id); }} >
               New
             </Link>
           </Tooltip>
+          <Dialog
+            open={confirm}
+            onClose={() => { setConfirm(''); }}
+            aria-labelledby="alert-dialog-title"
+            aria-describedby="alert-dialog-description"
+          >
+            <DialogTitle id="alert-dialog-title">
+              {"Warning"}
+            </DialogTitle>
+            <DialogContent>
+              <DialogContentText id="alert-dialog-description">
+                Do you really want to {confirm}?
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+              <Button style={{ color: 'black' }} onClick={() => { handleSubmit(true) }} autoFocus>Yes</Button>
+              <Button style={{ color: 'black' }} onClick={() => { handleSubmit(false) }} > Cancel </Button>
+            </DialogActions>
+          </Dialog>
         </div>
         <Grid container className={classes.root} spacing={2}>
           <Grid item md={12} style={{ marginTop: '-40px'}}>
