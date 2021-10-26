@@ -9,4 +9,4 @@ class AppSettings(object):
     PAT_JOB_USR = environ.get('PAT_JOB_USR')
     PAT_JOB_PWD = environ.get('PAT_JOB_PWD')
 
-    PAT_WORKER= environ.get('PAT_WORKER')
+    MAX_WORKERS = int(environ.get('MAX_WORKERS'))

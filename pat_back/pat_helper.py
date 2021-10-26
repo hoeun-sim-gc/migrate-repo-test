@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 from datetime import datetime
 import uuid
 import zipfile
@@ -22,8 +23,7 @@ def split_flag(row):
 class PatHelper:
     """Class to manage PAT jobs"""
 
-    worker_cnt = 0
-
+    workers=[]
     job_conn = f'''DRIVER={{SQL Server}};Server={AppSettings.PAT_JOB_SVR};Database={AppSettings.PAT_JOB_DB};
             User Id={AppSettings.PAT_JOB_USR};Password={AppSettings.PAT_JOB_PWD};
             MultipleActiveResultSets=true;'''
@@ -198,14 +198,17 @@ class PatHelper:
 
     @classmethod
     def process_jobs(cls):
-        job_id = cls.checkout_job()
-
-        while job_id > 0:
-            job = PatJob(job_id)
-            if job.job_id == job_id:
-                job.perform_analysis()
-
+        try:
             job_id = cls.checkout_job()
+
+            while job_id > 0:
+                job = PatJob(job_id)
+                if job.job_id == job_id:
+                    job.perform_analysis()
+
+                job_id = cls.checkout_job()
+        finally:
+            cls.workers.remove(threading.currentThread()) 
 
     @classmethod
     def checkout_job(cls):
@@ -213,7 +216,7 @@ class PatHelper:
         with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
             cur.execute(f"""update pat_job set status = 'wait_to_start_{flag}'
                     where job_id in 
-                    (select top 1 job_id from pat_job where status = 'received' order by update_time)""")
+                    (select top 1 job_id from pat_job where status = 'received' order by update_time, job_id)""")
             cur.commit()
 
             cur.execute(f"""select top 1 job_id from pat_job where status = 'wait_to_start_{flag}'""")

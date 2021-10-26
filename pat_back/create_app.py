@@ -2,9 +2,15 @@ import io
 import zipfile
 import logging
 import json
+
 import threading
+from time import sleep
+from random import random
+
 import pandas as pd
 from flask import Flask, request, send_file
+
+from pat_back.settings import AppSettings
 
 from .pat_helper import PatHelper
 from .sql_helper import SqlHelper
@@ -38,12 +44,13 @@ def create_app(st_folder):
 
     @app.route('/api/wakeup', methods=['POST'])
     def wakeup_worker():
-        #? need to implement lock
-        if PatHelper.worker_cnt < 1: 
-            PatHelper.worker_cnt += 1
-            
-            d = threading.Thread(name='pat-worker', target=PatHelper.process_jobs,daemon=True)
-            d.start()
+        sleep(random() * 5)
+        PatHelper.workers = filter(lambda x: x.is_alive(), PatHelper.workers)
+        if len(PatHelper.workers) < AppSettings.MAX_WORKERS: 
+            d = threading.Thread(name=f'pat-worker', target=PatHelper.process_jobs,daemon=True)
+            PatHelper.workers.append(d)
+            d.start()            
+ 
         return "ok"
             
     @app.route('/api/job', methods=['GET'])

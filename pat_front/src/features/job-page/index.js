@@ -492,10 +492,13 @@ export default function JobPage(props) {
 
   //get current job status 
   let status_percent = {
-    'received': 10,
-    'data_extracted': 40,
-    'net_of_fac': 60,
-    'allocated': 90,
+    'received': 0,
+    'wait_to_start': 2,
+    'started': 5,
+    'extracting_data': 10,
+    'net_of_fac': 40,
+    'allocating': 60,
+    'upload_results':90,
     'finished': 100
   }
   React.useEffect(() => {

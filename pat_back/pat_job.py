@@ -74,9 +74,9 @@ class PatJob:
 
     def perform_analysis(self):
         self.logger.info("Import data...")
+        self.__update_status("extracting_data")
         self.__extract_edm_rdm()
         self.logger.info("Import data...OK")
-        self.__update_status("data_extracted")
 
         if self.__need_correction():
             if 'error_action' in self.para and self.para['error_action'] == 'stop':
@@ -86,22 +86,22 @@ class PatJob:
                 self.logger.warning("Skip erroneous data and continue")
         
         # start calculation
+        self.__update_status("net_of_fac")
         self.logger.info("create the net of FAC layer stack ...")
         df_facnet = self.__net_of_fac()
         if len(df_facnet)<=0:
             self.logger.warning("Nothing to allocate! Finished.")
             self.__update_status("finished")
             return 
-
         self.logger.info(f"create the net of FAC layer stack...OK ({len(df_facnet)})")
-        self.__update_status("net_of_fac")
 
+        self.__update_status("allocating")
         self.logger.info("Allocate premium with PSOLD...")
         df_pat = self.__allocate_with_psold(df_facnet)
         self.logger.info("Allocate premium with PSOLD...OK")
-        self.__update_status("allocated")
 
         # save results
+        self.__update_status("upload_results")
         if df_pat is not None and len(df_pat) > 0:
             self.logger.info("Save results to database...")
             df_pat.fillna(value=0, inplace=True)
