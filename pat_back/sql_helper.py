@@ -1,17 +1,8 @@
-import os
-import json
-import logging
-import threading
-from datetime import datetime
-import zipfile
-
 import numpy as np
 import pandas as pd
-
 import pyodbc
-from bcpandas import SqlCreds, to_sql
 
-from pat_common import AppSettings, PatFlag
+from .settings import AppSettings
 
 class SqlHelper:
     """Class to provide SQL utilities"""

@@ -5,11 +5,9 @@ description = "Premium allocation tool adapted from the previous Excel/R tool"
 authors = ["Chengyou Xiao"]
 license = "Guy Carpenter"
 packages = [
-    {include = "pat_common"},
-    {include = "pat_flask"},
-    {include = "pat_sql"}
+    {include = "pat_back"},
 ]
-include = ["pat_flask/react_build/**/*"]
+include = ["pat_back/react_build/**/*"]
 
 [tool.poetry.dependencies]
 python = ">=3.8.8"

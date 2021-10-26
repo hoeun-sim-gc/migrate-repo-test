@@ -4,7 +4,7 @@ from waitress import serve
 import logging
 from logging.config import fileConfig
 
-from pat_flask import create_app
+from pat_back import create_app
 
 app = create_app('react_build')
 # app.config["DEBUG"] = True

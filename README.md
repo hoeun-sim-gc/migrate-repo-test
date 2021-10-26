@@ -11,11 +11,11 @@ python -m pip install --upgrade pip
 pip install poetry==1.1.2
 poetry install
 
---In subfolder "frontend"
+--In subfolder "pat_front"
 yarn install
 
 # Build and Test
-cd frentend
+cd pat_front
 yarn build
 cd ..
 poetry build --format=whee

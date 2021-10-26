@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "pat_front",
   "version": "0.1.0",
   "private": true,
   "homepage": "/",
@@ -39,7 +39,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "del /Q/F/S ..\\pat_flask\\react_build\\*.* && react-scripts build && xcopy build ..\\pat_flask\\react_build /E/H/C/I",
+    "build": "del /Q/F/S ..\\pat_back\\react_build\\*.* && react-scripts build && xcopy build ..\\pat_back\\react_build /E/H/C/I",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

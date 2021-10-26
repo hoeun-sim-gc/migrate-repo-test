@@ -1,17 +1,13 @@
 import io
 import zipfile
 import logging
-
-import uuid
-import pandas as pd
-
 import json
-from flask import Flask, abort, request, send_file
-from waitress import serve
+import threading
+import pandas as pd
+from flask import Flask, request, send_file
 
-from pat_sql import PatJob
-from pat_common import SqlHelper
-
+from .pat_helper import PatHelper
+from .sql_helper import SqlHelper
 
 def create_app(st_folder):
     app = Flask(__name__,static_url_path="/", static_folder=st_folder)
@@ -33,16 +29,26 @@ def create_app(st_folder):
             js = request.json 
 
         if js:
-            job = PatJob(js,data)
-            if job.job_id and job.job_id > 0:
-                job.process_job_async()
-                return f'Analysis submitted: {job.job_id}'
+            job_id = PatHelper.submit(js,data)
+            if job_id and job_id > 0:
+                wakeup_worker()
+                return f'Analysis submitted: {job_id}'
     
         return "Submission failed!"
+
+    @app.route('/api/wakeup', methods=['POST'])
+    def wakeup_worker():
+        #? need to implement lock
+        if PatHelper.worker_cnt < 1: 
+            PatHelper.worker_cnt += 1
+            
+            d = threading.Thread(name='pat-worker', target=PatHelper.process_jobs,daemon=True)
+            d.start()
+        return "ok"
             
     @app.route('/api/job', methods=['GET'])
     def get_job_list():
-        df = PatJob.get_job_list()
+        df = PatHelper.get_job_list()
         if df is not None and len(df) > 0:
             # return df.to_json()
             lst= df.to_dict('records')
@@ -50,13 +56,13 @@ def create_app(st_folder):
 
     @app.route('/api/job/<int:job_id>', methods=['GET'])
     def summary(job_id):
-        df = PatJob.get_summary(job_id)
+        df = PatHelper.get_summary(job_id)
         if df is not None and len(df) > 0:
             return json.dumps(df.to_dict('records'))
 
     @app.route('/api/valid/<int:job_id>', methods=['GET'])
     def get_validate_data(job_id):
-        df1, df2, df3 = PatJob.get_validation_data(job_id)
+        df1, df2, df3 = PatHelper.get_validation_data(job_id)
         return send_zip_file(f'pat_validation_{job_id}.zip', 
             ('pol_validation.csv', df1),
             ('loc_validation.csv', df2),
@@ -65,13 +71,13 @@ def create_app(st_folder):
 
     @app.route('/api/para/<int:job_id>', methods=['GET'])
     def get_job_para(job_id):
-        ret= PatJob.get_job_para(job_id)
+        ret= PatHelper.get_job_para(job_id)
         if ret:
             return ret
 
     @app.route('/api/status/<int:job_id>', methods=['GET'])
     def get_job_status(job_id):
-        ret= PatJob.get_job_status(job_id)
+        ret= PatHelper.get_job_status(job_id)
         if ret:
             return ret
     
@@ -81,13 +87,13 @@ def create_app(st_folder):
         lst= [a for a in filter(lambda x: x>0, lst)]
 
         if len(lst)>0:
-            df = PatJob.get_results(lst)
+            df = PatHelper.get_results(lst)
             if df is not None:
                 return send_zip_file("pat_results.zip", ('pat_results.csv', df))
 
     @app.route('/api/job/<int:job_id>', methods=['DELETE'])
     def delete(job_id):
-        df= PatJob.delete(job_id)
+        df= PatHelper.delete(job_id)
         if df is not None:
             return df.to_json()
 
@@ -103,8 +109,7 @@ def create_app(st_folder):
         except Exception as e:
             logging.warning(f"Download data file: \n{e}")
 
-    
-    
+       
     
     @app.route('/api/db_list/<sever>', methods=['GET'])
     def get_db_list(sever):

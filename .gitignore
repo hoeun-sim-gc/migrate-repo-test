@@ -64,5 +64,5 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-/pat_flask/react_build/
+/pat_back/react_build/
 logging.cfg

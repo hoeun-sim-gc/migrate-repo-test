@@ -13,7 +13,8 @@ import pandas as pd
 import pyodbc
 from bcpandas import SqlCreds, to_sql
 
-from pat_common import AppSettings, PatFlag
+from .settings import AppSettings
+from .pat_flag import PatFlag
 
 def split_flag(row):
     if row is None or len(row)<=0: 
@@ -23,7 +24,7 @@ def split_flag(row):
     return desc.split(',') if desc else []
 
 class PatJob:
-    """Class to repreet a PAT analysis"""
+    """Class to represent a PAT analysis"""
 
     peril_table = {1: "eqdet", 2: "hudet", 3: "todet",
                    4: "fldet", 5: "frdet", 6: "trdet"}
@@ -31,20 +32,20 @@ class PatJob:
             User Id={AppSettings.PAT_JOB_USR};Password={AppSettings.PAT_JOB_PWD};
             MultipleActiveResultSets=true;'''
 
-    def __init__(self, job_para, data=None):
-        self.job_id =0 
-        if not job_para or 'job_guid' not in job_para:
-            return 
-
-        self.para = job_para
-        self.job_guid = self.para['job_guid']
-        
-        self.logger = logging.getLogger(self.job_guid)
-        self.logger.info(f"""Start to process job:\n{json.dumps(self.para, sort_keys=True, indent=4)}""")
+    def __init__(self, job_id):
+        self.job_id = 0
+        with pyodbc.connect(self.job_conn) as conn:
+            df = pd.read_sql(f"select parameters from pat_job where job_id = {job_id} and status='wait_to_start'",conn)
+            if len(df) == 1:
+                self.job_id = job_id
+                self.para = json.loads(df.parameters[0])
+                
+        self.logger = logging.getLogger(f"{self.job_id}")
+        self.__update_status("started")
+        self.logger.info(f"""Start to process job:{self.job_id}""")
     
-        self.job_name = self.para['job_name']
-        self.user_name = self.para['user_name'] if 'user_name' in job_para else None
-        self.user_email = self.para['user_email'] if 'user_email' in job_para else None
+        self.user_name = self.para['user_name'] if 'user_name' in self.para else None
+        self.user_email = self.para['user_email'] if 'user_email' in self.para else None
         
         self.iCovg = 2 if self.para['coverage'] == "Building + Contents + Time Element" else 1
         self.iSubGrp = {
@@ -64,52 +65,6 @@ class PatJob:
         self.gdReinsuranceLimit = 1000000 # global reinsurance limit
         self.gdReinsuranceRetention = 1000000 # global reinsurance retention
 
-        #
-        self.job_id = self.__register_job()
-        if self.job_id > 0:
-            self.logger = logging.getLogger(f"{self.job_id}")
-            self.logger.info(f"Job registed in DB")
-
-            if data:
-                self.logger.info("Save data correction...")
-                n = self.__save_data_correction(data)
-                self.logger.info(f"Save data correction...OK ({n})")
-
-    def __register_job(self):
-        with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
-            dt = datetime.utcnow().isoformat()
-            n = cur.execute(f"""if not exists(select 1 from pat_job where job_guid = '{self.job_guid}')
-                                begin 
-                                insert into pat_job values (next value for pat_analysis_id_seq, '{self.job_guid}', '{self.job_name}',
-                                    '{dt}', '{dt}', 'received',
-                                    '{self.user_name}','{self.user_email}',
-                                    '{json.dumps(self.para).replace("'", "''")}')
-                                end""").rowcount
-            cur.commit()
-            
-            if n==1:
-                df = pd.read_sql_query(f"""select job_id from pat_job where job_guid = '{self.job_guid}'""", conn)
-                if len(df)>0:
-                    return df.job_id[0]
-        return 0
-
-    def __save_data_correction(self, data):
-        creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
-        with pyodbc.connect(self.job_conn) as conn, zipfile.ZipFile(data,'r') as zf:
-            for d,t in [('pol_validation.csv', 'pat_policy'),
-                    ('loc_validation.csv', 'pat_location'),
-                    ('fac_validation.csv', 'pat_facultative')]:
-                
-                if d in zf.namelist():
-                    df =  pd.read_csv(zf.open(d))
-                    if len(df) > 0:
-                        df['job_id'] = self.job_id
-                        df['flag'] = PatFlag.FlagCorrected
-                        df = df.drop(columns=['Notes'])
-
-                        to_sql(df,t, creds, index=False, if_exists='append')
-                        return len(df)
-
     def __update_status(self, st):
         with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
             cur.execute(f"""update pat_job set status = '{st.replace("'","''")}', 
@@ -117,118 +72,6 @@ class PatJob:
                 where job_id = {self.job_id}""").rowcount
             cur.commit()
 
-    @classmethod
-    def get_job_list(cls):
-        with pyodbc.connect(cls.job_conn) as conn:
-            df = pd.read_sql_query(f"""select job_id job_id, job_guid, job_name, 
-                    receive_time, update_time, status, user_name, user_email
-                from pat_job 
-                order by update_time desc, job_id desc""", conn)
-
-            return df
-
-    @classmethod
-    def get_job_para(cls, job_id):
-        with pyodbc.connect(cls.job_conn) as conn:
-            df = pd.read_sql_query(f"""select parameters from pat_job where job_id = {job_id}""", conn)
-            if df is not None and len(df) > 0:
-                return df.parameters[0]
-
-    @classmethod
-    def get_job_status(cls, job_id):
-        with pyodbc.connect(cls.job_conn) as conn:
-            df = pd.read_sql_query(f"""select status from pat_job where job_id = {job_id}""", conn)
-            if df is not None and len(df) > 0:
-                return df.status[0]
-
-    @classmethod
-    def get_summary(cls, job_id):
-        summary = pd.DataFrame(columns=['item', 'cnt'])
-        summary1 = pd.DataFrame(columns=['item', 'cnt'])
-        with pyodbc.connect(cls.job_conn) as conn:
-            for t in ['Policy', 'Location', 'Facultative']:
-                df = pd.read_sql_query(f"""select flag, count(*) as cnt 
-                                from pat_{t} where job_id = {job_id} group by flag""", conn)
-                summary.loc[summary.shape[0]]=[f'{t} Records Processed', df.cnt.sum()]
-                
-                df["Notes"] = df.apply(split_flag, axis=1)
-                df = df.explode("Notes").groupby('Notes').agg({'cnt': 'sum'}).reset_index()
-                df=df[df.Notes != ''].rename(columns={'Notes':'item'})
-                if len(df) > 0:
-                    summary1= pd.concat((summary1,df), ignore_index = True, axis = 0)
-        
-        return pd.concat((summary,summary1), ignore_index = True, axis = 0)
-
-    @classmethod
-    def get_results(cls, job_lst):
-        with pyodbc.connect(cls.job_conn) as conn:
-            df = pd.read_sql_query(f"""select Limit, Retention, Premium, Participation, AOI, LocationIDStack, 
-                                            RatingGroup, OriginalPolicyID, ACCGRPID, PseudoPolicyID, PseudoLayerID, PolLAS, DedLAS
-                                       from pat_premium where job_id in ({','.join([f'{a}' for a in job_lst])})
-                                       order by job_id, LocationIDStack, OriginalPolicyID, ACCGRPID""", conn)
-
-            df.rename(columns={
-                'Premium':'Allocated_Premium',
-                'RatingGroup':'Rating_Group',
-                'OriginalPolicyID':'Original_Policy_ID',
-                'PseudoLayerID': 'Pseudo_Layer_ID',
-                'PolLAS':'PolicyLAS',
-                'DedLAS':'DeductibleLAS',
-                'LocationIDStack':'Original_Location_ID'
-                }, inplace=True)
-
-            return df
-
-    @classmethod
-    def delete(cls, *job_lst):
-        if len(job_lst) >0 :  
-            lst= [f"{a}" for a in job_lst]
-            with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-                for t in ['pat_job','pat_policy','pat_location', 'pat_facultative', 'pat_premium']:
-                    cur.execute(f"""delete from [{t}] where job_id in ({','.join(lst)})""")
-                
-                cur.commit()
-        
-        return cls.get_job_list()
-   
-    @classmethod
-    def get_validation_data(self, job_id):
-        with pyodbc.connect(self.job_conn) as conn:
-            df1 = pd.read_sql_query(f"""select * from pat_policy where job_id = {job_id} 
-                    and (flag & {PatFlag.FlagActive}) !=0 and (flag & 0xFFFFFFF) != 0
-                order by PseudoPolicyID""",conn)
-            if len(df1) > 0:
-                df = df1[['flag']].drop_duplicates(ignore_index=True)
-                df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df1 = df1.merge(df, on ='flag').drop(columns=['job_id'])
-            
-            df2 = pd.read_sql_query(f"""
-                select * from pat_location where job_id = {job_id} 
-                    and (flag & {PatFlag.FlagActive}) !=0 and (flag & 0xFFFFFFF) != 0
-                order by PseudoPolicyID""",conn)
-            if len(df2) > 0:
-                df = df2[['flag']].drop_duplicates(ignore_index=True)
-                df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df2 = df2.merge(df, on ='flag').drop(columns=['job_id'])
-
-            df3 = pd.read_sql_query(f"""
-                select * from pat_facultative where job_id = {job_id} 
-                    and (flag & {PatFlag.FlagActive}) !=0 and (flag & 0xFFFFFFF) != 0
-                order by PseudoPolicyID""",conn)
-            if len(df3) > 0:
-                df = df3[['flag']].drop_duplicates(ignore_index=True)
-                df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df3 = df3.merge(df, on ='flag').drop(columns=['job_id'])
-
-        return (df1, df2, df3)
-
-    # deamon  
-    def process_job_async(self):
-        d = threading.Thread(name='pat-daemon', target=self.perform_analysis,daemon=True)
-        d.start()
-
-        return True
-    
     def perform_analysis(self):
         self.logger.info("Import data...")
         self.__extract_edm_rdm()
