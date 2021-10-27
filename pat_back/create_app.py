@@ -111,6 +111,8 @@ def create_app(st_folder):
 
     @app.route('/api/run/<int:job_id>', methods=['POST'])
     def run_job(job_id):
+        PatWorker.stop_jobs([job_id])
+        PatHelper.reset_jobs([job_id])
         PatWorker.start_worker(job_id)     
         return "ok"
 

@@ -127,11 +127,10 @@ export default function JobPage(props) {
     trend_factor: 1.035,
     additional_coverage: 2.0,
     deductible_treatment: 'Retains Limit',
-    data_correction: false,
-    
-    error_action: 'Continue',
-    valid_rules: -1,
-    defReg: 0, 
+    data_correction: '',
+
+    valid_rules: 0,
+    default_region: 0,
 
     job_name: 'Test_PAT',
     user_name: user?.name,
@@ -161,6 +160,10 @@ export default function JobPage(props) {
 
   const [currentJob, setCurrentJob] = useState({ job_id: job_id, status: '', finished: 0 })
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
+  
+  const [refJob, setRefJob] = useState(0)
+  const [useRefJob, setUseRefJob] = useState(false)
+  
 
   React.useEffect(() => {
     setLoadingServerList(true);
@@ -199,10 +202,15 @@ export default function JobPage(props) {
         throw new TypeError("Oops, we haven't got data!");
       })
         .then(data => {
-          delete data.job_id;
           delete data.job_guid;
           delete data.data_correction;
+          delete data.ref_analysis;
+          data['user_name'] = user?.name;
+          data['user_email'] = user?.email;
+          
           setJobParameter(data);
+          setRefJob(job_id);
+          setUseRefJob(true);
 
           if ('server' in data) svr = data['server'];
           else svr = localStorage.getItem('currentServer');
@@ -412,20 +420,20 @@ export default function JobPage(props) {
       setUploadingJob(false);
       return;
     }
-  
+
     //if batch submit, ignore the data correction file   
     if (batchFile) {
-      var fr=new FileReader();
-      fr.onload=function(){
-        var lns= fr.result.split(/\r?\n/g);
+      var fr = new FileReader();
+      fr.onload = function () {
+        var lns = fr.result.split(/\r?\n/g);
         var head = lns[0].split(',');
         var n = head.length;
         lns.slice(1).forEach(ln => {
           var col = ln.split(',');
-          if (col.length === n){
+          if (col.length === n) {
             var js = jobParameter;
-            for(var i =0;i<n;i++){
-              if (typeof(js[head[i]]) === 'number') js[head[i]] = Number(col[i]);
+            for (var i = 0; i < n; i++) {
+              if (typeof (js[head[i]]) === 'number') js[head[i]] = Number(col[i]);
               else js[head[i]] = col[i];
             }
 
@@ -434,14 +442,13 @@ export default function JobPage(props) {
             form_data.append('para', JSON.stringify(js));
 
             post_job(form_data)
-          }        
+          }
         });
       }
       fr.readAsText(batchFile);
 
     }
-    else 
-    {
+    else {
       let form_data = new FormData();
       let js = jobParameter;
       js['job_guid'] = uuidv4();
@@ -456,8 +463,7 @@ export default function JobPage(props) {
   }, [uploadingJob]);
 
 
-  const post_job = (form_data) =>
-  {
+  const post_job = (form_data) => {
     let request = 'api/job'
     fetch(request, {
       method: "POST",
@@ -494,14 +500,15 @@ export default function JobPage(props) {
   let status_percent = {
     'received': 0,
     'error': 0,
-    'cancelled':0,
+    'cancelled': 0,
     'stoppped': 0,
     'wait_to_start': 0,
     'started': 5,
     'extracting_data': 10,
+    'checking_data': 30,
     'net_of_fac': 40,
     'allocating': 60,
-    'upload_results':90,
+    'upload_results': 90,
     'finished': 100
   }
   React.useEffect(() => {
@@ -679,7 +686,7 @@ export default function JobPage(props) {
       <div class="job_right_col">
         <div>
           <Accordion expanded={inpExpanded}
-            onChange={(event, isExpanded) => {setInpExpanded(isExpanded);}}
+            onChange={(event, isExpanded) => { setInpExpanded(isExpanded); }}
             style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
@@ -861,7 +868,18 @@ export default function JobPage(props) {
                   </Select>
                 </FormControl>
               </div>
-
+              <div>
+                <FormControl className={classes.formControl}>
+                  <FormControlLabel control={
+                    <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
+                      checked={useRefJob}
+                      onChange={event => {
+                        setUseRefJob(event.target.checked)
+                      }}
+                    />} label={"Use raw data from the reference analysis " + refJob}
+                  />
+                </FormControl>
+              </div>
             </AccordionDetails>
           </Accordion>
 
@@ -983,7 +1001,7 @@ export default function JobPage(props) {
               <div>
                 <FormControl className={classes.formControl}>
                   <LocalizationProvider dateAdapter={AdapterDateFns}>
-                    <DatePicker 
+                    <DatePicker
                       label="Average Accident Date"
                       value={jobParameter.average_accident_date}
                       format="MM/DD/YYYY"
@@ -1070,27 +1088,6 @@ export default function JobPage(props) {
               <Typography>Data Validation</Typography>
             </AccordionSummary>
             <AccordionDetails>
-            < FormControl className={classes.formControl}>
-                <InputLabel shrink id="error-placeholder-label">
-                  Action On Error
-                </InputLabel>
-                <Select
-                  labelId="error-placeholder-label"
-                  id="error-placeholder"
-                  value={jobParameter.error_action}
-                  defaultValue={'Continue'}
-                  onChange={event => {
-                    if (jobParameter.error_action !== event.target.value) {
-                      setJobParameter({ ...jobParameter, error_action: event.target.value });
-                    }
-                  }}
-                >
-                  {['Continue', 'Stop']
-                    .map((n) => {
-                      return <MenuItem value={n}>{ }{n}</MenuItem>
-                    })}
-                </Select>
-              </FormControl>
               <FormControl className={classes.formControl}>
                 <Box
                   component="form"
@@ -1116,7 +1113,7 @@ export default function JobPage(props) {
                         onChange={(e) => {
                           if (e.target.files && e.target.files.length > 0) {
                             setJobFile(e.target.files[0]);
-                            setJobParameter({ ...jobParameter, data_correction: true })
+                            setJobParameter({ ...jobParameter, data_correction: e.target.files[0].name })
                           }
                         }}
                       />
@@ -1124,7 +1121,7 @@ export default function JobPage(props) {
                   </div>
                   <div class="col-md-4 align-left vertical-align-top">
                     <Button variant="raised" component="span" className={classes.button}
-                      onClick={(e) => { setJobFile(''); setJobParameter({ ...jobParameter, data_correction: false }) }}>
+                      onClick={(e) => { setJobFile(''); setJobParameter({ ...jobParameter, data_correction: '' }) }}>
                       Remove
                     </Button>
                   </div>
@@ -1139,31 +1136,40 @@ export default function JobPage(props) {
                   noValidate
                   autoComplete="off"
                 >
-                  <TextField id="alae-basic" label="Default Rating Region" variant="standard" 
-                    value={jobParameter.defReg && jobParameter.defReg>0 ? jobParameter.defReg : "None"}
+                  <TextField id="alae-basic" label="Default Rating Region" variant="standard"
+                    value={jobParameter.default_region && jobParameter.default_region > 0 ? jobParameter.default_region : "None"}
                     onChange={event => {
-                      if (jobParameter.defReg !== event.target.value) {
-                        setJobParameter({ ...jobParameter, defReg: event.target.value });
+                      if (jobParameter.default_region !== event.target.value) {
+                        var reg = 0
+                        try{
+                          reg = parseInt(event.target.value)
+                        }
+                        catch{
+                          reg = 0
+                        }
+                        setJobParameter({ ...jobParameter, default_region: reg });
                       }
                     }}
                   />
                 </Box>
               </FormControl>
               <div>
-                <ul style={{ listStyleType: "none" }}> 
-                {
+                <ul style={{ listStyleType: "none" }}>
+                  {
                     Object.entries(ValidRules).map((n) => {
                       return <li><FormControlLabel control={
                         <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
                           checked={jobParameter.valid_rules & n[1].value}
                           onChange={event => {
-                            var f= n[1].value;
+                            var f = n[1].value;
                             if ((jobParameter.valid_rules & f !== 0) !== event.target.checked) {
-                              setJobParameter({ ...jobParameter, valid_rules: 
-                                  event.target.checked? jobParameter.valid_rules | f:
-                                                      jobParameter.valid_rules & (~f) });
+                              setJobParameter({
+                                ...jobParameter, valid_rules:
+                                  event.target.checked ? jobParameter.valid_rules | f :
+                                    jobParameter.valid_rules & (~f)
+                              });
                             }
-                          }} 
+                          }}
                         />} label={n[1].descr}
                       /></li>
                     })}

@@ -230,7 +230,7 @@ export default function HomePage(props) {
     // eslint-disable-next-line
   }, [downloadingResults]);
 
-  const ndleNewJob = useCallback((job_id) => history.push('/job' + (job_id?'/'+job_id:'') ), [history]);
+  const handleNewJob = useCallback((job_id) => history.push('/job' + (job_id?'/'+job_id:'') ), [history]);
   
   const handleStopJob = ()=>{
     var lst= tableRef.current.selectionContext.selected;
@@ -283,7 +283,7 @@ export default function HomePage(props) {
     }
 
     let request = 'api/valid/' + currentJob.job_id;
-    fetch(request, {method: "POST"}).then(response => {
+    fetch(request).then(response => {
       if (response.ok) {
         return response.blob();
       }
@@ -378,25 +378,18 @@ export default function HomePage(props) {
         }
         
         <div class='row'>
-          <Tooltip title="Download Results">
-            <Link className={classes.buttonLink} style={{padding:'10px 10px 10px 15px' }}
-            component="button"
-              onClick={(e) => { setDownloadingResults(true); }} >
-              Results
-            </Link>
-          </Tooltip>
-          <Tooltip title="Dowload Validation Data">
-            <Link className={classes.buttonLink} style={{padding:'10px' }}
-              component="button"
-              onClick={(e) => { setDownloadingDatafile(true); }} >
-              Validation
-            </Link>
-          </Tooltip>
-          <Tooltip title="Populate allocated premium back to EDM">
+          <Tooltip title="Refresh job list"  >
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
-              onClick={(e) => { alert("This option hasn't been implemented yet!"); }} >
-              EDM
+              onClick={(e) => { setLoadingJobList(true); }} >
+              Refresh
+            </Link>
+          </Tooltip>
+          <Tooltip title="New analysis using settings from selected"  >
+            <Link className={classes.buttonLink} style={{padding:'10px' }}
+            component="button"
+              onClick={(e) => { handleNewJob(currentJob?.job_id); }} >
+              New
             </Link>
           </Tooltip>
           <Divider orientation="vertical" flexItem />
@@ -419,11 +412,26 @@ export default function HomePage(props) {
               Run
             </Link>
           </Tooltip>
-          <Tooltip title="New analysis using settings from selected"  >
+          <Divider orientation="vertical" flexItem />
+          <Tooltip title="Download Results">
+            <Link className={classes.buttonLink} style={{padding:'10px 10px 10px 15px' }}
+            component="button"
+              onClick={(e) => { setDownloadingResults(true); }} >
+              Results
+            </Link>
+          </Tooltip>
+          <Tooltip title="Dowload Validation Data">
+            <Link className={classes.buttonLink} style={{padding:'10px' }}
+              component="button"
+              onClick={(e) => { setDownloadingDatafile(true); }} >
+              Validation
+            </Link>
+          </Tooltip>
+          <Tooltip title="Populate allocated premium back to EDM">
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
-              onClick={(e) => { ndleNewJob(currentJob?.job_id); }} >
-              New
+              onClick={(e) => { alert("This option hasn't been implemented yet!"); }} >
+              EDM
             </Link>
           </Tooltip>
           <Dialog

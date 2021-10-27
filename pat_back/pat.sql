@@ -63,10 +63,12 @@ create table pat_job(
     receive_time varchar(30),
     update_time varchar(30),
     status varchar(100),
+    data_extracted int,
     user_name varchar(100),
     user_email varchar(100),
     parameters varchar(max)
 );
+create index idx_pat_job on pat_job (job_id asc);
 
 create table pat_flag(
     flag_code integer primary key,
@@ -76,6 +78,7 @@ create table pat_flag(
 
 create table pat_policy(
     job_id int not null,
+    data_type int, --0:used, 1: raw, 2: corrected 
     OriginalPolicyID int,
     ACCGRPID int,
     PseudoPolicyID varchar(50),
@@ -86,10 +89,11 @@ create table pat_policy(
     PolPremium float,
     flag int
 );
-create clustered index idx_pat_policy on pat_policy (job_id asc);
+create index idx_pat_policy on pat_policy (job_id asc);
 
 create table pat_location(
     job_id int not null,
+    data_type int, --0:used, 1: raw, 2: corrected 
     PseudoPolicyID varchar(50),
     LocationIDStack varchar(20),
     occupancy_scheme varchar(20), 
@@ -98,10 +102,11 @@ create table pat_location(
     RatingGroup int,
     flag int
 );
-create clustered index idx_pat_location on pat_location (job_id asc);
+create index idx_pat_location on pat_location (job_id asc);
 
 create table pat_facultative(
     job_id int not null,
+    data_type int, --0:used, 1: raw, 2: corrected 
     PseudoPolicyID varchar(50),
     FacLimit float,
     FacAttachment float,
@@ -109,7 +114,7 @@ create table pat_facultative(
     FacKey int,
     flag int
 );
-create clustered index idx_pat_facultative on pat_facultative (job_id asc);
+create index idx_pat_facultative on pat_facultative (job_id asc);
 
 create table pat_premium(
     job_id int,
@@ -127,4 +132,4 @@ create table pat_premium(
     PolLAS float,
     DedLAS float
 );
-create clustered index idx_pat_premium on pat_premium (job_id asc);
+create index idx_pat_premium on pat_premium (job_id asc);

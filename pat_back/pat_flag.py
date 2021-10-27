@@ -4,19 +4,16 @@ from enum import IntFlag
 
 flag_descrs = {
         'FlagPolDupe' : "Duplicate policy records" ,
-        'FlagPolNoLoc' : "Orphan Policy Record" ,
-        'FlagPolNA' : "NonNumeric field in policies" ,
-        'FlagPolNeg' : "Negative field in policies" ,
+        'FlagPolOrphan' : "Orphan Policy Record" ,
+        'FlagPolNA' : "NonNumeric or negative field in policies" ,
         'FlagPolLimitParticipation' : "Algebraic inconsistency in policy profile (limit/participation)" ,
         'FlagPolParticipation' : "Participation exceeds 100%" ,
         'FlagFacOrphan' : "Orphan Facultative Record" ,
-        'FlagFacNA' : "NonNumeric field in fac table" ,
-        'FlagFacNeg' : "Negative field in fac table" ,
+        'FlagFacNA' : "NonNumeric or negative field in fac table" ,
         'FlagLocDupe' : "Duplicate location records" ,
         'FlagLocOrphan' : "Orphan Location Record" ,
-        'FlagLocIDDupe' : "AOI differences on location ID stack value" ,
-        'FlagLocNA' : "NonNumeric field in location table" ,
-        'FlagLocNeg' : "Negative field in location table" ,
+        'FlagLocIDDupe' : "AOI differences on location ID stack value",
+        'FlagLocNA' : "NonNumeric or negative field in location table",
         'FlagLocRG' : "Rating Group is not in the range",
         
         'FlagFacOverexposed' : "Fac attachment/exposure exceeds policy exposure",
@@ -26,27 +23,20 @@ flag_descrs = {
 
 class PatFlag(IntFlag):
     FlagPolDupe = 0x00000001
-    FlagPolNoLoc = 0x00000002
+    FlagPolOrphan = 0x00000002
     FlagPolNA = 0x00000004
-    FlagPolNeg = 0x00000008
-    FlagPolLimitParticipation = 0x00000010
-    FlagPolParticipation = 0x00000020
-    FlagFacOrphan = 0x00000040
-    FlagFacNA = 0x00000080
-    FlagFacNeg = 0x00000100
-    FlagLocDupe = 0x00000200
-    FlagLocOrphan = 0x00000400
-    FlagLocIDDupe = 0x00000800
-    FlagLocNA = 0x00001000
-    FlagLocNeg = 0x00002000
-    FlagLocRG = 0x00004000
+    FlagPolLimitParticipation = 0x00000008
+    FlagPolParticipation = 0x00000010
+    FlagFacOrphan = 0x00000020
+    FlagFacNA = 0x00000040
+    FlagLocDupe = 0x00000080
+    FlagLocOrphan = 0x00000100
+    FlagLocIDDupe = 0x00000200
+    FlagLocNA = 0x00000400
+    FlagLocRG = 0x00000800
 
-    FlagFacOverexposed = 0x00008000
-    FlagCeded100 =  0x00010000
-
-    # not error status 
-    FlagCorrected =  0x10000000
-    FlagActive =  0x20000000
+    FlagFacOverexposed = 0x00001000
+    FlagCeded100 =  0x00002000
 
     @classmethod
     def describe(cls, code):
@@ -64,4 +54,6 @@ class PatFlag(IntFlag):
 
 class ValidRule(IntFlag):
     ValidAoi = 0x00000001   # If multiple AOIs, use the highest
-    ValidFac = 0x00000002   # Cap FAC to 100%
+    ValidFac100 = 0x00000002   # Cap FAC to 100%
+
+    ValidContinue = 0x40000000   # Continue with unhandled error (item removed)

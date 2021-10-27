@@ -12,7 +12,7 @@ import pyodbc
 from bcpandas import SqlCreds, to_sql
 
 from .settings import AppSettings
-from .pat_flag import PatFlag
+from .pat_flag import PatFlag,ValidRule
 
 def split_flag(row):
     if row is None or len(row)<=0: 
@@ -32,16 +32,24 @@ class PatJob:
 
     def __init__(self, job_id):
         self.job_id = 0
+        self.data_extracted = False
+        self.valid_rules = ValidRule(-1)
+        self.default_region = 0
         with pyodbc.connect(self.job_conn) as conn:
-            df = pd.read_sql(f"select parameters from pat_job where job_id = {job_id} and status='wait_to_start'",conn)
+            df = pd.read_sql(f"select data_extracted, parameters from pat_job where job_id = {job_id} and status='wait_to_start'",conn)
             if len(df) == 1:
                 self.job_id = job_id
                 self.para = json.loads(df.parameters[0])
+                self.data_extracted = df.data_extracted[0] != 0
                 
         self.logger = logging.getLogger(f"{self.job_id}")
         self.__update_status("started")
         self.logger.info(f"""Start to process job:{self.job_id}""")
-    
+
+        if 'valid_rules' in self.para:
+            self.valid_rules = ValidRule(self.para['valid_rules'])
+        if 'default_region' in self.para:
+            self.default_region = self.para['default_region']
         self.user_name = self.para['user_name'] if 'user_name' in self.para else None
         self.user_email = self.para['user_email'] if 'user_email' in self.para else None
         
@@ -72,20 +80,38 @@ class PatJob:
 
     def perform_analysis(self, stop_cb=None):
         self.logger.info("Import data...")
-        self.__update_status("extracting_data")
-        self.__extract_edm_rdm()
-        self.logger.info("Import data...OK")
+
+        if not self.data_extracted:
+            self.__update_status("extracting_data")
+            self.__extract_edm_rdm()
+            self.data_extracted = True
+            with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
+                cur.execute(f"""update pat_job set data_extracted = 1, 
+                    update_time = '{datetime.utcnow().isoformat()}'
+                    where job_id = {self.job_id}""")
+                cur.commit()
+            self.logger.info("Import data...OK")
+        if stop_cb and stop_cb():
+            self.logger.warning("User stopped the analysis")
+            self.__update_status('stopped')
+            return
+
+        self.__update_status('checking_data')
+        self.logger.debug("Check and create valid PAT data...")
+        self.__create_pat_data()
+        self.logger.debug("Check and create valid PAT data...OK")
         if stop_cb and stop_cb():
             self.logger.warning("User stopped the analysis")
             self.__update_status('stopped')
             return
 
         if self.__need_correction():
-            if 'error_action' in self.para and self.para['error_action'] == 'stop':
+            if (self.valid_rules & ValidRule.ValidContinue) ==0:
                 self.logger.error("Need to correct data then run again")
+                self.__update_status("stopped")
                 return
             else:
-                self.logger.warning("Skip erroneous data and continue")
+                self.logger.warning("Skip erroneous data and continue (item removed)")
         if stop_cb and stop_cb():
             self.logger.warning("User stopped the analysis")
             self.__update_status('stopped')
@@ -93,13 +119,13 @@ class PatJob:
         
         # start calculation
         self.__update_status("net_of_fac")
-        self.logger.info("create the net of FAC layer stack ...")
+        self.logger.info("Create the net of FAC layer stack ...")
         df_facnet = self.__net_of_fac()
         if len(df_facnet)<=0:
             self.logger.warning("Nothing to allocate! Finished.")
             self.__update_status("finished")
             return 
-        self.logger.info(f"create the net of FAC layer stack...OK ({len(df_facnet)})")
+        self.logger.info(f"Create the net of FAC layer stack...OK ({len(df_facnet)})")
         if stop_cb and stop_cb():
             self.logger.warning("User stopped the analysis")
             self.__update_status('stopped')
@@ -151,16 +177,12 @@ class PatJob:
             self.logger.debug(f"Extract location table...OK ({n})")
             
             self.logger.debug("Extract fac table...")
-            n = self.__extract_fac(conn, suffix)
+            n = self.__extract_facultative(conn, suffix)
             self.logger.debug(f"Extract fac table...OK ({n})")
 
             with conn.cursor() as cur:            
                 cur.execute(f"drop table #sqlpremalloc_{suffix}")
                 cur.commit()
-
-        self.logger.debug("Some extra data checking...")
-        self.__extra_data_check()
-        self.logger.debug("Some extra data checking...OK")
 
     def __verify_edm_rdm(self, conn):
         # Check that PerilID is valid
@@ -411,46 +433,14 @@ class PatJob:
                     policy.blanpreamt as PolPremium
                 from #sqlpremalloc_{suffix} as locpol 
                     inner join policy on locpol.policyid = policy.policyid""", conn)
-        if len(df_pol)<=0:
-            return 0
-
-        # Correction
-        with pyodbc.connect(self.job_conn) as j_conn:
-            df_corr = pd.read_sql_query(f"""select * from pat_policy 
-                where job_id = {self.job_id} and (flag & {PatFlag.FlagCorrected}) !=0""", j_conn)
-            if len(df_corr) >0:
-                df_pol.set_index('PseudoPolicyID', inplace=True)
-                df_pol.update(df_corr.set_index('PseudoPolicyID'))
-                df_pol.reset_index(inplace = True, drop=False)
-
-        df_pol['flag'] = PatFlag.FlagActive
-        # Policies with inconsistant limit/participation alegebra
-        mask = np.abs(np.round(df_pol.PolRetainedLimit - df_pol.PolLimit * df_pol.PolParticipation, 1)) > 2
-        PatFlag.FlagPolLimitParticipation.set_flag(df_pol, mask)
-        mask = ~mask
-        df_pol.loc[mask,['PolParticipation']] = df_pol.PolRetainedLimit[mask] / df_pol.PolLimit[mask] 
-
-        # Duplicate Policies 
-        mask = df_pol.PseudoPolicyID.duplicated(keep=False)
-        PatFlag.FlagPolDupe.set_flag(df_pol, mask)
-
-        # Policies with nonNumeric Fields
-        mask = np.sum(np.isnan(df_pol[["PolLimit", "PolRetention", "PolRetainedLimit", "PolParticipation", "PolPremium"]]), axis=1) > 0
-        PatFlag.FlagPolNA.set_flag(df_pol, mask)
-
-        # Policies with negative fields
-        mask = np.sum(df_pol[["PolLimit", "PolRetention", "PolRetainedLimit",
-                      "PolParticipation", "PolPremium"]] < 0, axis=1) > 0
-        PatFlag.FlagPolNeg.set_flag(df_pol, mask)
-        
-        # Policies with excess participation
-        mask = np.round(df_pol.PolParticipation, 2) > 1
-        PatFlag.FlagPolParticipation.set_flag(df_pol, mask)
 
         # Save to DB 
-        df_pol['job_id'] = self.job_id
-        creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
-        to_sql(df_pol, "pat_policy", creds, index=False, if_exists='append')
+        if len(df_pol) > 0:
+            df_pol['job_id'] = self.job_id
+            df_pol['data_type'] = int(1)
+            df_pol['flag'] = int(0)
+            creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
+            to_sql(df_pol, "pat_policy", creds, index=False, if_exists='append')
 
         return len(df_pol)
 
@@ -463,65 +453,18 @@ class PatJob:
                     loc.occscheme as occupancy_scheme, loc.occtype as occupancy_code 
                 from #sqlpremalloc_{suffix} as locpol 
                     inner join loc on locpol.locid = loc.locid""", conn)
-        if len(df_loc)<=0:
-            return 0
-
-        # Correction an psold mapping
-        min_psold_rg = 0
-        max_psold_rg = 0
-        with pyodbc.connect(self.job_conn) as j_conn:
-            df_map = pd.read_sql_query(f"""select occscheme as occupancy_scheme, 
-                        occtype occupancy_code, 
-                        psold_rg as RatingGroup
-                        from psold_mapping """, j_conn)
-            min_psold_rg = df_map.RatingGroup.min()
-            max_psold_rg = df_map.RatingGroup.max()
-            df_loc = df_loc.astype({'occupancy_scheme': 'str', 'occupancy_code': 'str'})
-            df_loc = df_loc.merge(df_map, how='left', on=['occupancy_scheme', 'occupancy_code'])
-            df_loc[['RatingGroup']] = df_loc[['RatingGroup']].fillna(value=0)
-
-            df_corr = pd.read_sql_query(f"""select * from pat_location 
-                where job_id = {self.job_id} and (flag & {PatFlag.FlagCorrected}) !=0""", j_conn)
-            if len(df_corr) >0:
-                df_loc.set_index('PseudoPolicyID', inplace=True)
-                df_loc.update(df_corr.set_index('PseudoPolicyID'))
-                df_loc.reset_index(inplace = True, drop=False)
-
-        df_loc['flag'] = PatFlag.FlagActive
-        # Location record duplications
-        mask = df_loc.PseudoPolicyID.duplicated(keep=False)
-        PatFlag.FlagLocDupe.set_flag(df_loc, mask)
-
-        # duplicate LocationIDStack
-        df = pd.concat([df_loc["LocationIDStack"], np.round(df_loc['AOI'], 1)], axis=1)
-        df = df.dropna(subset=['LocationIDStack']).drop_duplicates(ignore_index=True)
-        df = df.groupby('LocationIDStack').size().reset_index(name='LocIDCount')
-        df = df[df.LocIDCount > 1].reset_index(drop=True)
-        if len(df) > 0:
-            df = df_loc[["LocationIDStack"]].merge(df, on = 'LocationIDStack', how="left")
-            mask = df['LocIDCount'].notna()
-            PatFlag.FlagLocIDDupe.set_flag(df_loc, mask)
-
-        # Location record non numeric entry
-        mask = np.sum(np.isnan(df_loc[["AOI", "RatingGroup"]]), axis=1) > 0
-        PatFlag.FlagLocNA.set_flag(df_loc, mask)
-
-        # Location record negative field
-        mask = np.sum(df_loc[["AOI", "RatingGroup"]] < 0, axis=1) > 0
-        PatFlag.FlagLocNeg.set_flag(df_loc, mask)
-        
-        # Location record rating group out of range
-        mask = np.logical_or(df_loc.RatingGroup < min_psold_rg,df_loc.RatingGroup > max_psold_rg)
-        PatFlag.FlagLocRG.set_flag(df_loc, mask)
 
         # Save to DB
-        df_loc['job_id'] = self.job_id
-        creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
-        to_sql(df_loc, "pat_location", creds, index=False, if_exists='append')
+        if len(df_loc) > 0: 
+            df_loc['job_id'] = self.job_id
+            df_loc['data_type'] = int(1)
+            df_loc['flag'] = int(0)
+            creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
+            to_sql(df_loc, "pat_location", creds, index=False, if_exists='append')
 
         return len(df_loc)
 
-    def __extract_fac(self, conn, suffix:str):
+    def __extract_facultative(self, conn, suffix:str):
         df_fac = pd.read_sql_query(f"""select concat(locpol.policyid, '_', locpol.locid) as PseudoPolicyID, 
                     round(case when excessamt + layeramt > rev_blanlimamt then rev_blanlimamt - excessamt 
                         else layeramt end, 2) as FacLimit, 
@@ -531,66 +474,194 @@ class PatJob:
                 where reinsinf.exposrtype = 'pol' and excessamt < rev_blanlimamt 
                     and layeramt > 0 and pcntreins > 0 
                 order by locpol.accgrpid, locpol.locid, locpol.undcovamt, reinsinf.excessamt, FacLimit, pcntreins""", conn)
-        if len(df_fac)<=0:
-            return 0
-
-        # keep the original key (Can we have a better identifier?)
-        df_fac['FacKey'] = np.arange(1, len(df_fac) + 1, dtype=int)
-
-        # Correction
-        with pyodbc.connect(self.job_conn) as j_conn:
-            df_corr = pd.read_sql_query(f"""select * from pat_facultative 
-                where job_id = {self.job_id} and (flag & {PatFlag.FlagCorrected}) !=0""", j_conn)
-            if len(df_corr) >0:
-                df_fac.set_index(['PseudoPolicyID', 'FacKey'], drop=False, inplace=True)
-                df_fac.update(df_corr.set_index(['PseudoPolicyID', 'FacKey']))
-                df_fac.reset_index(inplace = True, drop=True)
-
         
-        df_fac['flag'] = PatFlag.FlagActive
-        # Fac records with NA entries
-        mask = np.sum(np.isnan(df_fac[["FacLimit", "FacAttachment", "FacCeded"]]), axis=1) > 0
-        PatFlag.FlagFacNA.set_flag(df_fac, mask)
-
-        # Fac records with negative entries
-        mask = np.sum(df_fac[["FacLimit", "FacAttachment", "FacCeded"]] < 0, axis=1) > 0
-        PatFlag.FlagFacNeg.set_flag(df_fac, mask)
-
         # Save to DB
-        df_fac['job_id'] = self.job_id
-        creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
-        to_sql(df_fac, "pat_facultative", creds, index=False, if_exists='append')
+        if len(df_fac) > 0:
+            # keep the original key for identifier
+            df_fac['FacKey'] = np.arange(1, len(df_fac) + 1, dtype=int)
+
+            df_fac['job_id'] = self.job_id
+            df_fac['data_type'] = int(1)
+            df_fac['flag'] = int(0)
+            creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
+            to_sql(df_fac, "pat_facultative", creds, index=False, if_exists='append')
 
         return len(df_fac)
 
-    def __extra_data_check(self):
-        with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
+    def __create_pat_data(self):
+        with pyodbc.connect(self.job_conn) as conn:
+            self.__check_policy(conn)
+            self.__check_location(conn)
+            self.__check_facultative(conn)
+            self.__cross_tab_check(conn)
+            
+    def __check_policy(self, conn):
+        with conn.cursor() as cur:
+            cur.execute(f"""delete from pat_policy where job_id = {self.job_id} and data_type = 0""")
+            cur.commit()
+
+            cur.execute(f"""select PseudoPolicyID, max(data_type) as data_type
+                        into #pol_active 
+                    from pat_policy where job_id = {self.job_id} and data_type in (1,2)
+                    group by PseudoPolicyID;
+                    insert into pat_policy 
+                    select job_id,OriginalPolicyID,ACCGRPID,a.PseudoPolicyID,PolRetainedLimit,
+                        PolLimit,
+                        (case when round(PolRetainedLimit - PolLimit * PolParticipation, 1) <= 2
+                                then PolRetainedLimit / PolLimit
+                            else PolParticipation end) as PolParticipation,
+                        PolRetention,
+                        PolPremium,
+                        (case when PolLimit is null or PolRetention is null or PolRetainedLimit is null or 
+                                    PolParticipation is null or PolPremium is null  
+                                or PolLimit < 0 or PolRetention < 0 or PolRetainedLimit < 0 or
+                                    PolParticipation < 0 or PolPremium < 0 then {PatFlag.FlagPolNA}
+                            else 0 end) 
+                            + (case when round(PolParticipation, 2) > 1 then {PatFlag.FlagPolParticipation}
+                                else 0 end)
+                            + (case when round(PolRetainedLimit - PolLimit * PolParticipation, 1) > 2 
+                                        then {PatFlag.FlagPolLimitParticipation} else 0 end) 
+                            as flag, 
+                        0 as data_type
+                    from pat_policy a                     
+                        join #pol_active b on a.PseudoPolicyID = b.PseudoPolicyID and a.data_type = b.data_type
+                    where a.job_id = {self.job_id};
+                    drop table #pol_active;""")  
+            cur.commit()
+
+            # Policy record duplications
+            cur.execute(f"""select PseudoPolicyID, {PatFlag.FlagPolDupe} as flag
+                                into #tmp_f
+                            from pat_policy 
+                            where job_id = {self.job_id} and data_type = 0
+                            group by PseudoPolicyID having count(*) > 1;
+                            update a set a.flag=a.flag + b.flag
+                            from pat_policy a join #tmp_f b
+                                on a.PseudoPolicyID = b.PseudoPolicyID
+                            where a.job_id = {self.job_id} and data_type = 0;
+                            drop table #tmp_f;""") 
+            cur.commit()
+
+    def __check_location(self, conn):
+        with conn.cursor() as cur:
+            cur.execute(f"""delete from pat_location where job_id = {self.job_id} and data_type = 0""")
+            cur.commit()
+
+            cur.execute(f"""select min(PSOLD_RG) as min_rg, max(PSOLD_RG) as max_rg from psold_mapping""")
+            row = cur.fetchone()
+            min_psold_rg, max_psold_rg = row
+
+            cur.execute(f"""select PseudoPolicyID, max(data_type) as data_type
+                        into #pol_active 
+                    from pat_location where job_id = {self.job_id} and data_type in (1,2)
+                    group by PseudoPolicyID;
+                    insert into pat_location 
+                    select job_id, a.PseudoPolicyID, LocationIDStack, occupancy_scheme, 
+                        occupancy_code, AOI, 
+                        (case when c.PSOLD_RG is null then {self.default_region} else c.PSOLD_RG end) as RatingGroup, 
+                        (case when AOI is null or AOI < 0 then {PatFlag.FlagLocNA} else 0 end)
+                        + (case when (c.PSOLD_RG is null and {self.default_region} = 0) or c.PSOLD_RG < {min_psold_rg} or c.PSOLD_RG > {max_psold_rg} 
+                            then {PatFlag.FlagLocRG} else 0 end) as flag,  
+                        0 data_type
+                    from pat_location a                     
+                        join #pol_active b on a.PseudoPolicyID = b.PseudoPolicyID and a.data_type = b.data_type
+                        left join psold_mapping c on a.occupancy_scheme = c.OCCSCHEME and a.occupancy_code =  c.OCCTYPE
+                    where a.job_id = {self.job_id};
+                    drop table #pol_active""")  
+            cur.commit()
+
+             # Apply rule 
+            if self.valid_rules & ValidRule.ValidAoi:
+                cur.execute(f"""select LocationIDStack, max(aoi) as max_aoi
+                                into #tmp_f
+                            from pat_location
+                            where job_id = {self.job_id} and data_type = 0 and LocationIDStack is not null
+                            group by LocationIDStack
+                            having count(distinct round(aoi, 1)) > 1;
+                            update a set a.aoi = b.max_aoi
+                            from pat_location a join #tmp_f b
+                                on a.LocationIDStack = b.LocationIDStack
+                            where a.job_id = {self.job_id} and data_type = 0;
+                            drop table #tmp_f;""")
+                cur.commit()  
+
+            # Location record duplications
+            cur.execute(f"""select PseudoPolicyID, {PatFlag.FlagLocDupe} as flag
+                                into #tmp_f
+                            from pat_location 
+                            where job_id = {self.job_id} and data_type = 0
+                            group by PseudoPolicyID having count(*) > 1;
+                            update a set a.flag = a.flag + b.flag
+                            from pat_location a join #tmp_f b
+                                on a.PseudoPolicyID = b.PseudoPolicyID
+                            where a.job_id = {self.job_id} and data_type = 0;
+                            drop table #tmp_f;""") 
+            cur.commit()
+            
+            # duplicate LocationIDStack
+            cur.execute(f"""select LocationIDStack, {PatFlag.FlagLocIDDupe} as flag
+                                into #tmp_f
+                            from pat_location
+                            where job_id = {self.job_id} and data_type = 0 and LocationIDStack is not null
+                            group by LocationIDStack
+                            having count(distinct round(aoi, 1)) > 1;
+                            update a set a.flag = a.flag + b.flag
+                            from pat_location a join #tmp_f b
+                                on a.LocationIDStack = b.LocationIDStack
+                            where a.job_id = {self.job_id} and data_type = 0;
+                            drop table #tmp_f;""")
+
+            cur.commit()
+
+    def __check_facultative(self, conn):
+        with conn.cursor() as cur:
+            cur.execute(f"""delete from pat_facultative where job_id = {self.job_id} and data_type = 0""")
+            cur.commit()
+
+            cur.execute(f"""select FacKey, max(data_type) as data_type
+                        into #fac_active 
+                    from pat_facultative where job_id = {self.job_id} and data_type in (1,2)
+                    group by FacKey;
+                    insert into pat_facultative 
+                    select job_id, PseudoPolicyID, FacLimit, FacAttachment, FacCeded, a.FacKey,
+                        (case when FacLimit is null or FacAttachment is null or FacCeded is null 
+                            or FacLimit < 0 or FacAttachment < 0 or FacCeded < 0 
+                            then {PatFlag.FlagFacNA} else 0 end) as flag,  
+                        0 data_type
+                    from pat_facultative a                     
+                        join #fac_active b on a.FacKey = b.FacKey and a.data_type = b.data_type
+                    where a.job_id = {self.job_id};
+                    drop table #fac_active""")  
+            cur.commit()
+
+    def __cross_tab_check(self, conn):
+        with conn.cursor() as cur:
             # Policies with no Locations
-            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagPolNoLoc}
+            cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagPolOrphan}
                 from pat_policy a
-                    left join (select distinct PseudoPolicyID from pat_location where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0) b 
+                    left join (select distinct PseudoPolicyID from pat_location where job_id = {self.job_id} and data_type = 0) b 
                         on a.PseudoPolicyID = b.PseudoPolicyID
-                where a.job_id = {self.job_id} and (a.flag & {PatFlag.FlagActive}) !=0 and b.PseudoPolicyID is null""")
+                where a.job_id = {self.job_id} and a.data_type = 0 and b.PseudoPolicyID is null""")
             cur.commit()
 
             # Location records with no policy
             cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagLocOrphan}
                 from pat_location a 
-                    left join (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0) b
+                    left join (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id} and data_type = 0) b
                         on a.PseudoPolicyID = b.PseudoPolicyID
-                where a.job_id = {self.job_id} and (a.flag & {PatFlag.FlagActive}) !=0 and b.PseudoPolicyID is null""")
+                where a.job_id = {self.job_id} and a.data_type = 0 and b.PseudoPolicyID is null""")
             cur.commit()
 
             # Orphan Fac Records
             cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagFacOrphan}
                 from pat_facultative a 
-                    left join (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0) b
+                    left join (select distinct PseudoPolicyID from pat_policy where job_id = {self.job_id} and data_type = 0) b
                         on a.PseudoPolicyID = b.PseudoPolicyID
-                where a.job_id = {self.job_id} and (a.flag & {PatFlag.FlagActive}) !=0 and b.PseudoPolicyID is null""")
+                where a.job_id = {self.job_id} and a.data_type = 0 and b.PseudoPolicyID is null""")
             cur.commit()
                     
             # FacNet combined specific checks
-            f = PatFlag.FlagPolNA | PatFlag.FlagPolNeg | PatFlag.FlagFacNA | PatFlag.FlagFacNeg
+            f = PatFlag.FlagPolNA | PatFlag.FlagFacNA
             cur.execute(f"""with cte as (
                     select a.PolParticipation, a.PolRetention,
                         PolLimit + PolRetention as PolTopLine,
@@ -598,9 +669,9 @@ class PatJob:
                         case when b.FacKey is null then 0 else b.FacAttachment end as FacAttachment,
                         b.FacKey
                     from pat_policy a 
-                        left join pat_facultative b on a.job_id =b.job_id
+                        left join pat_facultative b on a.job_id = b.job_id and a.data_type = b.data_type
                             and a.PseudoPolicyID = b.PseudoPolicyID
-                    where a.job_id = {self.job_id} and (a.flag & {PatFlag.FlagActive}) !=0 and (a.flag & {PatFlag.FlagActive}) !=0
+                    where a.job_id = {self.job_id} and a.data_type = 0
                         and (a.flag & {f.value}) = 0 and (b.flag & {f.value}) = 0
                 ),
                 cte1 as (
@@ -609,19 +680,22 @@ class PatJob:
                         FacGupLimit + FacAttachment / PolParticipation + PolRetention as FacGupTopLine
                     from cte
                 )
+                select distinct FacKey 
+                    into #facover
+                from cte1 
+                where FacGupAttachment - PolTopLine > 1 or FacGupTopLine - PolTopLine > 1;
                 update a set a.flag = a.flag | {PatFlag.FlagFacOverexposed}
-                    from pat_facultative a
-                        join (select distinct FacKey 
-                                from cte1
-                                where FacGupAttachment - PolTopLine > 1 or FacGupTopLine - PolTopLine > 1
-                            ) b on a.FacKey = b.FacKey
-                where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0""")
+                from pat_facultative a
+                    join #facover b on a.FacKey = b.FacKey
+                where job_id = {self.job_id} and data_type = 0;
+                drop table #facover""")
             cur.commit()
-
+    
     def __need_correction(self):
         with pyodbc.connect(self.job_conn) as conn:
             for t in ['pat_policy','pat_location', 'pat_facultative']:
-                df = pd.read_sql_query(f"""select count(*) as n from [{t}] where job_id = {self.job_id} and (flag & 0xFFFFFFF ) != 0""", conn)
+                df = pd.read_sql_query(f"""select count(*) as n from [{t}] where job_id = {self.job_id} 
+                        and data_type = 0 and flag != 0""", conn)
                 if df is not None and len(df)>0 and df.n[0] > 0: 
                     return True
             
@@ -630,27 +704,26 @@ class PatJob:
     def __net_of_fac(self):
         with pyodbc.connect(self.job_conn) as conn:
             with conn.cursor() as cur:
-                cur.execute(f"""with good_p as
-                    (select distinct a.PseudoPolicyID
-                    from pat_policy a
-                        join pat_location b on a.job_id = b.job_id and a.PseudoPolicyID =b.PseudoPolicyID
-                        left join 
-                            (select distinct PseudoPolicyID from pat_facultative where job_id = {self.job_id} 
-                                and (flag & {PatFlag.FlagActive}) !=0 and (flag&0xFFFFFFF) != 0
-                            ) c on a.PseudoPolicyID = c.PseudoPolicyID
-                        where a.job_id = {self.job_id}
-                            and (a.flag & {PatFlag.FlagActive}) !=0 and (a.flag&0xFFFFFFF) = 0 
-                            and (b.flag & {PatFlag.FlagActive}) !=0 and (b.flag&0xFFFFFFF) = 0 
-                            and c.PseudoPolicyID is null
+                cur.execute(f"""select distinct a.PseudoPolicyID into #pol1
+                        from pat_policy a
+                            join pat_location b on a.job_id = b.job_id and a.data_type = b.data_type and a.PseudoPolicyID =b.PseudoPolicyID
+                        where a.job_id = {self.job_id} and a.data_type = 0 and a.flag = 0 and b.flag = 0;
+                        select distinct PseudoPolicyID into #pol2 from pat_facultative 
+                        where job_id = {self.job_id} and data_type = 0 and flag != 0;
+                    with good_p as (
+                        select #pol1.PseudoPolicyID 
+                        from #pol1 
+                            left join #pol2 on #pol1.PseudoPolicyID = #pol2.PseudoPolicyID 
+                        where #pol2.PseudoPolicyID is null
                     )
                     select OriginalPolicyID, ACCGRPID, a.PseudoPolicyID, PolRetainedLimit, PolLimit, 
-                        case when PolParticipation > 1 then 1 else PolParticipation end as PolParticipation, 
-                        PolRetention, PolPremium,
-                        PolLimit + PolRetention as PolTopLine
-                    into #dfPolUse
-                    from pat_policy a 
-                        join good_p b on a.PseudoPolicyID = b.PseudoPolicyID 
-                    where a.job_id = {self.job_id} and (a.flag & {PatFlag.FlagActive}) !=0""")
+                            case when PolParticipation > 1 then 1 else PolParticipation end as PolParticipation, 
+                            PolRetention, PolPremium,
+                            PolLimit + PolRetention as PolTopLine
+                        into #dfPolUse
+                        from pat_policy a 
+                            join good_p b on a.PseudoPolicyID = b.PseudoPolicyID 
+                        where a.job_id = {self.job_id} and a.data_type = 0""")
                 cur.commit()
 
                 cur.execute(f"""select a.PseudoPolicyID, PolRetention,PolTopLine, FacCeded,
@@ -660,7 +733,7 @@ class PatJob:
                     into #dfPolFac
                     from #dfPolUse a 
                         join pat_facultative b on a.PseudoPolicyID = b.PseudoPolicyID 
-                    where b.job_id = {self.job_id} and (b.flag & {PatFlag.FlagActive}) !=0""")
+                    where b.job_id = {self.job_id} and b.data_type = 0""")
                 cur.commit()
 
                 cur.execute(f"""with cte1 as 
@@ -696,12 +769,21 @@ class PatJob:
                 cur.commit()
 
                 cur.execute(f"""select distinct PseudoPolicyID into #ceded100 
-                                from #dfLayers where round(Ceded, 4) >1;
-                            update a set a.flag = a.flag | {PatFlag.FlagCeded100}
+                                from #dfLayers where round(Ceded, 4) >1""")
+                cur.commit()
+                if self.valid_rules & ValidRule.ValidFac100:
+                    cur.execute(f"""update a set a.Ceded = 1
+                            from #dfLayers a 
+                                join #ceded100 b on a.PseudoPolicyID = b.PseudoPolicyID""")
+                    cur.commit()
+                    cur.execute("delete from #ceded100")
+                    cur.commit()
+                else:
+                    cur.execute(f"""update a set a.flag = a.flag | {PatFlag.FlagCeded100}
                             from pat_facultative a 
                                 join #ceded100 b on a.PseudoPolicyID = b.PseudoPolicyID
-                            where job_id = {self.job_id} and (flag & {PatFlag.FlagActive}) !=0;""")
-                cur.commit()
+                            where job_id = {self.job_id} and data_type = 0;""")
+                    cur.commit()
             
             #? why old R code have to include all participation = 0 layers?
             df_facnet = pd.read_sql_query(f"""select OriginalPolicyID, ACCGRPID, a.PseudoPolicyID, LayerID as PseudoLayerID,
@@ -712,17 +794,18 @@ class PatJob:
                 from #dfLayers a
                     left join pat_location b on a.PseudoPolicyID = b.PseudoPolicyID
                     left join #ceded100 c on a.PseudoPolicyID = c.PseudoPolicyID
-                where b.job_id ={self.job_id} and (b.flag & {PatFlag.FlagActive}) !=0
+                where b.job_id ={self.job_id} and b.data_type = 0 
                     and c.PseudoPolicyID is null
                     and case when Ceded >= 1 then 0 else Participation * (1 - Ceded) end > 1e-6 
-                order by a.PseudoPolicyID, LayerID, LayerLow, LayerHigh
-                """,conn)
+                order by a.PseudoPolicyID, LayerID, LayerLow, LayerHigh""",conn)
 
             with conn.cursor() as cur:
-                cur.execute(f"""drop table #dfPolUse;
-                                drop table #dfPolFac;
-                                drop table #dfLayers;
-                                drop table #ceded100""")
+                cur.execute(f"""drop table #pol1;
+                        drop table #pol2;
+                        drop table #dfPolUse;
+                        drop table #dfPolFac;
+                        drop table #dfLayers;
+                        drop table #ceded100""")
                 cur.commit()
         
             return df_facnet
