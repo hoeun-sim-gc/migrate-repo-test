@@ -131,6 +131,7 @@ export default function JobPage(props) {
 
     valid_rules: 0,
     default_region: 0,
+    ref_analysis: 0,
 
     job_name: 'Test_PAT',
     user_name: user?.name,
@@ -159,10 +160,8 @@ export default function JobPage(props) {
   const [confirm, setConfirm] = React.useState(false);
 
   const [currentJob, setCurrentJob] = useState({ job_id: job_id, status: '', finished: 0 })
-  const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
-  
+  const [loadingCurrentJob, setLoadingCurrentJob] = useState(false); 
   const [refJob, setRefJob] = useState(0)
-  const [useRefJob, setUseRefJob] = useState(false)
   
 
   React.useEffect(() => {
@@ -204,13 +203,12 @@ export default function JobPage(props) {
         .then(data => {
           delete data.job_guid;
           delete data.data_correction;
-          delete data.ref_analysis;
+          data['ref_analysis'] = parseInt(job_id);
           data['user_name'] = user?.name;
           data['user_email'] = user?.email;
-          
+
+          setRefJob(parseInt(job_id));          
           setJobParameter(data);
-          setRefJob(job_id);
-          setUseRefJob(true);
 
           if ('server' in data) svr = data['server'];
           else svr = localStorage.getItem('currentServer');
@@ -872,9 +870,11 @@ export default function JobPage(props) {
                 <FormControl className={classes.formControl}>
                   <FormControlLabel control={
                     <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
-                      checked={useRefJob}
+                      disabled = { refJob <= 0}
+                      checked={jobParameter.ref_analysis && jobParameter.ref_analysis > 0}
                       onChange={event => {
-                        setUseRefJob(event.target.checked)
+                        if(event.target.checked) setJobParameter({...jobParameter, ref_analysis: refJob});
+                        else setJobParameter({...jobParameter, ref_analysis: 0});
                       }}
                     />} label={"Use raw data from the reference analysis " + refJob}
                   />

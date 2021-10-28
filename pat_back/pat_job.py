@@ -83,13 +83,18 @@ class PatJob:
 
         if not self.data_extracted:
             self.__update_status("extracting_data")
-            self.__extract_edm_rdm()
+
+            if "ref_analysis" in self.para and self.para['ref_analysis'] > 0:
+                self.__extract_ref_data(self.para['ref_analysis'])
+            else:
+                self.__extract_edm_rdm()
             self.data_extracted = True
             with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
                 cur.execute(f"""update pat_job set data_extracted = 1, 
                     update_time = '{datetime.utcnow().isoformat()}'
                     where job_id = {self.job_id}""")
                 cur.commit()
+            
             self.logger.info("Import data...OK")
         if stop_cb and stop_cb():
             self.logger.warning("User stopped the analysis")
@@ -152,6 +157,42 @@ class PatJob:
         
         self.__update_status("finished")
         self.logger.info("Finished!")
+
+    def __extract_ref_data(self, ref_job):
+         with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
+            for t in ['pat_policy','pat_location','pat_facultative']:
+                cur.execute(f"""delete from {t} where job_id = {self.job_id} and data_type in (0, 1)""")
+                cur.commit()
+
+            cur.execute(f"""insert into pat_policy
+                        select {self.job_id} as job_id,
+                        OriginalPolicyID, ACCGRPID, PseudoPolicyID, PolRetainedLimit,
+                        PolLimit, PolParticipation, PolRetention, PolPremium,
+                        0 as flag, 
+                        1 as data_type
+                    from pat_policy 
+                    where job_id = {ref_job} and data_type = 1""")  
+            cur.commit()
+
+            cur.execute(f"""insert into pat_location
+                        select {self.job_id} as job_id,
+                        PseudoPolicyID, LocationIDStack, occupancy_scheme, 
+                        occupancy_code, AOI,
+                        0 RatingGroup, 
+                        0 as flag, 
+                        1 as data_type
+                    from pat_location 
+                    where job_id = {ref_job} and data_type = 1""")  
+            cur.commit()
+
+            cur.execute(f"""insert into pat_facultative
+                        select {self.job_id} as job_id,
+                        PseudoPolicyID, FacLimit, FacAttachment, FacCeded, FacKey,
+                        0 as flag, 
+                        1 as data_type
+                    from pat_facultative 
+                    where job_id = {ref_job} and data_type = 1""")  
+            cur.commit()
 
     def __extract_edm_rdm(self):
         conn_str = f'''DRIVER={{SQL Server}};Server={self.para["server"]};Database={self.para["edm"]};
