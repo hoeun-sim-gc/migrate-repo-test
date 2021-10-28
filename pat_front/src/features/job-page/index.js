@@ -419,17 +419,20 @@ export default function JobPage(props) {
       return;
     }
 
-    //if batch submit, ignore the data correction file   
+    //if batch submit, ignore the data correction file and reference analysis   
     if (batchFile) {
       var fr = new FileReader();
       fr.onload = function () {
         var lns = fr.result.split(/\r?\n/g);
         var head = lns[0].split(',');
         var n = head.length;
+        var js0 = jobParameter;
+        js0['data_correction'] =''
+        js0.ref_analysis = 0
         lns.slice(1).forEach(ln => {
           var col = ln.split(',');
           if (col.length === n) {
-            var js = jobParameter;
+            var js = JSON.parse(JSON.stringify(js0));
             for (var i = 0; i < n; i++) {
               if (typeof (js[head[i]]) === 'number') js[head[i]] = Number(col[i]);
               else js[head[i]] = col[i];
@@ -561,7 +564,7 @@ export default function JobPage(props) {
     s1 = s1.toLowerCase();
     s2 = s2.toLowerCase();
 
-    var costs = new Array();
+    var costs = [];
     for (var i = 0; i <= s1.length; i++) {
       var lastValue = i;
       for (var j = 0; j <= s2.length; j++) {
