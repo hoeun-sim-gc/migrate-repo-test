@@ -247,23 +247,7 @@ export default function HomePage(props) {
       }
     });    
   };
-
-  const handleResetJob = ()=>{
-    var lst= tableRef.current.selectionContext.selected;
-    if(lst.length<=0) {
-      setDownloadingResults(false);
-      alert("No analysis is selected!");
-      return;
-    }
-
-    let request = 'api/reset/' + lst.join('_');
-    fetch(request, {method: "POST"}).then(response => {
-      if (response.ok) {
-        setLoadingJobList(true);
-      }
-    }); 
-  };
-
+  
   const handleRunJob = (id)=>{
     let request = 'api/run/' + id;
     fetch(request, {method: "POST"}).then(response => {
@@ -338,13 +322,12 @@ export default function HomePage(props) {
     window.location.reload(false);
   };
 
-  const handleSubmit = (isOK) => {
+  const handleConfirm = (isOK) => {
     var it = confirm
     setConfirm('');
     if (isOK) {
-      if(it === "reset the selected jobs to initial state" ) handleResetJob()
-      else if(it === "stop the selected jobs" ) handleStopJob()
-      else if(it === "run the selected job"  && currentJob) handleRunJob(currentJob.job_id);
+      if(it === "stop the selected jobs" ) handleStopJob()
+      else if(it === "start (rerun) the selected job"  && currentJob) handleRunJob(currentJob.job_id);
     }
   };
 
@@ -385,31 +368,24 @@ export default function HomePage(props) {
               Refresh
             </Link>
           </Tooltip>
-          <Tooltip title="New analysis using settings from selected"  >
+          <Divider orientation="vertical" flexItem />
+          <Tooltip title="Go to job detail"  >
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
               onClick={(e) => { handleNewJob(currentJob?.job_id); }} >
-              New
+              Detail
             </Link>
           </Tooltip>
-          <Divider orientation="vertical" flexItem />
           <Tooltip title="Stop selected analyses"  >
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button" onClick={(e) => { setConfirm("stop the selected jobs"); }} >
               Stop
             </Link>
           </Tooltip>
-          <Tooltip title="Reset selected analyses to their initial state"  >
-            <Link className={classes.buttonLink} style={{padding:'10px' }}
-            component="button"
-              onClick={(e) => { setConfirm("reset the selected jobs to initial state"); }} >
-              Reset
-            </Link>
-          </Tooltip>
           <Tooltip title="Run selected analysis"  >
             <Link className={classes.buttonLink} style={{padding:'10px' }}
-            component="button" onClick={(e) => { setConfirm("run the selected job"); }} >
-              Run
+            component="button" onClick={(e) => { setConfirm("start (rerun) the selected job"); }} >
+              Start
             </Link>
           </Tooltip>
           <Divider orientation="vertical" flexItem />
@@ -427,6 +403,7 @@ export default function HomePage(props) {
               Validation
             </Link>
           </Tooltip>
+          <Divider orientation="vertical" flexItem />
           <Tooltip title="Populate allocated premium back to EDM">
             <Link className={classes.buttonLink} style={{padding:'10px' }}
             component="button"
@@ -449,8 +426,8 @@ export default function HomePage(props) {
               </DialogContentText>
             </DialogContent>
             <DialogActions>
-              <Button style={{ color: 'black' }} onClick={() => { handleSubmit(true) }} autoFocus>Yes</Button>
-              <Button style={{ color: 'black' }} onClick={() => { handleSubmit(false) }} > Cancel </Button>
+              <Button style={{ color: 'black' }} onClick={() => { handleConfirm(true) }} autoFocus>Yes</Button>
+              <Button style={{ color: 'black' }} onClick={() => { handleConfirm(false) }} > Cancel </Button>
             </DialogActions>
           </Dialog>
         </div>

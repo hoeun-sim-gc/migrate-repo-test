@@ -5,7 +5,7 @@ import {
   Grid, Card, CardContent,
   InputLabel, FormControl, Select,
   Typography, Button, TextField, Box,
-  MenuList, MenuItem
+  MenuList, MenuItem, Divider
 } from '@material-ui/core';
 
 import AdapterDateFns from '@mui/lab/AdapterDateFns';
@@ -109,6 +109,10 @@ export default function JobPage(props) {
   const theme = useTheme();
   const [user,] = useContext(UserContext);
 
+  const [currentJob, setCurrentJob] = useState({ job_id: job_id?job_id:0, status: '', finished: 0 })
+  const [loadingCurrentJob, setLoadingCurrentJob] = useState(false); 
+  const [refJob, setRefJob] = useState(0)
+
   const [paraString, setParaString] = useState('');
   const [jobParameter, setJobParameter] = useState({
     server: '',
@@ -138,7 +142,7 @@ export default function JobPage(props) {
     user_email: user?.email
   });
 
-  const [inpExpanded, setInpExpanded] = useState(true);
+  const [inpExpanded, setInpExpanded] = useState(0x09);
   const [loadingServerList, setLoadingServerList] = useState(false);
   const [serverList, setServerList] = useState();
 
@@ -157,18 +161,13 @@ export default function JobPage(props) {
   const [jobFile, setJobFile] = useState('')
   const [batchFile, setBatchFile] = useState('')
   const [uploadingJob, setUploadingJob] = useState(false);
-  const [confirm, setConfirm] = React.useState(false);
-
-  const [currentJob, setCurrentJob] = useState({ job_id: job_id, status: '', finished: 0 })
-  const [loadingCurrentJob, setLoadingCurrentJob] = useState(false); 
-  const [refJob, setRefJob] = useState(0)
-  
+  const [confirm, setConfirm] = React.useState(false);  
 
   React.useEffect(() => {
     setLoadingServerList(true);
 
     setLoadingCurrentJob(true);
-    const interval = setInterval(() => setLoadingCurrentJob(true), 10000);
+    const interval = setInterval(() => setLoadingCurrentJob(true), 30000);
     return () => {
       clearInterval(interval);
     };
@@ -201,14 +200,8 @@ export default function JobPage(props) {
         throw new TypeError("Oops, we haven't got data!");
       })
         .then(data => {
-          delete data.job_guid;
-          delete data.data_correction;
-          data['ref_analysis'] = parseInt(job_id);
-          data['user_name'] = user?.name;
-          data['user_email'] = user?.email;
-
-          setRefJob(parseInt(job_id));          
           setJobParameter(data);
+          if(data.ref_analysis && data.ref_analysis>0) setRefJob(parseInt(data.ref_analysis))
 
           if ('server' in data) svr = data['server'];
           else svr = localStorage.getItem('currentServer');
@@ -453,8 +446,7 @@ export default function JobPage(props) {
       let form_data = new FormData();
       let js = jobParameter;
       js['job_guid'] = uuidv4();
-      delete js.portfolioid
-
+ 
       form_data.append('para', JSON.stringify(js));
       if (jobFile) form_data.append("data", jobFile);
       post_job(form_data)
@@ -502,8 +494,7 @@ export default function JobPage(props) {
     'received': 0,
     'error': 0,
     'cancelled': 0,
-    'stoppped': 0,
-    'wait_to_start': 0,
+    'wait_to_start': 2,
     'started': 5,
     'extracting_data': 10,
     'checking_data': 30,
@@ -587,12 +578,45 @@ export default function JobPage(props) {
     return costs[s2.length];
   };
 
-  const handleSubmit = (isOK) => {
-    setConfirm(false);
-    if (isOK && ValidateJob()) {
-      setBatchFile('');
-      setUploadingJob(true);
+  const handleConfirm = (isOK) => {
+    var it = confirm
+    setConfirm('');
+    if (isOK) {
+      if(it === "stop the current analysis" ) handleStopJob();
+      else if(it === "start/rerun the current analysis" ) handleStartJob();
+      else if(it === "submit a new job" ) setUploadingJob(true);
     }
+  };
+
+  const handleNewJob = () => {
+    setRefJob(currentJob && currentJob.job_id > 0?currentJob.job_id :0);
+    setJobParameter({...jobParameter, 
+        job_guid:'', 
+        user_name: user?.name, 
+        user_email:user?.email, 
+        data_correction: '',
+        ref_analysis: currentJob && currentJob.job_id > 0? parseInt(currentJob.job_id) : 0
+    });    
+    setCurrentJob({...currentJob, job_id: 0, status: 'configuring', finished: 0 });
+    history.push('/job')
+  };
+  
+  const handleStopJob = ()=>{
+    let request = 'api/stop/' + currentJob.job_id;
+    fetch(request,{method: "POST"}).then(response => {
+      if (response.ok) {
+        setLoadingCurrentJob(true);
+      }
+    });    
+  };
+
+  const handleStartJob = ()=>{
+    let request = 'api/run/' + currentJob.job_id;
+    fetch(request, {method: "POST"}).then(response => {
+      if (response.ok) {
+        setLoadingCurrentJob(true);
+      }
+    }); 
   };
 
   return (
@@ -616,7 +640,7 @@ export default function JobPage(props) {
                     Current Analysys
                   </Typography>
                   <Typography variant='h6' color="textSecondary" gutterBottom>
-                    {currentJob && currentJob.job_id > 0 ? currentJob.job_id : ''}
+                    {currentJob? currentJob.job_id : ''}
                   </Typography>
                   <div className={classes.odometer} >
                     <ReactSpeedometer
@@ -625,7 +649,7 @@ export default function JobPage(props) {
                       marginTop={50}
                       marginBottom={50}
                       needleHeightRatio={0.7}
-                      value={currentJob && currentJob.job_id > 0 ? currentJob.finished : 0}
+                      value={currentJob? currentJob.finished : 0}
                       maxValue={100}
                       segments={4}
                       startColor="green"
@@ -633,7 +657,7 @@ export default function JobPage(props) {
                       needleColor="red"
                       needleTransitionDuration={2000}
                       needleTransition="easeElastic"
-                      currentValueText={currentJob && currentJob.job_id > 0 ? currentJob.status : 'Not yet submitted'}
+                      currentValueText={currentJob? currentJob.status : 'A'}
                       currentValuePlaceholderStyle={'#{value}'}
                       textColor={theme.palette.text.primary}
                     />
@@ -641,12 +665,38 @@ export default function JobPage(props) {
                 </Grid>
                 <Grid md={4}>
                   <MenuList>
-                    <MenuItem onClick={() => {
-                      setConfirm(true);
-                    }}>Submit Analysis</MenuItem>
-                    <MenuItem onClick={(e) => {
-                      if (ValidateJob()) inputFile.current.click();
-                    }}>Batch Submit</MenuItem>
+                    <MenuItem 
+                      onClick={() => {setLoadingCurrentJob(true);}}
+                    >Refresh</MenuItem>
+                    <Divider />
+                    <MenuItem 
+                      disabled={!currentJob || currentJob.job_id <= 0 || currentJob.finished <=0 ||currentJob.finished >= 100}                    
+                      onClick={() => {
+                        setConfirm("stop the current analysis");
+                      }}
+                    >Stop Current</MenuItem>
+                    <MenuItem 
+                      disabled={!currentJob || currentJob.job_id <= 0 || (currentJob.finished > 0 && currentJob.finished < 100)}                    
+                      onClick={() => {
+                        setConfirm("start/rerun the current analysis");
+                      }}
+                    >Start Current</MenuItem>
+                    <Divider />
+                    <MenuItem 
+                      onClick={handleNewJob}
+                    >New Analysis</MenuItem>
+                    <Divider />
+                    <MenuItem 
+                      disabled={currentJob && currentJob.job_id > 0}                    
+                      onClick={() => {
+                        setConfirm("submit a new job");
+                      }}
+                    >Submit</MenuItem>
+                    <MenuItem 
+                      disabled={currentJob && currentJob.job_id > 0}                    
+                      onClick={(e) => {
+                        if (ValidateJob()) inputFile.current.click();
+                      }}>Batch Submit</MenuItem>
                   </MenuList>
                   <input type='file' id='file' ref={inputFile} style={{ display: 'none' }} onChange={(e) => {
                     if (e.target.files && e.target.files.length > 0) {
@@ -660,7 +710,7 @@ export default function JobPage(props) {
           </Card>
           <Dialog
             open={confirm}
-            onClose={() => { setConfirm(false); }}
+            onClose={() => { setConfirm(''); }}
             aria-labelledby="alert-dialog-title"
             aria-describedby="alert-dialog-description"
           >
@@ -669,12 +719,12 @@ export default function JobPage(props) {
             </DialogTitle>
             <DialogContent>
               <DialogContentText id="alert-dialog-description">
-                Do you really want to submit a new analysis?
+                Do you really want to {confirm}?
               </DialogContentText>
             </DialogContent>
             <DialogActions>
-              <Button style={{ color: 'black' }} onClick={() => { handleSubmit(true) }} autoFocus>Yes</Button>
-              <Button style={{ color: 'black' }} onClick={() => { handleSubmit(false) }} > Cancel </Button>
+              <Button style={{ color: 'black' }} onClick={() => { handleConfirm(true) }} autoFocus>Yes</Button>
+              <Button style={{ color: 'black' }} onClick={() => { handleConfirm(false) }} > Cancel </Button>
             </DialogActions>
           </Dialog>
         </div>
@@ -686,9 +736,12 @@ export default function JobPage(props) {
       </div>
       <div class="job_right_col">
         <div>
-          <Accordion expanded={inpExpanded}
-            onChange={(event, isExpanded) => { setInpExpanded(isExpanded); }}
-            style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
+          <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
+            expanded={inpExpanded & 0x01}
+            onChange={(event, isExpanded) => { 
+              if(isExpanded) setInpExpanded(inpExpanded | 0x01);
+              else setInpExpanded(inpExpanded & ~0x01 );
+            }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
               aria-controls="other-content"
@@ -745,7 +798,6 @@ export default function JobPage(props) {
                     >
                       EDM
                     </Button>
-
                   </InputLabel>
                   <Select
                     labelId="edm-placeholder-label"
@@ -766,7 +818,7 @@ export default function JobPage(props) {
                 </FormControl>
                 <FormControl className={classes.formControl}>
                   <InputLabel shrink id="port-placeholder-label">
-                    Porttfolio
+                    Portfolio
                   </InputLabel>
                   <Select
                     labelId="port-placeholder-label"
@@ -871,9 +923,9 @@ export default function JobPage(props) {
               </div>
               <div>
                 <FormControl className={classes.formControl}>
-                  <FormControlLabel control={
+                  <FormControlLabel  control={
                     <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
-                      disabled = { refJob <= 0}
+                      disabled={refJob <= 0}
                       checked={jobParameter.ref_analysis && jobParameter.ref_analysis > 0}
                       onChange={event => {
                         if(event.target.checked) setJobParameter({...jobParameter, ref_analysis: refJob});
@@ -886,7 +938,12 @@ export default function JobPage(props) {
             </AccordionDetails>
           </Accordion>
 
-          <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
+          <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
+            expanded={inpExpanded & 0x02}
+            onChange={(event, isExpanded) => { 
+              if(isExpanded) setInpExpanded(inpExpanded | 0x02);
+              else setInpExpanded(inpExpanded & ~0x02);
+            }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
               aria-controls="other-content"
@@ -1083,7 +1140,12 @@ export default function JobPage(props) {
 
             </AccordionDetails>
           </Accordion>
-          <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
+          <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
+            expanded={inpExpanded & 0x04}
+            onChange={(event, isExpanded) => { 
+              if(isExpanded) setInpExpanded(inpExpanded | 0x04);
+              else setInpExpanded(inpExpanded & ~0x04);
+            }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
               aria-controls="corr-content"
@@ -1101,13 +1163,13 @@ export default function JobPage(props) {
                   autoComplete="off"
                 >
                   <TextField id="alae-basic" label="Data Correction File" variant="standard" readOnly
-                    value={jobFile ? jobFile.name : "No Correction"}
+                    value={jobParameter.data_correction? jobParameter.data_correction : "No Correction"}
                   />
                 </Box>
                 <div class="row" style={{ alignItems: 'center' }} >
                   <div class="col-md-4 align-left vertical-align-top">
-                    <Button variant="raised" component="label" className={classes.button}>
-                      Add
+                    <Button variant="raised" component="label" className={classes.button}
+                      > Add
                       <input hidden
                         className={classes.input}
                         style={{ display: 'none' }}
@@ -1130,34 +1192,36 @@ export default function JobPage(props) {
                   </div>
                 </div>
               </FormControl>
-              <FormControl className={classes.formControl}>
-                <Box
-                  component="form"
-                  sx={{
-                    '& > :not(style)': { m: 1, width: '24ch' }
-                  }}
-                  noValidate
-                  autoComplete="off"
-                >
-                  <TextField id="alae-basic" label="Default Rating Region" variant="standard"
-                    value={jobParameter.default_region && jobParameter.default_region > 0 ? jobParameter.default_region : "None"}
-                    onChange={event => {
-                      if (jobParameter.default_region !== event.target.value) {
-                        var reg = 0
-                        try{
-                          reg = parseInt(event.target.value)
-                        }
-                        catch{
-                          reg = 0
-                        }
-                        setJobParameter({ ...jobParameter, default_region: reg });
-                      }
-                    }}
-                  />
-                </Box>
-              </FormControl>
               <div>
                 <ul style={{ listStyleType: "none" }}>
+                  <li>
+                    <FormControl className={classes.formControl}>
+                      <Box
+                        component="form"
+                        sx={{
+                          '& > :not(style)': { m: 1, width: '24ch' }
+                        }}
+                        noValidate
+                        autoComplete="off"
+                      >
+                        <TextField id="alae-basic" label="Default Rating Region" variant="standard"
+                          value={jobParameter.default_region && jobParameter.default_region > 0 ? jobParameter.default_region : "None"}
+                          onChange={event => {
+                            if (jobParameter.default_region !== event.target.value) {
+                              var reg = 0
+                              try{
+                                reg = parseInt(event.target.value)
+                              }
+                              catch{
+                                reg = 0
+                              }
+                              setJobParameter({ ...jobParameter, default_region: reg });
+                            }
+                          }}
+                        />
+                      </Box>
+                    </FormControl>
+                  </li>
                   {
                     Object.entries(ValidRules).map((n) => {
                       return <li><FormControlLabel control={
@@ -1180,7 +1244,12 @@ export default function JobPage(props) {
               </div>
             </AccordionDetails>
           </Accordion>
-          <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
+          <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
+            expanded={inpExpanded & 0x08}
+            onChange={(event, isExpanded) => { 
+              if(isExpanded) setInpExpanded(inpExpanded | 0x08);
+              else setInpExpanded(inpExpanded & ~0x08);
+            }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
               aria-controls="corr-content"

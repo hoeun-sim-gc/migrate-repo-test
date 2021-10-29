@@ -213,6 +213,22 @@ class PatHelper:
                     update_time = '{datetime.utcnow().isoformat()}'
                     where job_id in ({jlst});""")
             cur.commit()
+    
+    @classmethod
+    def update_job(cls, job_id, para):
+        with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+            for tab in ['pat_policy', 'pat_location','pat_facultative']:
+                cur.execute(f"""delete from {tab} where job_id = {job_id} and data_type = 0;""")
+                cur.commit()
+
+            cur.execute(f"""delete from pat_premium where job_id = {job_id}""")
+            cur.commit()
+            
+            cur.execute(f"""update pat_job set status = 'received',
+                    parameters = '{json.dumps(para).replace("'", "''")}'  
+                    update_time = '{datetime.utcnow().isoformat()}'
+                    where job_id = {job_id};""")
+            cur.commit()
 
     @classmethod
     def cancel_jobs(cls, lst):

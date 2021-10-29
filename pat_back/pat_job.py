@@ -97,8 +97,8 @@ class PatJob:
             
             self.logger.info("Import data...OK")
         if stop_cb and stop_cb():
-            self.logger.warning("User stopped the analysis")
-            self.__update_status('stopped')
+            self.logger.warning("User cancelled the analysis")
+            self.__update_status('cancelled')
             return
 
         self.__update_status('checking_data')
@@ -106,20 +106,20 @@ class PatJob:
         self.__create_pat_data()
         self.logger.debug("Check and create valid PAT data...OK")
         if stop_cb and stop_cb():
-            self.logger.warning("User stopped the analysis")
-            self.__update_status('stopped')
+            self.logger.warning("User cancelled the analysis")
+            self.__update_status('cancelled')
             return
 
         if self.__need_correction():
             if (self.valid_rules & ValidRule.ValidContinue) ==0:
                 self.logger.error("Need to correct data then run again")
-                self.__update_status("stopped")
+                self.__update_status("cancelled")
                 return
             else:
                 self.logger.warning("Skip erroneous data and continue (item removed)")
         if stop_cb and stop_cb():
-            self.logger.warning("User stopped the analysis")
-            self.__update_status('stopped')
+            self.logger.warning("User cancelled the analysis")
+            self.__update_status('cancelled')
             return
         
         # start calculation
@@ -132,8 +132,8 @@ class PatJob:
             return 
         self.logger.info(f"Create the net of FAC layer stack...OK ({len(df_facnet)})")
         if stop_cb and stop_cb():
-            self.logger.warning("User stopped the analysis")
-            self.__update_status('stopped')
+            self.logger.warning("User cancelled the analysis")
+            self.__update_status('cancelled')
             return
 
         self.__update_status("allocating")
@@ -141,8 +141,8 @@ class PatJob:
         df_pat = self.__allocate_with_psold(df_facnet)
         self.logger.info("Allocate premium with PSOLD...OK")
         if stop_cb and stop_cb():
-            self.logger.warning("User stopped the analysis")
-            self.__update_status('stopped')
+            self.logger.warning("User cancelled the analysis")
+            self.__update_status('cancelled')
             return
 
         # save results

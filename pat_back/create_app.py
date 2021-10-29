@@ -98,17 +98,6 @@ def create_app(st_folder):
             
         return "ok"
     
-    @app.route('/api/reset/<job_lst>', methods=['POST'])
-    def reset_job(job_lst):
-        lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
-        lst= [a for a in lst if a>0]
-
-        if len(lst)>0:
-            PatWorker.stop_jobs(lst)
-            PatHelper.reset_jobs(lst)
-            
-        return "ok"
-
     @app.route('/api/run/<int:job_id>', methods=['POST'])
     def run_job(job_id):
         PatWorker.stop_jobs([job_id])
