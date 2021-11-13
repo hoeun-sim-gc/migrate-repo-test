@@ -446,13 +446,13 @@ export default function JobPage(props) {
 
 
   const post_job = (form_data) => {
-    let request = 'api/job'
+    let request = '/api/job'
     fetch(request, {
       method: "POST",
       body: form_data
     }).then(response => {
       if (response.ok) {
-        return response.text();
+        return response.json();
       }
       throw new TypeError("Oops, Submit job failed!");
     })
@@ -502,7 +502,7 @@ export default function JobPage(props) {
     const request = '/api/status/' + currentJob.job_id;
     fetch(request).then(response => {
       if (response.ok) {
-        return response.text();
+        return response.json();
       }
       throw new TypeError("Oops, we haven't got data!");
     })
@@ -590,7 +590,7 @@ export default function JobPage(props) {
   };
 
   const handleStopJob = () => {
-    let request = 'api/stop/' + currentJob.job_id;
+    let request = '/api/stop/' + currentJob.job_id;
     fetch(request, { method: "POST" }).then(response => {
       if (response.ok) {
         setLoadingCurrentJob(true);
@@ -599,7 +599,7 @@ export default function JobPage(props) {
   };
 
   const handleStartJob = () => {
-    let request = 'api/run/' + currentJob.job_id;
+    let request = '/api/run/' + currentJob.job_id;
     fetch(request, { method: "POST" }).then(response => {
       if (response.ok) {
         setLoadingCurrentJob(true);
@@ -777,7 +777,7 @@ export default function JobPage(props) {
                   if (sel){
                     var para= JSON.parse(JSON.stringify(sel.parameter));
                     para['job_guid'] = '';
-                    para['data_crrection'] = ''; 
+                    para['data_correction'] = ''; 
                     setNewJob({parameter:para, use_ref:sel.use_ref, data_file:null});
                     setSelectedNewJob(event.target.value);
                   }

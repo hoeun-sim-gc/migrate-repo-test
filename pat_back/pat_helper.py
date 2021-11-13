@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import datetime
+from io import BytesIO
 import zipfile
 import numpy as np
 import pandas as pd
@@ -74,7 +75,7 @@ class PatHelper:
     @classmethod
     def __save_data_correction(cls, job_id, data):
         creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
-        with pyodbc.connect(cls.job_conn) as conn, zipfile.ZipFile(data,'r') as zf:
+        with pyodbc.connect(cls.job_conn) as conn, zipfile.ZipFile(BytesIO(data),'r') as zf:
             for d,t in [('pol_validation.csv', 'pat_policy'),
                     ('loc_validation.csv', 'pat_location'),
                     ('fac_validation.csv', 'pat_facultative')]:
@@ -104,7 +105,7 @@ class PatHelper:
         with pyodbc.connect(cls.job_conn) as conn:
             df = pd.read_sql_query(f"""select parameters from pat_job where job_id = {job_id}""", conn)
             if df is not None and len(df) > 0:
-                return df.parameters[0]
+                return json.loads(df.parameters[0])
 
     @classmethod
     def get_job_status(cls, job_id):
@@ -241,3 +242,4 @@ class PatHelper:
                     update_time = '{datetime.utcnow().isoformat()}'
                     where job_id in ({jlst});""")
             cur.commit()
+

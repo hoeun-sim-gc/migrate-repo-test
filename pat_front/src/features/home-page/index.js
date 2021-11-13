@@ -210,7 +210,7 @@ export default function HomePage(props) {
       return;
     }
 
-    let request = 'api/result/' + lst.join('_');
+    let request = '/api/result/' + lst.join('_');
     fetch(request).then(response => {
       if (response.ok) {
         return response.blob();
@@ -245,7 +245,7 @@ export default function HomePage(props) {
       return;
     }
 
-    let request = 'api/stop/' + lst.join('_');
+    let request = '/api/stop/' + lst.join('_');
     fetch(request,{method: "POST"}).then(response => {
       if (response.ok) {
         setLoadingJobList(true);
@@ -254,7 +254,7 @@ export default function HomePage(props) {
   };
   
   const handleRunJob = (id)=>{
-    let request = 'api/run/' + id;
+    let request = '/api/run/' + id;
     fetch(request, {method: "POST"}).then(response => {
       if (response.ok) {
         setLoadingJobList(true);
@@ -271,7 +271,7 @@ export default function HomePage(props) {
       return;
     }
 
-    let request = 'api/valid/' + currentJob.job_id + '?flagged='+ flaggedOnly;
+    let request = '/api/valid/' + currentJob.job_id + '?flagged='+ flaggedOnly;
     fetch(request).then(response => {
       if (response.ok) {
         return response.blob();
