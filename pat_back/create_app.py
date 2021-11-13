@@ -58,7 +58,8 @@ def create_app(st_folder):
 
     @app.route('/api/valid/<int:job_id>', methods=['GET'])
     def get_validate_data(job_id):
-        df1, df2, df3 = PatHelper.get_validation_data(job_id)
+        flagged = request.args.get('flagged')
+        df1, df2, df3 = PatHelper.get_validation_data(job_id, flagged=='true')
         return send_zip_file(f'pat_validation_{job_id}.zip', 
             ('pol_validation.csv', df1),
             ('loc_validation.csv', df2),

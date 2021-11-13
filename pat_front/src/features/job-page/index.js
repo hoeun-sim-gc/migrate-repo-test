@@ -16,14 +16,12 @@ import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { Checkbox } from '@mui/material';
-import FormControlLabel from '@mui/material/FormControlLabel';
-
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogContentText from '@mui/material/DialogContentText';
-import DialogTitle from '@mui/material/DialogTitle';
+import {
+  Checkbox, RadioGroup, Radio,
+  FormControlLabel,
+  Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle
+} from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 import ReactSpeedometer from "react-d3-speedometer"
 
@@ -88,8 +86,8 @@ const useStyles = makeStyles((theme) => ({
     textAlign: 'left'
   },
   odometer: {
-    marginTop: '30px',
-    marginBottom: '30px',
+    marginTop: '20px',
+    marginBottom: '10px',
   },
   para: {
     color: theme.palette.text.primary,
@@ -109,38 +107,47 @@ export default function JobPage(props) {
   const theme = useTheme();
   const [user,] = useContext(UserContext);
 
-  const [currentJob, setCurrentJob] = useState({ job_id: job_id?job_id:0, status: '', finished: 0 })
-  const [loadingCurrentJob, setLoadingCurrentJob] = useState(false); 
-  const [refJob, setRefJob] = useState(0)
+  // current active job that showing the odometer; The parameter passes to the newjob 
+  const [currentJob, setCurrentJob] = useState({ job_id: job_id ? job_id : 0, status: '', finished: 0 })
+  const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
+  const [refJob, setRefJob] = useState({ job_id: 0, data_flag:'' })
 
+  const [newJob, setNewJob] = useState(
+    {
+      parameter: {
+        server: '',
+        edm: '',
+        rdm: '',
+        portinfoid: 0,
+        perilid: 0,
+        analysisid: 0,
+
+        type_of_rating: 'PSOLD',
+        peril_subline: 'All Perils',
+        subject_premium: 1e8,
+        coverage: 'Building + Contents + Time Element',
+        loss_alae_ratio: 1.0,
+        average_accident_date: '1/1/2022',
+        trend_factor: 1.035,
+        additional_coverage: 2.0,
+        deductible_treatment: 'Retains Limit',
+        data_correction: '',
+
+        valid_rules: 0,
+        default_region: 0,
+        ref_analysis: 0,
+
+        job_name: 'Test_PAT',
+        user_name: user?.name,
+        user_email: user?.email
+      },
+      data_file: null,
+      use_ref: false
+    })
   const [paraString, setParaString] = useState('');
-  const [jobParameter, setJobParameter] = useState({
-    server: '',
-    edm: '',
-    rdm: '',
-    portinfoid: 0,
-    perilid: 0,
-    analysisid: 0,
-
-    type_of_rating: 'PSOLD',
-    peril_subline: 'All Perils',
-    subject_premium: 1e8,
-    coverage: 'Building + Contents + Time Element',
-    loss_alae_ratio: 1.0,
-    average_accident_date: '1/1/2022',
-    trend_factor: 1.035,
-    additional_coverage: 2.0,
-    deductible_treatment: 'Retains Limit',
-    data_correction: '',
-
-    valid_rules: 0,
-    default_region: 0,
-    ref_analysis: 0,
-
-    job_name: 'Test_PAT',
-    user_name: user?.name,
-    user_email: user?.email
-  });
+  const [jobList, setJobList] = useState([]);
+  const [selectedNewJob, setSelectedNewJob] = useState('');
+  
 
   const [inpExpanded, setInpExpanded] = useState(0x09);
   const [loadingServerList, setLoadingServerList] = useState(false);
@@ -158,10 +165,8 @@ export default function JobPage(props) {
   const [loadingAnlsList, setLoadingAnlsList] = useState(false);
   const [anlsList, setAnlsList] = useState([]);
 
-  const [jobFile, setJobFile] = useState('')
-  const [batchFile, setBatchFile] = useState('')
   const [uploadingJob, setUploadingJob] = useState(false);
-  const [confirm, setConfirm] = React.useState(false);  
+  const [confirm, setConfirm] = React.useState(false);
 
   React.useEffect(() => {
     setLoadingServerList(true);
@@ -200,8 +205,17 @@ export default function JobPage(props) {
         throw new TypeError("Oops, we haven't got data!");
       })
         .then(data => {
-          setJobParameter(data);
-          if(data.ref_analysis && data.ref_analysis>0) setRefJob(parseInt(data.ref_analysis))
+          setRefJob({job_id: job_id, 
+            data_flag: data.server+"|" + data.edm+"|" + data.rdm + "|" + data.portinfoid + "|"  + data.perilid  + "|" + data.analysisid
+          });
+
+          data['job_name'] = data['job_name'] + '_copy';
+          data['job_guid'] = '';
+          data['user_name'] = user?.name;
+          data['user_email'] = user?.email;
+          data['data_correction'] = ''
+          data['ref_analysis'] = 0;
+          setNewJob({ parameter: data, data_file: null, use_ref:true });
 
           if ('server' in data) svr = data['server'];
           else svr = localStorage.getItem('currentServer');
@@ -222,7 +236,7 @@ export default function JobPage(props) {
         });
     }
     else {
-      setJobParameter({ ...jobParameter, server: svr, edm: '', rdm: '', portinfoid: 0, perilid: 0, analysisid: 0 });
+      setNewJob({ ...newJob, parameter: { ...newJob.parameter, server: svr, edm: '', rdm: '', portinfoid: 0, perilid: 0, analysisid: 0 } });
       setDbList([]);
       setLoadingDbList(true);
     }
@@ -233,19 +247,19 @@ export default function JobPage(props) {
 
 
   React.useEffect(() => {
-    setParaString(JSON.stringify(jobParameter, null, '  '))
-  }, [jobParameter]);
+    setParaString(JSON.stringify(newJob?.parameter, null, '  '))
+  }, [newJob.parameter]);
 
 
   //get EDM/RDM list 
   React.useEffect(() => {
     if (!loadingDbList) return;
-    if (!jobParameter.server) {
+    if (!newJob.parameter.server) {
       setLoadingDbList(false);
       return;
     }
 
-    const request = '/api/db_list/' + jobParameter.server;
+    const request = '/api/db_list/' + newJob.parameter.server;
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -254,11 +268,11 @@ export default function JobPage(props) {
     })
       .then(data => {
         setDbList(data);
-        if (!data.edm.includes(jobParameter.edm)) {
-          setJobParameter({ ...jobParameter, edm: data.edm[0], portinfoid: 0, perilid: 0 });
+        if (!data.edm.includes(newJob.parameter.edm)) {
+          setNewJob({ ...newJob, parameter: { ...newJob.parameter, edm: data.edm[0], portinfoid: 0, perilid: 0 } });
         }
-        if (!data.rdm.includes(jobParameter.rdm)) {
-          setJobParameter({ ...jobParameter, rdm: data.rdm[0], analysisid: 0 });
+        if (!data.rdm.includes(newJob.parameter.rdm)) {
+          setNewJob({ ...newJob, parameter: { ...newJob.parameter, rdm: data.rdm[0], analysisid: 0 } });
         }
         setLoadingPortList(true);
         setLoadingAnlsList(true);
@@ -270,17 +284,17 @@ export default function JobPage(props) {
         setLoadingDbList(false);
       });
     // eslint-disable-next-line
-  }, [loadingDbList, jobParameter.server]);
+  }, [loadingDbList, newJob.parameter.server]);
 
   //get port list 
   React.useEffect(() => {
     if (!loadingPortList) return;
-    if (!jobParameter.edm) {
+    if (!newJob.parameter.edm) {
       setLoadingPortList(false);
       return;
     }
 
-    const request = '/api/port/' + jobParameter.server + '/' + jobParameter.edm;
+    const request = '/api/port/' + newJob.parameter.server + '/' + newJob.parameter.edm;
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -290,8 +304,8 @@ export default function JobPage(props) {
       .then(data => {
         setPortList(data);
         if (data.length > 0) {
-          if (data.filter(e => e.portinfoid === jobParameter.portinfoid).length <= 0) {
-            setJobParameter({ ...jobParameter, portinfoid: data[0].portinfoid, perilid: 0 })
+          if (data.filter(e => e.portinfoid === newJob.parameter.portinfoid).length <= 0) {
+            setNewJob({ ...newJob, parameter: { ...newJob.parameter, portinfoid: data[0].portinfoid, perilid: 0 } })
           }
         }
 
@@ -304,17 +318,17 @@ export default function JobPage(props) {
         setLoadingPortList(false);
       });
     // eslint-disable-next-line
-  }, [loadingPortList, jobParameter.edm]);
+  }, [loadingPortList, newJob.parameter.edm]);
 
   //get Peril list 
   React.useEffect(() => {
     if (!loadingPerilList) return;
-    if (!jobParameter.edm || jobParameter.portinfoid <= 0) {
+    if (!newJob.parameter.edm || newJob.parameter.portinfoid <= 0) {
       setLoadingPerilList(false);
       return;
     }
 
-    const request = '/api/peril/' + jobParameter.server + '/' + jobParameter.edm + '/' + jobParameter.portinfoid;
+    const request = '/api/peril/' + newJob.parameter.server + '/' + newJob.parameter.edm + '/' + newJob.parameter.portinfoid;
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -324,7 +338,7 @@ export default function JobPage(props) {
       .then(data => {
         setPerilList(data);
         if (data.length > 0) {
-          if (!data.includes(jobParameter.perilid)) setJobParameter({ ...jobParameter, perilid: data[0] })
+          if (!data.includes(newJob.parameter.perilid)) setNewJob({ ...newJob, parameter: { ...newJob.parameter, perilid: data[0] } })
         }
 
         setLoadingPerilList(true);
@@ -336,18 +350,18 @@ export default function JobPage(props) {
         setLoadingPerilList(false);
       });
     // eslint-disable-next-line
-  }, [loadingPerilList, jobParameter.portinfoid]);
+  }, [loadingPerilList, newJob.parameter.portinfoid]);
 
 
   //get analyis list 
   React.useEffect(() => {
     if (!loadingAnlsList) return;
-    if (!jobParameter.rdm) {
+    if (!newJob.parameter.rdm) {
       setLoadingAnlsList(false);
       return;
     }
 
-    const request = '/api/anls/' + jobParameter.server + '/' + jobParameter.rdm;
+    const request = '/api/anls/' + newJob.parameter.server + '/' + newJob.parameter.rdm;
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -358,8 +372,8 @@ export default function JobPage(props) {
         if (data) data = [{ id: 0, name: '' }].concat(data);
         else data = [{ id: 0, name: '' }]
 
-        if (data.filter(r => r.id === jobParameter.analysisid).length <= 0) {
-          setJobParameter({ ...jobParameter, analysisid: 0 })
+        if (data.filter(r => r.id === newJob.parameter.analysisid).length <= 0) {
+          setNewJob({ ...newJob, parameter: { ...newJob.parameter, analysisid: 0 } })
         }
 
         setAnlsList(data);
@@ -371,32 +385,32 @@ export default function JobPage(props) {
         setLoadingAnlsList(false);
       });
     // eslint-disable-next-line
-  }, [loadingAnlsList, jobParameter.rdm]);
+  }, [loadingAnlsList, newJob.parameter.rdm]);
 
-  const ValidateJob = () => {
-    if (!jobParameter) return false;
+  const ValidateJob = (job) => {
+    if (!job) return false;
 
-    if (!jobParameter.server || !jobParameter.edm || jobParameter.portinfoid <= 0) {
+    if (!job.server || !job.edm || job.portinfoid <= 0) {
       console.log("No input data!");
       return false;
     }
 
-    if (jobParameter.perilid <= 0) {
+    if (job.perilid <= 0) {
       console.log("Need peril id!");
       return false;
     }
 
-    if (jobParameter.subject_premium <= 0) {
+    if (job.subject_premium <= 0) {
       console.log("Need subject premium!");
       return false;
     }
 
-    if (jobParameter.loss_alae_ratio <= 0) {
+    if (job.loss_alae_ratio <= 0) {
       console.log("Loss ALAE error!");
       return false;
     }
 
-    if (!jobParameter.job_name) {
+    if (!job.job_name) {
       console.log("Need job name!");
       return false;
     }
@@ -407,51 +421,26 @@ export default function JobPage(props) {
   //submit job
   React.useEffect(() => {
     if (!uploadingJob) return;
-    if (!jobParameter) {
+    if (!jobList || jobList.length <= 0 ) {
       setUploadingJob(false);
       return;
     }
 
-    //if batch submit, ignore the data correction file and reference analysis   
-    if (batchFile) {
-      var fr = new FileReader();
-      fr.onload = function () {
-        var lns = fr.result.split(/\r?\n/g);
-        var head = lns[0].split(',');
-        var n = head.length;
-        var js0 = jobParameter;
-        js0['data_correction'] =''
-        js0.ref_analysis = 0
-        lns.slice(1).forEach(ln => {
-          var col = ln.split(',');
-          if (col.length === n) {
-            var js = JSON.parse(JSON.stringify(js0));
-            for (var i = 0; i < n; i++) {
-              if (typeof (js[head[i]]) === 'number') js[head[i]] = Number(col[i]);
-              else js[head[i]] = col[i];
-            }
-
-            let form_data = new FormData();
-            js['job_guid'] = uuidv4();
-            form_data.append('para', JSON.stringify(js));
-
-            post_job(form_data)
-          }
-        });
+    jobList.forEach((job)=>{
+      if(ValidateJob(job.parameter)) {
+        
+        let form_data = new FormData();
+        let js = job.parameter;
+        if(job.data_file) 
+        {
+          js['data_correction'] =job.data_file.name;
+          form_data.append("data",job.data_file);
+        }
+  
+        form_data.append('para', JSON.stringify(js));
+        post_job(form_data);
       }
-      fr.readAsText(batchFile);
-
-    }
-    else {
-      let form_data = new FormData();
-      let js = jobParameter;
-      js['job_guid'] = uuidv4();
- 
-      form_data.append('para', JSON.stringify(js));
-      if (jobFile) form_data.append("data", jobFile);
-      post_job(form_data)
-    }
-
+    });
     // eslint-disable-next-line
   }, [uploadingJob]);
 
@@ -582,41 +571,40 @@ export default function JobPage(props) {
     var it = confirm
     setConfirm('');
     if (isOK) {
-      if(it === "stop the current analysis" ) handleStopJob();
-      else if(it === "start/rerun the current analysis" ) handleStartJob();
-      else if(it === "submit a new job" ) setUploadingJob(true);
+      if (it === "stop the current analysis") handleStopJob();
+      else if (it === "start/rerun the current analysis") handleStartJob();
+      else if (it === "submit jobs") setUploadingJob(true);
+      else if (it === "delete the selected job") handleDelJob();
     }
   };
 
-  const handleNewJob = () => {
-    setRefJob(currentJob && currentJob.job_id > 0?currentJob.job_id :0);
-    setJobParameter({...jobParameter, 
-        job_guid:'', 
-        user_name: user?.name, 
-        user_email:user?.email, 
-        data_correction: '',
-        ref_analysis: currentJob && currentJob.job_id > 0? parseInt(currentJob.job_id) : 0
-    });    
-    setCurrentJob({...currentJob, job_id: 0, status: 'configuring', finished: 0 });
-    history.push('/job')
-  };
-  
-  const handleStopJob = ()=>{
-    let request = 'api/stop/' + currentJob.job_id;
-    fetch(request,{method: "POST"}).then(response => {
-      if (response.ok) {
-        setLoadingCurrentJob(true);
-      }
-    });    
+  const handleDelJob = () => {
+    var lst = jobList;
+    if(lst){
+      var sel= lst.find(j => j.parameter['job_guid'] === selectedNewJob);
+      if(sel){
+          lst.pop(sel);
+          setJobList(lst);
+      }    
+    }
   };
 
-  const handleStartJob = ()=>{
-    let request = 'api/run/' + currentJob.job_id;
-    fetch(request, {method: "POST"}).then(response => {
+  const handleStopJob = () => {
+    let request = 'api/stop/' + currentJob.job_id;
+    fetch(request, { method: "POST" }).then(response => {
       if (response.ok) {
         setLoadingCurrentJob(true);
       }
-    }); 
+    });
+  };
+
+  const handleStartJob = () => {
+    let request = 'api/run/' + currentJob.job_id;
+    fetch(request, { method: "POST" }).then(response => {
+      if (response.ok) {
+        setLoadingCurrentJob(true);
+      }
+    });
   };
 
   return (
@@ -636,20 +624,20 @@ export default function JobPage(props) {
             <CardContent>
               <Grid container>
                 <Grid item md={8}>
-                  <Typography variant='h4' color="textSecondary" gutterBottom>
+                  <Typography variant='h5' color="textSecondary" gutterBottom>
                     Current Analysys
                   </Typography>
                   <Typography variant='h6' color="textSecondary" gutterBottom>
-                    {currentJob? currentJob.job_id : ''}
+                    {currentJob ? currentJob.job_id : ''}
                   </Typography>
                   <div className={classes.odometer} >
                     <ReactSpeedometer
-                      width={280}
-                      height={180}
+                      width={250}
+                      height={150}
                       marginTop={50}
                       marginBottom={50}
                       needleHeightRatio={0.7}
-                      value={currentJob? currentJob.finished : 0}
+                      value={currentJob ? currentJob.finished : 0}
                       maxValue={100}
                       segments={4}
                       startColor="green"
@@ -657,7 +645,7 @@ export default function JobPage(props) {
                       needleColor="red"
                       needleTransitionDuration={2000}
                       needleTransition="easeElastic"
-                      currentValueText={currentJob? currentJob.status : 'A'}
+                      currentValueText={currentJob ? currentJob.status : 'A'}
                       currentValuePlaceholderStyle={'#{value}'}
                       textColor={theme.palette.text.primary}
                     />
@@ -665,42 +653,25 @@ export default function JobPage(props) {
                 </Grid>
                 <Grid md={4}>
                   <MenuList>
-                    <MenuItem 
-                      onClick={() => {setLoadingCurrentJob(true);}}
+                    <MenuItem
+                      onClick={() => { setLoadingCurrentJob(true); }}
                     >Refresh</MenuItem>
                     <Divider />
-                    <MenuItem 
-                      disabled={!currentJob || currentJob.job_id <= 0 || currentJob.finished <=0 ||currentJob.finished >= 100}                    
+                    <MenuItem
+                      disabled={!currentJob || currentJob.job_id <= 0 || currentJob.finished <= 0 || currentJob.finished >= 100}
                       onClick={() => {
                         setConfirm("stop the current analysis");
                       }}
                     >Stop Current</MenuItem>
-                    <MenuItem 
-                      disabled={!currentJob || currentJob.job_id <= 0 || (currentJob.finished > 0 && currentJob.finished < 100)}                    
+                    <MenuItem
+                      disabled={!currentJob || currentJob.job_id <= 0 || (currentJob.finished > 0 && currentJob.finished < 100)}
                       onClick={() => {
                         setConfirm("start/rerun the current analysis");
                       }}
                     >Start Current</MenuItem>
-                    <Divider />
-                    <MenuItem 
-                      onClick={handleNewJob}
-                    >New Analysis</MenuItem>
-                    <Divider />
-                    <MenuItem 
-                      disabled={currentJob && currentJob.job_id > 0}                    
-                      onClick={() => {
-                        setConfirm("submit a new job");
-                      }}
-                    >Submit</MenuItem>
-                    <MenuItem 
-                      disabled={currentJob && currentJob.job_id > 0}                    
-                      onClick={(e) => {
-                        if (ValidateJob()) inputFile.current.click();
-                      }}>Batch Submit</MenuItem>
                   </MenuList>
                   <input type='file' id='file' ref={inputFile} style={{ display: 'none' }} onChange={(e) => {
                     if (e.target.files && e.target.files.length > 0) {
-                      setBatchFile(e.target.files[0]);
                       setUploadingJob(true);
                     }
                   }} />
@@ -728,19 +699,105 @@ export default function JobPage(props) {
             </DialogActions>
           </Dialog>
         </div>
-        <textarea value={paraString}
-          readOnly={true}
-          class="job_bottom_row"
-          style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
-        </textarea>
+        <div class="job_mid_row">
+          <FormControl className={classes.formControl}>
+            <Box
+              component="form"
+              sx={{
+                '& > :not(style)': { m: 1, width: '62ch' }
+              }}
+              noValidate
+              autoComplete="off"
+            >
+              <TextField id="alae-basic" label="New Job" variant="standard"
+                value={newJob.parameter.job_name}
+                onChange={event => {
+                  if (newJob.parameter.job_name !== event.target.value) {
+                    setNewJob({ ...newJob, parameter: { ...newJob.parameter, job_name: event.target.value } });
+                  }
+                }}
+              />
+            </Box>
+            <div class="row" style={{ alignItems: 'center' }} >
+              <div class="col-md-4 align-left vertical-align-top">
+                <Button variant="raised" component="span" className={classes.button}
+                  onClick={(e) => {
+                    var lst = jobList;
+                    if (!lst) lst = []
+                    var job = {
+                      parameter: JSON.parse(JSON.stringify(newJob.parameter)),
+                      data_file: newJob.data_file,
+                      use_ref: newJob.use_ref
+                    };
+                    job.parameter['job_guid'] = uuidv4();
+                    if (refJob && refJob.job_id > 0 && job.use_ref && 
+                          job.parameter.server+"|" + job.parameter.edm+"|" + job.parameter.rdm +"|"+ job.parameter.portinfoid 
+                          + "|" + job.parameter.perilid  + "|" + job.parameter.analysisid === refJob.data_flag) 
+                      job.parameter.ref_analysis = parseInt(refJob.job_id);
+                    else job.parameter.ref_analysis = 0;
+                    lst.push(job);
+                    setJobList(lst);
+                    setNewJob({ ...newJob, parameter: { 
+                        ...newJob.parameter,
+                        job_name: newJob.parameter.job_name + "_copy"
+                      }, 
+                      data_file: null })
+                  }}> Add
+                </Button>
+              </div>
+              <div class="col-md-4 align-left vertical-align-top">
+                <Button variant="raised" component="span" className={classes.button}
+                  disabled={!jobList || jobList.length <= 0 || !selectedNewJob || !jobList.find(j => j.parameter['job_guid'] === selectedNewJob) } 
+                  onClick={() => {
+                    setConfirm("delete the selected job");
+                  }}>
+                  Remove
+                </Button>
+              </div>
+              <div class="col-md-4 align-left vertical-align-top">
+                <Button variant="raised" component="span" className={classes.button}
+                  disabled={!jobList || jobList.length <= 0}
+                  onClick={() => {
+                    setConfirm("submit jobs");
+                  }}> Submit All
+                </Button>
+              </div>
+            </div>
+          </FormControl>
+        </div>
+        <div box class="job_bottom_row">
+          <FormControl component="fieldset">
+            <RadioGroup
+              defaultValue=""
+              name="radio-buttons-group"
+              onChange={(event) => {
+                var lst= jobList;
+                if(lst){
+                  var sel = lst.find(j => j.parameter['job_guid'] === event.target.value); 
+                  if (sel){
+                    var para= JSON.parse(JSON.stringify(sel.parameter));
+                    para['job_guid'] = '';
+                    para['data_crrection'] = ''; 
+                    setNewJob({parameter:para, use_ref:sel.use_ref, data_file:null});
+                    setSelectedNewJob(event.target.value);
+                  }
+                }
+              }}
+            >
+              {jobList?.map((j) => {
+                return <FormControlLabel value={j.parameter['job_guid']} control={<Radio />} label={j.parameter['job_name']} />
+              })}
+            </RadioGroup>
+          </FormControl>
+        </div>
       </div>
       <div class="job_right_col">
         <div>
           <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
             expanded={inpExpanded & 0x01}
-            onChange={(event, isExpanded) => { 
-              if(isExpanded) setInpExpanded(inpExpanded | 0x01);
-              else setInpExpanded(inpExpanded & ~0x01 );
+            onChange={(event, isExpanded) => {
+              if (isExpanded) setInpExpanded(inpExpanded | 0x01);
+              else setInpExpanded(inpExpanded & ~0x01);
             }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
@@ -758,12 +815,12 @@ export default function JobPage(props) {
                   <Select
                     labelId="server-placeholder-label"
                     id="server-placeholder"
-                    value={jobParameter.server}
+                    value={newJob.parameter.server}
                     defaultValue={''}
                     onChange={event => {
-                      if (jobParameter.server !== event.target.value) {
+                      if (newJob.parameter.server !== event.target.value) {
                         localStorage.setItem("currentServer", event.target.value);
-                        setJobParameter({ ...jobParameter, server: event.target.value, rdm: '', edm: '', portinfoid: 0, analysisid: 0 });
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, server: event.target.value, rdm: '', edm: '', portinfoid: 0, analysisid: 0 } });
                         setLoadingDbList(true);
                       }
                     }}
@@ -779,8 +836,8 @@ export default function JobPage(props) {
                   <InputLabel shrink id="edm-placeholder-label">
                     <Button style={{ padding: 0 }}
                       onClick={() => {
-                        if (jobParameter.rdm) {
-                          let rdm = jobParameter.rdm.toLowerCase().replace('rdm', 'edm');
+                        if (newJob.parameter.rdm) {
+                          let rdm = newJob.parameter.rdm.toLowerCase().replace('rdm', 'edm');
                           let s0 = 0;
                           let ee = ''
                           dbList.edm.forEach(edm => {
@@ -791,7 +848,7 @@ export default function JobPage(props) {
                             }
                           });
 
-                          setJobParameter({ ...jobParameter, 'edm': ee });
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, 'edm': ee } });
                           setLoadingPortList(true);
                         }
                       }}
@@ -802,11 +859,11 @@ export default function JobPage(props) {
                   <Select
                     labelId="edm-placeholder-label"
                     id="edm-placeholder"
-                    value={jobParameter.edm}
+                    value={newJob.parameter.edm}
                     defaultValue={''}
                     onChange={event => {
-                      if (jobParameter.edm !== event.target.value) {
-                        setJobParameter({ ...jobParameter, edm: event.target.value, portinfoid: 0 });
+                      if (newJob.parameter.edm !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, edm: event.target.value, portinfoid: 0 } });
                         setLoadingPortList(true);
                       }
                     }}
@@ -823,11 +880,11 @@ export default function JobPage(props) {
                   <Select
                     labelId="port-placeholder-label"
                     id="port-placeholder"
-                    value={jobParameter.portinfoid}
+                    value={newJob.parameter.portinfoid}
                     defaultValue={''}
                     onChange={event => {
-                      if (jobParameter.portinfoid !== event.target.value) {
-                        setJobParameter({ ...jobParameter, portinfoid: event.target.value });
+                      if (newJob.parameter.portinfoid !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, portinfoid: event.target.value } });
                         setLoadingPerilList(true);
                       }
                     }}
@@ -844,11 +901,11 @@ export default function JobPage(props) {
                   <Select
                     labelId="peril-placeholder-label"
                     id="peril-placeholder"
-                    value={jobParameter.perilid}
+                    value={newJob.parameter.perilid}
                     defaultValue={''}
                     onChange={event => {
-                      if (jobParameter.perilid !== event.target.value) {
-                        setJobParameter({ ...jobParameter, perilid: event.target.value });
+                      if (newJob.parameter.perilid !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, perilid: event.target.value } });
                       }
                     }}
                   >
@@ -863,7 +920,7 @@ export default function JobPage(props) {
                   <InputLabel shrink id="rdm-placeholder-label">
                     <Button style={{ padding: 0 }}
                       onClick={() => {
-                        let edm = jobParameter.edm.toLowerCase().replace('edm', 'rdm');
+                        let edm = newJob.parameter.edm.toLowerCase().replace('edm', 'rdm');
                         let s0 = 0;
                         let r = ''
                         dbList.rdm.forEach(rdm => {
@@ -875,7 +932,7 @@ export default function JobPage(props) {
                           }
                         });
 
-                        setJobParameter({ ...jobParameter, 'rdm': r });
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, 'rdm': r } });
                         setLoadingAnlsList(true);
                       }}
 
@@ -886,11 +943,11 @@ export default function JobPage(props) {
                   <Select
                     labelId="rdm-placeholder-label"
                     id="rdm-placeholder"
-                    value={jobParameter.rdm}
+                    value={newJob.parameter.rdm}
                     defaultValue={''}
                     onChange={event => {
-                      if (jobParameter.rdm !== event.target.value) {
-                        setJobParameter({ ...jobParameter, rdm: event.target.value, analysisid: 0 });
+                      if (newJob.parameter.rdm !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, rdm: event.target.value, analysisid: 0 } });
                         setLoadingAnlsList(true);
                       }
                     }}
@@ -907,11 +964,11 @@ export default function JobPage(props) {
                   <Select
                     labelId="anls-placeholder-label"
                     id="anls-placeholder"
-                    value={jobParameter.analysisid}
+                    value={newJob.parameter.analysisid}
                     defaultValue={''}
                     onChange={event => {
-                      if (jobParameter.analysisid !== event.target.value) {
-                        setJobParameter({ ...jobParameter, analysisid: event.target.value });
+                      if (newJob.parameter.analysisid !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, analysisid: event.target.value } });
                       }
                     }}
                   >
@@ -923,15 +980,18 @@ export default function JobPage(props) {
               </div>
               <div>
                 <FormControl className={classes.formControl}>
-                  <FormControlLabel  control={
+                  <FormControlLabel control={
                     <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
-                      disabled={refJob <= 0}
-                      checked={jobParameter.ref_analysis && jobParameter.ref_analysis > 0}
+                      disabled={!newJob || !newJob.parameter || !refJob || refJob.job_id <= 0 ||   
+                        newJob.parameter.server+"|" + newJob.parameter.edm+"|" + newJob.parameter.rdm +"|"+ newJob.parameter.portinfoid 
+                          + "|" + newJob.parameter.perilid  + "|" + newJob.parameter.analysisid !== refJob.data_flag }
+                      checked={newJob && newJob.use_ref && newJob.parameter && refJob && refJob.job_id > 0 &&   
+                        newJob.parameter.server+"|" + newJob.parameter.edm+"|" + newJob.parameter.rdm +"|"+ newJob.parameter.portinfoid 
+                          + "|" + newJob.parameter.perilid  + "|" + newJob.parameter.analysisid === refJob.data_flag }
                       onChange={event => {
-                        if(event.target.checked) setJobParameter({...jobParameter, ref_analysis: refJob});
-                        else setJobParameter({...jobParameter, ref_analysis: 0});
+                        setNewJob({ ...newJob, use_ref:event.target.checked });
                       }}
-                    />} label={"Use raw data from the reference analysis " + refJob}
+                    />} label={"Use raw data from the reference analysis " + refJob.job_id}
                   />
                 </FormControl>
               </div>
@@ -940,8 +1000,8 @@ export default function JobPage(props) {
 
           <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
             expanded={inpExpanded & 0x02}
-            onChange={(event, isExpanded) => { 
-              if(isExpanded) setInpExpanded(inpExpanded | 0x02);
+            onChange={(event, isExpanded) => {
+              if (isExpanded) setInpExpanded(inpExpanded | 0x02);
               else setInpExpanded(inpExpanded & ~0x02);
             }}>
             <AccordionSummary
@@ -960,11 +1020,11 @@ export default function JobPage(props) {
                   <Select
                     labelId="rate-placeholder-label"
                     id="rate-placeholder"
-                    value={jobParameter.type_of_rating}
+                    value={newJob.parameter.type_of_rating}
                     defaultValue={'PSOLD'}
                     onChange={event => {
-                      if (jobParameter.type_of_rating !== event.target.value) {
-                        setJobParameter({ ...jobParameter, type_of_rating: event.target.value });
+                      if (newJob.parameter.type_of_rating !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, type_of_rating: event.target.value } });
                       }
                     }}
                   >
@@ -979,11 +1039,11 @@ export default function JobPage(props) {
                 <Select
                   labelId="coverage-placeholder-label"
                   id="coverage-placeholder"
-                  value={jobParameter.coverage}
+                  value={newJob.parameter.coverage}
                   defaultValue={'Building + Contents + Time Element'}
                   onChange={event => {
-                    if (jobParameter.coverage !== event.target.value) {
-                      setJobParameter({ ...jobParameter, coverage: event.target.value });
+                    if (newJob.parameter.coverage !== event.target.value) {
+                      setNewJob({ ...newJob, parameter: { ...newJob.parameter, coverage: event.target.value } });
                     }
                   }}
                 >
@@ -1000,11 +1060,11 @@ export default function JobPage(props) {
                 <Select
                   labelId="peril-placeholder-label"
                   id="peril-placeholder"
-                  value={jobParameter.peril_subline}
+                  value={newJob.parameter.peril_subline}
                   defaultValue={'All Perils'}
                   onChange={event => {
-                    if (jobParameter.peril_subline !== event.target.value) {
-                      setJobParameter({ ...jobParameter, peril_subline: event.target.value });
+                    if (newJob.parameter.peril_subline !== event.target.value) {
+                      setNewJob({ ...newJob, parameter: { ...newJob.parameter, peril_subline: event.target.value } });
                     }
                   }}
                 >
@@ -1025,14 +1085,14 @@ export default function JobPage(props) {
                     autoComplete="off"
                   >
                     <TextField id="premium-basic" label="Subject Premium" variant="standard"
-                      value={jobParameter.subject_premium?.toLocaleString(
+                      value={newJob.parameter.subject_premium?.toLocaleString(
                         undefined, // leave undefined to use the visitor's browser 
                         // locale or a string like 'en-US' to override it.
                         { minimumFractionDigits: 0 }
                       )}
                       onChange={event => {
-                        if (jobParameter.subject_premium !== event.target.value) {
-                          setJobParameter({ ...jobParameter, subject_premium: parseFloat(event.target.value) });
+                        if (newJob.parameter.subject_premium !== event.target.value) {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, subject_premium: parseFloat(event.target.value) } });
                         }
                       }}
                     />
@@ -1048,10 +1108,10 @@ export default function JobPage(props) {
                     autoComplete="off"
                   >
                     <TextField id="alae-basic" label="Loss & ALAE ratio" variant="standard"
-                      value={jobParameter.loss_alae_ratio}
+                      value={newJob.parameter.loss_alae_ratio}
                       onChange={event => {
-                        if (jobParameter.loss_alae_ratio !== event.target.value) {
-                          setJobParameter({ ...jobParameter, loss_alae_ratio: event.target.value });
+                        if (newJob.parameter.loss_alae_ratio !== event.target.value) {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, loss_alae_ratio: parseFloat(event.target.value) } });
                         }
                       }}
                     />
@@ -1063,10 +1123,10 @@ export default function JobPage(props) {
                   <LocalizationProvider dateAdapter={AdapterDateFns}>
                     <DatePicker
                       label="Average Accident Date"
-                      value={jobParameter.average_accident_date}
+                      value={newJob.parameter.average_accident_date}
                       format="MM/DD/YYYY"
                       onChange={(newValue) => {
-                        setJobParameter({ ...jobParameter, average_accident_date: newValue.toLocaleDateString('en-US') });
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, average_accident_date: newValue.toLocaleDateString('en-US') } });
                       }}
                       renderInput={(params) => <TextField {...params} />}
                     />
@@ -1082,10 +1142,10 @@ export default function JobPage(props) {
                     autoComplete="off"
                   >
                     <TextField id="trend-basic" label="Trend Factor" variant="standard"
-                      value={jobParameter.trend_factor}
+                      value={newJob.parameter.trend_factor}
                       onChange={event => {
-                        if (jobParameter.trend_factor !== event.target.value) {
-                          setJobParameter({ ...jobParameter, trend_factor: event.target.value });
+                        if (newJob.parameter.trend_factor !== event.target.value) {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, trend_factor: parseFloat(event.target.value) } });
                         }
                       }}
                     />
@@ -1103,10 +1163,10 @@ export default function JobPage(props) {
                     autoComplete="off"
                   >
                     <TextField id="addl-basic" label="Additional Coverage" variant="standard"
-                      value={jobParameter.additional_coverage}
+                      value={newJob.parameter.additional_coverage}
                       onChange={event => {
-                        if (jobParameter.additional_coverage !== event.target.value) {
-                          setJobParameter({ ...jobParameter, additional_coverage: event.target.value });
+                        if (newJob.parameter.additional_coverage !== event.target.value) {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, additional_coverage: parseFloat(event.target.value) } });
                         }
                       }}
                     />
@@ -1121,11 +1181,11 @@ export default function JobPage(props) {
                   <Select
                     labelId="deductible-placeholder-label"
                     id="deductible-placeholder"
-                    value={jobParameter.deductible_treatment}
+                    value={newJob.parameter.deductible_treatment}
                     defaultValue={'Retains Limit'}
                     onChange={event => {
-                      if (jobParameter.deductible_treatment !== event.target.value) {
-                        setJobParameter({ ...jobParameter, deductible_treatment: event.target.value });
+                      if (newJob.parameter.deductible_treatment !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, deductible_treatment: event.target.value } });
                       }
                     }}
                   >
@@ -1142,8 +1202,8 @@ export default function JobPage(props) {
           </Accordion>
           <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
             expanded={inpExpanded & 0x04}
-            onChange={(event, isExpanded) => { 
-              if(isExpanded) setInpExpanded(inpExpanded | 0x04);
+            onChange={(event, isExpanded) => {
+              if (isExpanded) setInpExpanded(inpExpanded | 0x04);
               else setInpExpanded(inpExpanded & ~0x04);
             }}>
             <AccordionSummary
@@ -1163,13 +1223,13 @@ export default function JobPage(props) {
                   autoComplete="off"
                 >
                   <TextField id="alae-basic" label="Data Correction File" variant="standard" readOnly
-                    value={jobParameter.data_correction? jobParameter.data_correction : "No Correction"}
+                    value={(newJob.data_file? newJob.data_file.name : "No Correction")}
                   />
                 </Box>
                 <div class="row" style={{ alignItems: 'center' }} >
                   <div class="col-md-4 align-left vertical-align-top">
                     <Button variant="raised" component="label" className={classes.button}
-                      > Add
+                    > Add
                       <input hidden
                         className={classes.input}
                         style={{ display: 'none' }}
@@ -1177,8 +1237,7 @@ export default function JobPage(props) {
                         type="file"
                         onChange={(e) => {
                           if (e.target.files && e.target.files.length > 0) {
-                            setJobFile(e.target.files[0]);
-                            setJobParameter({ ...jobParameter, data_correction: e.target.files[0].name })
+                            setNewJob({ ...newJob, data_file: e.target.files[0] })
                           }
                         }}
                       />
@@ -1186,7 +1245,7 @@ export default function JobPage(props) {
                   </div>
                   <div class="col-md-4 align-left vertical-align-top">
                     <Button variant="raised" component="span" className={classes.button}
-                      onClick={(e) => { setJobFile(''); setJobParameter({ ...jobParameter, data_correction: '' }) }}>
+                      onClick={(e) => { setNewJob({ ...newJob, data_file:null }) }}>
                       Remove
                     </Button>
                   </div>
@@ -1205,17 +1264,17 @@ export default function JobPage(props) {
                         autoComplete="off"
                       >
                         <TextField id="alae-basic" label="Default Rating Region" variant="standard"
-                          value={jobParameter.default_region && jobParameter.default_region > 0 ? jobParameter.default_region : "None"}
+                          value={newJob.parameter.default_region && newJob.parameter.default_region > 0 ? newJob.parameter.default_region : "None"}
                           onChange={event => {
-                            if (jobParameter.default_region !== event.target.value) {
+                            if (newJob.parameter.default_region !== event.target.value) {
                               var reg = 0
-                              try{
+                              try {
                                 reg = parseInt(event.target.value)
                               }
-                              catch{
+                              catch {
                                 reg = 0
                               }
-                              setJobParameter({ ...jobParameter, default_region: reg });
+                              setNewJob({ ...newJob, parameter: { ...newJob.parameter, default_region: reg } });
                             }
                           }}
                         />
@@ -1226,14 +1285,16 @@ export default function JobPage(props) {
                     Object.entries(ValidRules).map((n) => {
                       return <li><FormControlLabel control={
                         <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
-                          checked={jobParameter.valid_rules & n[1].value}
+                          checked={newJob.parameter.valid_rules & n[1].value}
                           onChange={event => {
                             var f = n[1].value;
-                            if ((jobParameter.valid_rules & f !== 0) !== event.target.checked) {
-                              setJobParameter({
-                                ...jobParameter, valid_rules:
-                                  event.target.checked ? jobParameter.valid_rules | f :
-                                    jobParameter.valid_rules & (~f)
+                            if ((newJob.parameter.valid_rules & f !== 0) !== event.target.checked) {
+                              setNewJob({
+                                ...newJob, parameter: {
+                                  ...newJob.parameter,
+                                  valid_rules: event.target.checked ? newJob.parameter.valid_rules | f :
+                                    newJob.parameter.valid_rules & (~f)
+                                }
                               });
                             }
                           }}
@@ -1246,36 +1307,23 @@ export default function JobPage(props) {
           </Accordion>
           <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
             expanded={inpExpanded & 0x08}
-            onChange={(event, isExpanded) => { 
-              if(isExpanded) setInpExpanded(inpExpanded | 0x08);
+            onChange={(event, isExpanded) => {
+              if (isExpanded) setInpExpanded(inpExpanded | 0x08);
               else setInpExpanded(inpExpanded & ~0x08);
             }}>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
               aria-controls="corr-content"
               id="corr-header">
-              <Typography>Job Submit</Typography>
+              <Typography>Summary</Typography>
             </AccordionSummary>
             <AccordionDetails>
-              <FormControl className={classes.formControl}>
-                <Box
-                  component="form"
-                  sx={{
-                    '& > :not(style)': { m: 1, width: '58ch' }
-                  }}
-                  noValidate
-                  autoComplete="off"
-                >
-                  <TextField id="alae-basic" label="Job Name" variant="standard"
-                    value={jobParameter.job_name}
-                    onChange={event => {
-                      if (jobParameter.job_name !== event.target.value) {
-                        setJobParameter({ ...jobParameter, job_name: event.target.value });
-                      }
-                    }}
-                  />
-                </Box>
-              </FormControl>
+              <div>
+                <textarea value={paraString}
+                  readOnly={true}
+                  style={{ width: '100%', height: '400px', color: theme.palette.text.primary, background: theme.palette.background.default }}>
+                </textarea>
+              </div>
             </AccordionDetails>
           </Accordion>
         </div>

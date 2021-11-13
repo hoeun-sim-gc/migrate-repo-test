@@ -134,7 +134,7 @@ class PatHelper:
     @classmethod
     def get_results(cls, job_lst):
         with pyodbc.connect(cls.job_conn) as conn:
-            df = pd.read_sql_query(f"""select Limit, Retention, Premium, Participation, AOI, LocationIDStack, 
+            df = pd.read_sql_query(f"""select job_id, Limit, Retention, Premium, Participation, AOI, LocationIDStack, 
                                             RatingGroup, OriginalPolicyID, ACCGRPID, PseudoPolicyID, PseudoLayerID, PolLAS, DedLAS
                                        from pat_premium where job_id in ({','.join([f'{a}' for a in job_lst])})
                                        order by job_id, LocationIDStack, OriginalPolicyID, ACCGRPID""", conn)
@@ -148,6 +148,9 @@ class PatHelper:
                 'DedLAS':'DeductibleLAS',
                 'LocationIDStack':'Original_Location_ID'
                 }, inplace=True)
+            
+            if len(job_lst) > 1:
+                df =df.drop(columns=['job_id'])
 
             return df
 
@@ -163,31 +166,31 @@ class PatHelper:
         return cls.get_job_list()
    
     @classmethod
-    def get_validation_data(self, job_id):
+    def get_validation_data(self, job_id, flagged:bool=True):
         with pyodbc.connect(self.job_conn) as conn:
             df1 = pd.read_sql_query(f"""select * from pat_policy 
-                where job_id = {job_id} and data_type = 0 and flag != 0
+                where job_id = {job_id} and data_type = 0 {('and flag != 0' if flagged else '')}
                 order by PseudoPolicyID""",conn)
             if len(df1) > 0:
                 df = df1[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df1 = df1.merge(df, on ='flag').drop(columns=['job_id'])
+                df1 = df1.merge(df, on ='flag', how='left').drop(columns=['job_id'])
             
             df2 = pd.read_sql_query(f"""select * from pat_location 
-                where job_id = {job_id} and data_type = 0 and flag != 0
+                where job_id = {job_id} and data_type = 0 {('and flag != 0' if flagged else '')}
                 order by PseudoPolicyID""",conn)
             if len(df2) > 0:
                 df = df2[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df2 = df2.merge(df, on ='flag').drop(columns=['job_id'])
+                df2 = df2.merge(df, on ='flag', how='left').drop(columns=['job_id'])
 
             df3 = pd.read_sql_query(f"""select * from pat_facultative 
-                where job_id = {job_id} and data_type = 0 and flag != 0
+                where job_id = {job_id} and data_type = 0 {('and flag != 0' if flagged else '')}
                 order by PseudoPolicyID""",conn)
             if len(df3) > 0:
                 df = df3[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df3 = df3.merge(df, on ='flag').drop(columns=['job_id'])
+                df3 = df3.merge(df, on ='flag', how='left').drop(columns=['job_id'])
 
         return (df1, df2, df3)
     

@@ -2,7 +2,6 @@ import React, { useState, useContext, useCallback, useRef } from 'react';
 import {useHistory} from 'react-router-dom';
 
 import Tooltip from '@mui/material/Tooltip';
-import Link from '@mui/material/Link';
 
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 import {Divider, Grid, Button} from '@material-ui/core';
@@ -19,6 +18,8 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogTitle from '@mui/material/DialogTitle';
+
+import WbMenu from '../../app/menu';
 
 import { UserContext } from "../../app/user-context";
 import columns from './header';
@@ -59,13 +60,6 @@ const useStyles = makeStyles((theme) => ({
     fontSize: 16,
     padding: 5
   },
-  buttonLink: {
-    color: 'inherit',
-    '&:hover':{
-      color: theme.palette.text.secondary,
-    },
-    textDecoration: 'inherit'
-  },
 }));
 
 export default function HomePage(props) {
@@ -91,7 +85,8 @@ export default function HomePage(props) {
   const [currentSum, setCurrentSum] = useState([]);
 
   const [downloadingResults, setDownloadingResults] = useState(false);
-  const [downloadingDatafile, setDownloadingDatafile] = useState(false);
+  const [downloadingData, setDownloadingData] = useState(false);
+  const [flaggedOnly, setFlaggedOnly] = useState(true);
 
   React.useEffect(() => {
     setLoadingJobList(true);
@@ -122,6 +117,16 @@ export default function HomePage(props) {
         });
         data.sort((a, b) => (a.update_time > b.update_time) ? -1 : 1);
         setJobList(data);
+
+        if(currentJob && currentJob.job_id>0)
+        {
+          var sel = data.find(j=>j.job_id===currentJob.job_id);
+          if(sel) setCurrentJob(sel);
+        }
+        if(data.length>0 &&(!currentJob || currentJob.job_id <=0 ))
+        {
+          setCurrentJob(data[0]);  
+        }
       })
       .catch(error => {
         console.log(error);
@@ -259,14 +264,14 @@ export default function HomePage(props) {
 
   //data file
   React.useEffect(() => {
-    if (!downloadingDatafile) return;
+    if (!downloadingData) return;
     if (!currentJob) {
-      setDownloadingDatafile(false);
+      setDownloadingData(false);
       alert("No analysis is selected!");
       return;
     }
 
-    let request = 'api/valid/' + currentJob.job_id;
+    let request = 'api/valid/' + currentJob.job_id + '?flagged='+ flaggedOnly;
     fetch(request).then(response => {
       if (response.ok) {
         return response.blob();
@@ -286,10 +291,10 @@ export default function HomePage(props) {
         console.log(error);
       })
       .then(() => {
-        setDownloadingDatafile(false);
+        setDownloadingData(false);
       });
     // eslint-disable-next-line
-  }, [downloadingDatafile]);
+  }, [downloadingData]);
 
   const get_options = ()=>{
     let ps = 20;
@@ -335,6 +340,7 @@ export default function HomePage(props) {
     var sel = multiSel?'checkbox':'radio';
     return  {
       mode: sel,
+      selected: [currentJob?.job_id],
       clickToSelect: true,
       style: { backgroundColor: theme.palette.action.selected, fontWeight: 'bold' },
       onSelect: (row, isSelect) => {
@@ -350,66 +356,62 @@ export default function HomePage(props) {
   return (
     <div class="pat_container">
       <div class="job_col">
-        {(loadingJobList || loadingJobPara || downloadingResults || downloadingDatafile) &&
+        {(loadingJobList || loadingJobPara || downloadingResults || downloadingData) &&
           <div className={classes.spinner}>
             <PulseLoader
               size={30}
               color={"#2BAD60"}
-              loading={loadingJobList || loadingJobPara || downloadingResults || downloadingDatafile}
+              loading={loadingJobList || loadingJobPara || downloadingResults || downloadingData}
             />
           </div>
         }
         
-        <div class='row'>
+        <div class='row' style={{marginLeft: '2px'}}>
           <Tooltip title="Refresh job list"  >
-            <Link className={classes.buttonLink} style={{padding:'10px' }}
-            component="button"
-              onClick={(e) => { setLoadingJobList(true); }} >
-              Refresh
-            </Link>
+            <Button style={{outline: 'none', height:'36px'}}
+                onClick={(e) => { setLoadingJobList(true); }}
+              >Refresh
+            </Button>
           </Tooltip>
           <Divider orientation="vertical" flexItem />
-          <Tooltip title="Go to job detail"  >
-            <Link className={classes.buttonLink} style={{padding:'10px' }}
-            component="button"
-              onClick={(e) => { handleNewJob(currentJob?.job_id); }} >
-              Detail
-            </Link>
-          </Tooltip>
           <Tooltip title="Stop selected analyses"  >
-            <Link className={classes.buttonLink} style={{padding:'10px' }}
-            component="button" onClick={(e) => { setConfirm("stop the selected jobs"); }} >
-              Stop
-            </Link>
+            <Button style={{outline: 'none', height:'36px'}}
+                onClick={(e) => { setConfirm("stop the selected jobs"); }}
+              >Stop
+            </Button>
           </Tooltip>
           <Tooltip title="Run selected analysis"  >
-            <Link className={classes.buttonLink} style={{padding:'10px' }}
-            component="button" onClick={(e) => { setConfirm("start (rerun) the selected job"); }} >
-              Start
-            </Link>
+            <Button style={{outline: 'none', height:'36px'}}
+                onClick={(e) => { setConfirm("start (rerun) the selected job"); }}
+              >Start
+            </Button>
           </Tooltip>
           <Divider orientation="vertical" flexItem />
           <Tooltip title="Download Results">
-            <Link className={classes.buttonLink} style={{padding:'10px 10px 10px 15px' }}
-            component="button"
-              onClick={(e) => { setDownloadingResults(true); }} >
-              Results
-            </Link>
+            <Button style={{outline: 'none', height:'36px'}}
+                onClick={(e) => { setDownloadingResults(true); }}
+              >Results
+            </Button>
           </Tooltip>
-          <Tooltip title="Dowload Validation Data">
-            <Link className={classes.buttonLink} style={{padding:'10px' }}
-              component="button"
-              onClick={(e) => { setDownloadingDatafile(true); }} >
-              Validation
-            </Link>
+          <Tooltip title="Export detail data for validation">
+             <WbMenu header="Export" items={[
+                { text: 'All Data', onClick: () => { setFlaggedOnly(false);  setDownloadingData(true) } },
+                { text: 'Flagged Data', onClick: () => { setFlaggedOnly(true);  setDownloadingData(true)} },
+              ]} />
           </Tooltip>
-          <Divider orientation="vertical" flexItem />
+          {/* <Divider orientation="vertical" flexItem />
           <Tooltip title="Populate allocated premium back to EDM">
-            <Link className={classes.buttonLink} style={{padding:'10px' }}
-            component="button"
-              onClick={(e) => { alert("This option hasn't been implemented yet!"); }} >
-              EDM
-            </Link>
+            <Button style={{outline: 'none', height:'36px'}}
+                onClick={(e) => { alert("This option hasn't been implemented yet!"); }}
+              >EDM
+            </Button>
+          </Tooltip> */}
+          <Divider orientation="vertical" flexItem />
+          <Tooltip title="Copy settings to a new analysis"  >
+            <Button style={{outline: 'none', height:'36px'}}
+                onClick={(e) => { handleNewJob(currentJob?.job_id); }}
+              >Copy Settings
+            </Button>
           </Tooltip>
           <Dialog
             open={confirm}
