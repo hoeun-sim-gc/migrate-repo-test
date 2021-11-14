@@ -115,31 +115,33 @@ export default function JobPage(props) {
   const [newJob, setNewJob] = useState(
     {
       parameter: {
-        server: '',
-        edm: '',
-        rdm: '',
+        job_name: "PAT_Test",
+        job_guid: "",
+
+        ref_analysis: 0,
+        server: "",
+        edm: "",
+        rdm: "",
         portinfoid: 0,
         perilid: 0,
         analysisid: 0,
-
-        type_of_rating: 'PSOLD',
-        peril_subline: 'All Perils',
-        subject_premium: 1e8,
-        coverage: 'Building + Contents + Time Element',
-        loss_alae_ratio: 1.0,
-        average_accident_date: '1/1/2022',
-        trend_factor: 1.035,
-        additional_coverage: 2.0,
-        deductible_treatment: 'Retains Limit',
-        data_correction: '',
-
-        valid_rules: 0,
+        
+        data_correction: "",
         default_region: 0,
-        ref_analysis: 0,
+        valid_rules: 0,
+        
+        type_of_rating: "PSOLD",
+        coverage: "Building + Contents + Time Element",
+        peril_subline: "All Perils",
+        subject_premium: 100000000,
+        loss_alae_ratio: 1,
+        average_accident_date: "1/1/2022",
+        trend_factor: 1.035,
+        additional_coverage: 2,
+        deductible_treatment: "Retains Limit",     
 
-        job_name: 'Test_PAT',
         user_name: user?.name,
-        user_email: user?.email
+        user_email: user?.email,
       },
       data_file: null,
       use_ref: false
@@ -215,7 +217,9 @@ export default function JobPage(props) {
           data['user_email'] = user?.email;
           data['data_correction'] = ''
           data['ref_analysis'] = 0;
-          setNewJob({ parameter: data, data_file: null, use_ref:true });
+
+          delete data.error_action;
+          setNewJob({ parameter: {...newJob.parameter,...data}, data_file: null, use_ref:true });
 
           if ('server' in data) svr = data['server'];
           else svr = localStorage.getItem('currentServer');
