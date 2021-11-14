@@ -757,7 +757,7 @@ export default function JobPage(props) {
                   }}>
                   Remove
                 </Button>
-              </div>
+              </div>              
               <div class="col-md-4 align-left vertical-align-top">
                 <Button variant="raised" component="span" className={classes.button}
                   disabled={!jobList || jobList.length <= 0}

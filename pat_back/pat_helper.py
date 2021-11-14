@@ -177,7 +177,7 @@ class PatHelper:
             if len(df1) > 0:
                 df = df1[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df1 = df1.merge(df, on ='flag', how='left').drop(columns=['job_id'])
+                df1 = df1.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
             
             df2 = pd.read_sql_query(f"""select * from pat_location 
                 where job_id = {job_id} and data_type = 0 {('and flag != 0' if flagged else '')}
@@ -185,7 +185,7 @@ class PatHelper:
             if len(df2) > 0:
                 df = df2[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df2 = df2.merge(df, on ='flag', how='left').drop(columns=['job_id'])
+                df2 = df2.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
             df3 = pd.read_sql_query(f"""select * from pat_facultative 
                 where job_id = {job_id} and data_type = 0 {('and flag != 0' if flagged else '')}
@@ -193,7 +193,7 @@ class PatHelper:
             if len(df3) > 0:
                 df = df3[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df3 = df3.merge(df, on ='flag', how='left').drop(columns=['job_id'])
+                df3 = df3.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
         return (df1, df2, df3)
     

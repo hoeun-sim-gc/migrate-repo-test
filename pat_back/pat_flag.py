@@ -3,18 +3,18 @@ import pandas as pd
 from enum import IntFlag
 
 flag_descrs = {
-        'FlagPolDupe' : "Duplicate policy records" ,
-        'FlagPolOrphan' : "Orphan Policy Record" ,
-        'FlagPolNA' : "NonNumeric or negative field in policies" ,
-        'FlagPolLimitParticipation' : "Algebraic inconsistency in policy profile (limit/participation)" ,
-        'FlagPolParticipation' : "Participation exceeds 100%" ,
-        'FlagFacOrphan' : "Orphan Facultative Record" ,
-        'FlagFacNA' : "NonNumeric or negative field in fac table" ,
-        'FlagLocDupe' : "Duplicate location records" ,
-        'FlagLocOrphan' : "Orphan Location Record" ,
-        'FlagLocIDDupe' : "AOI differences on location ID stack value",
-        'FlagLocNA' : "NonNumeric or negative field in location table",
-        'FlagLocRG' : "Rating Group is not in the range",
+        'FlagPolDupe' : "Duplicate policy records" ,
+        'FlagPolOrphan' : "Orphan Policy Record" ,
+        'FlagPolNA' : "NonNumeric or negative field in policies" ,
+        'FlagPolLimitParticipation' : "Algebraic inconsistency in policy profile (limit/participation)" ,
+        'FlagPolParticipation' : "Participation exceeds 100%" ,
+        'FlagFacOrphan' : "Orphan Facultative Record" ,
+        'FlagFacNA' : "NonNumeric or negative field in fac table" ,
+        'FlagLocDupe' : "Duplicate location records" ,
+        'FlagLocOrphan' : "Orphan Location Record" ,
+        'FlagLocIDDupe' : "AOI differences on location ID stack value",
+        'FlagLocNA' : "NonNumeric or negative field in location table",
+        'FlagLocRG' : "Rating Group is not in the range",
         
         'FlagFacOverexposed' : "Fac attachment/exposure exceeds policy exposure",
         'FlagCeded100' : "Amount ceded exceeds 100%"
