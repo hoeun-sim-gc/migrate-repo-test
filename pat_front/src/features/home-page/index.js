@@ -102,7 +102,7 @@ export default function HomePage(props) {
   React.useEffect(() => {
     if (!loadingJobList) return;
     
-    const request = '/api/job';
+    const request = '/api/job' + (user.email!="admin.pat@guycarp.com"? '?user='+user.email.toLowerCase():'');
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -110,7 +110,7 @@ export default function HomePage(props) {
       throw new TypeError("Oops, we haven't got data!");
     })
       .then(data => {
-        data = data.filter(u => u.user_email.toLowerCase() === user.email.toLowerCase())
+        //data = data.filter(u => u.user_email.toLowerCase() === user.email.toLowerCase())
         data.forEach(job => {
           job.receive_time = convertTime(job.receive_time);
           job.update_time = convertTime(job.update_time);

@@ -29,8 +29,8 @@ def hello():
     return 'Hello from PAT!'
 
 @app.get('/api/job')
-def get_job_list():
-    df = PatHelper.get_job_list()
+def get_job_list(user:str=None):
+    df = PatHelper.get_job_list(user)
     if df is not None and len(df) > 0:
         return df.to_dict('records')
 

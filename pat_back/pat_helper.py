@@ -91,11 +91,13 @@ class PatHelper:
                         return len(df)
 
     @classmethod
-    def get_job_list(cls):
+    def get_job_list(cls, user:str=None):
         with pyodbc.connect(cls.job_conn) as conn:
+            u_str= f"where lower(user_email) = '{user}'" if user else ""
             df = pd.read_sql_query(f"""select job_id job_id, job_guid, job_name, 
                     receive_time, update_time, status, user_name, user_email
-                from pat_job 
+                from pat_job
+                {u_str}
                 order by update_time desc, job_id desc""", conn)
 
             return df
