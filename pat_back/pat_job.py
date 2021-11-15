@@ -164,31 +164,28 @@ class PatJob:
                 cur.commit()
 
             cur.execute(f"""insert into pat_policy
-                        select {self.job_id} as job_id,
+                        select {self.job_id} as job_id, 1 as data_type,
                         OriginalPolicyID, ACCGRPID, PseudoPolicyID, PolRetainedLimit,
                         PolLimit, PolParticipation, PolRetention, PolPremium,
-                        0 as flag, 
-                        1 as data_type
+                        0 as flag
                     from pat_policy 
                     where job_id = {ref_job} and data_type = 1""")  
             cur.commit()
 
             cur.execute(f"""insert into pat_location
-                        select {self.job_id} as job_id,
+                        select {self.job_id} as job_id, 1 as data_type,
                         PseudoPolicyID, LocationIDStack, occupancy_scheme, 
                         occupancy_code, AOI,
                         0 RatingGroup, 
-                        0 as flag, 
-                        1 as data_type
+                        0 as flag
                     from pat_location 
                     where job_id = {ref_job} and data_type = 1""")  
             cur.commit()
 
             cur.execute(f"""insert into pat_facultative
-                        select {self.job_id} as job_id,
+                        select {self.job_id} as job_id, 1 as data_type,
                         PseudoPolicyID, FacLimit, FacAttachment, FacCeded, FacKey,
-                        0 as flag, 
-                        1 as data_type
+                        0 as flag
                     from pat_facultative 
                     where job_id = {ref_job} and data_type = 1""")  
             cur.commit()
@@ -540,33 +537,43 @@ class PatJob:
             cur.execute(f"""delete from pat_policy where job_id = {self.job_id} and data_type = 0""")
             cur.commit()
 
-            cur.execute(f"""select PseudoPolicyID, max(data_type) as data_type
-                        into #pol_active 
-                    from pat_policy where job_id = {self.job_id} and data_type in (1,2)
-                    group by PseudoPolicyID;
-                    insert into pat_policy 
-                    select job_id,OriginalPolicyID,ACCGRPID,a.PseudoPolicyID,PolRetainedLimit,
-                        PolLimit,
-                        (case when round(PolRetainedLimit - PolLimit * PolParticipation, 1) <= 2
-                                then PolRetainedLimit / PolLimit
-                            else PolParticipation end) as PolParticipation,
-                        PolRetention,
-                        PolPremium,
-                        (case when PolLimit is null or PolRetention is null or PolRetainedLimit is null or 
-                                    PolParticipation is null or PolPremium is null  
-                                or PolLimit < 0 or PolRetention < 0 or PolRetainedLimit < 0 or
-                                    PolParticipation < 0 or PolPremium < 0 then {PatFlag.FlagPolNA}
-                            else 0 end) 
-                            + (case when round(PolParticipation, 2) > 1 then {PatFlag.FlagPolParticipation}
-                                else 0 end)
-                            + (case when round(PolRetainedLimit - PolLimit * PolParticipation, 1) > 2 
+            cur.execute(f"""insert into pat_policy 
+                            select a.job_id, 0 as data_type,  
+                                COALESCE(b.OriginalPolicyID, a.OriginalPolicyID) as OriginalPolicyID,
+                                COALESCE(b.ACCGRPID, a.ACCGRPID) as ACCGRPID,
+                                a.PseudoPolicyID,
+                                COALESCE(b.PolRetainedLimit, a.PolRetainedLimit) as PolRetainedLimit,
+                                COALESCE(b.PolLimit, a.PolLimit) as PolLimit,
+                                (case when round(COALESCE(b.PolRetainedLimit, a.PolRetainedLimit) - COALESCE(b.PolLimit, a.PolLimit) * 
+                                        COALESCE(b.PolParticipation, a.PolParticipation), 1) <= 2
+                                        then COALESCE(b.PolRetainedLimit, a.PolRetainedLimit) / COALESCE(b.PolLimit, a.PolLimit)
+                                    else COALESCE(b.PolParticipation, a.PolParticipation) end) as PolParticipation,
+                                COALESCE(b.PolRetention, a.PolRetention) as PolRetention,
+                                COALESCE(b.PolPremium, a.PolPremium) as PolPremium,
+                                (case when COALESCE(b.PolLimit, a.PolLimit) is null 
+                                            or COALESCE(b.PolRetention, a.PolRetention) is null 
+                                            or COALESCE(b.PolRetainedLimit, a.PolRetainedLimit) is null 
+                                            or COALESCE(b.PolParticipation, a.PolParticipation) is null 
+                                            or COALESCE(b.PolPremium, a.PolPremium) is null  
+                                            or COALESCE(b.PolLimit, a.PolLimit) < 0 
+                                            or COALESCE(b.PolRetention, a.PolRetention) < 0 
+                                            or COALESCE(b.PolRetainedLimit, a.PolRetainedLimit) < 0 
+                                            or COALESCE(b.PolParticipation, a.PolParticipation) < 0 
+                                            or COALESCE(b.PolPremium, a.PolPremium) < 0 
+                                        then {PatFlag.FlagPolNA}
+                                        else 0 end) 
+                                    + (case when round(COALESCE(b.PolParticipation, a.PolParticipation), 2) > 1 then {PatFlag.FlagPolParticipation}
+                                        else 0 end)
+                                    + (case when round(
+                                            COALESCE(b.PolRetainedLimit, a.PolRetainedLimit) 
+                                            - COALESCE(b.PolLimit, a.PolLimit) 
+                                            * COALESCE(b.PolParticipation, a.PolParticipation), 1) > 2 
                                         then {PatFlag.FlagPolLimitParticipation} else 0 end) 
-                            as flag, 
-                        0 as data_type
-                    from pat_policy a                     
-                        join #pol_active b on a.PseudoPolicyID = b.PseudoPolicyID and a.data_type = b.data_type
-                    where a.job_id = {self.job_id};
-                    drop table #pol_active;""")  
+                                    as flag                                
+                            from pat_policy a 
+                                left join (select * from pat_policy where job_id = {self.job_id} and data_type = 2) b 
+                                    on a.PseudoPolicyID = b.PseudoPolicyID
+                            where a.job_id = {self.job_id} and a.data_type = 1;""")  
             cur.commit()
 
             # Policy record duplications
@@ -591,23 +598,24 @@ class PatJob:
             row = cur.fetchone()
             min_psold_rg, max_psold_rg = row
 
-            cur.execute(f"""select PseudoPolicyID, max(data_type) as data_type
-                        into #pol_active 
-                    from pat_location where job_id = {self.job_id} and data_type in (1,2)
-                    group by PseudoPolicyID;
-                    insert into pat_location 
-                    select job_id, a.PseudoPolicyID, LocationIDStack, occupancy_scheme, 
-                        occupancy_code, AOI, 
-                        (case when c.PSOLD_RG is null then {self.default_region} else c.PSOLD_RG end) as RatingGroup, 
-                        (case when AOI is null or AOI < 0 then {PatFlag.FlagLocNA} else 0 end)
-                        + (case when (c.PSOLD_RG is null and {self.default_region} = 0) or c.PSOLD_RG < {min_psold_rg} or c.PSOLD_RG > {max_psold_rg} 
-                            then {PatFlag.FlagLocRG} else 0 end) as flag,  
-                        0 data_type
-                    from pat_location a                     
-                        join #pol_active b on a.PseudoPolicyID = b.PseudoPolicyID and a.data_type = b.data_type
-                        left join psold_mapping c on a.occupancy_scheme = c.OCCSCHEME and a.occupancy_code =  c.OCCTYPE
-                    where a.job_id = {self.job_id};
-                    drop table #pol_active""")  
+            cur.execute(f"""insert into pat_location
+                            select a.job_id, 0 data_type, a.PseudoPolicyID, 
+                                COALESCE(b.LocationIDStack, a.LocationIDStack) as LocationIDStack,
+                                COALESCE(b.occupancy_scheme, a.occupancy_scheme) as occupancy_scheme,
+                                COALESCE(b.occupancy_code, a.occupancy_code) as occupancy_code,
+                                COALESCE(b.AOI, a.AOI) as AOI,
+                                COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_region}) as RatingGroup,
+                                (case when COALESCE(b.AOI, a.AOI) < 0 then {PatFlag.FlagLocNA} else 0 end)
+                                + (case when COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_region}) < {min_psold_rg} 
+                                    or COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_region}) > {max_psold_rg}
+                                    then {PatFlag.FlagLocRG} else 0 end) as flag
+                            from pat_location a 
+                                left join (select * from pat_location where job_id = {self.job_id} and data_type = 2) b 
+                                    on a.PseudoPolicyID=b.PseudoPolicyID
+                                left join psold_mapping c on 
+                                    COALESCE(b.occupancy_scheme, a.occupancy_scheme) = c.OCCSCHEME 
+                                    and COALESCE(b.occupancy_code, a.occupancy_code) =  c.OCCTYPE
+                            where a.job_id = {self.job_id} and a.data_type = 1""")  
             cur.commit()
 
              # Apply rule 
@@ -658,20 +666,23 @@ class PatJob:
             cur.execute(f"""delete from pat_facultative where job_id = {self.job_id} and data_type = 0""")
             cur.commit()
 
-            cur.execute(f"""select FacKey, max(data_type) as data_type
-                        into #fac_active 
-                    from pat_facultative where job_id = {self.job_id} and data_type in (1,2)
-                    group by FacKey;
-                    insert into pat_facultative 
-                    select job_id, PseudoPolicyID, FacLimit, FacAttachment, FacCeded, a.FacKey,
-                        (case when FacLimit is null or FacAttachment is null or FacCeded is null 
-                            or FacLimit < 0 or FacAttachment < 0 or FacCeded < 0 
-                            then {PatFlag.FlagFacNA} else 0 end) as flag,  
-                        0 data_type
-                    from pat_facultative a                     
-                        join #fac_active b on a.FacKey = b.FacKey and a.data_type = b.data_type
-                    where a.job_id = {self.job_id};
-                    drop table #fac_active""")  
+            cur.execute(f"""insert into pat_facultative 
+                            select a.job_id, 0 as data_type, a.PseudoPolicyID,  
+                                COALESCE(b.FacLimit, a.FacLimit) as FacLimit,
+                                COALESCE(b.FacAttachment, a.FacAttachment) as FacAttachment,
+                                COALESCE(b.FacCeded, a.FacCeded) as FacCeded,
+                                a.FacKey,
+                                (case when COALESCE(b.FacLimit, a.FacLimit) is null 
+                                        or COALESCE(b.FacAttachment, a.FacAttachment) is null 
+                                        or COALESCE(b.FacCeded, a.FacCeded) is null 
+                                        or COALESCE(b.FacLimit, a.FacLimit) < 0
+                                        or COALESCE(b.FacAttachment, a.FacAttachment) < 0 
+                                        or COALESCE(b.FacCeded, a.FacCeded) < 0  
+                                    then {PatFlag.FlagFacNA} else 0 end) as flag                                
+                            from pat_facultative a 
+                                left join (select * from pat_facultative where job_id = {self.job_id} and data_type = 2) b 
+                                    on a.PseudoPolicyID = b.PseudoPolicyID and a.FacKey = b.FacKey
+                            where a.job_id = {self.job_id} and a.data_type = 1;""")  
             cur.commit()
 
     def __cross_tab_check(self, conn):

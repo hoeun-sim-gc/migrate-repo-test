@@ -64,6 +64,7 @@ class PatHelper:
                                     '{(job_para['user_email'] if 'user_email' in job_para else '')}',
                                     '{json.dumps(job_para).replace("'", "''")}')
                                 end""").rowcount
+                                
             cur.commit()
             
             if n==1:
@@ -73,22 +74,41 @@ class PatHelper:
         return 0
 
     @classmethod
-    def __save_data_correction(cls, job_id, data):
+    def __save_data_correction(cls, job_id, data) -> bool:
+        ret= False
         creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
         with pyodbc.connect(cls.job_conn) as conn, zipfile.ZipFile(BytesIO(data),'r') as zf:
-            for d,t in [('pol_validation.csv', 'pat_policy'),
-                    ('loc_validation.csv', 'pat_location'),
-                    ('fac_validation.csv', 'pat_facultative')]:
-                
+            for d, t, kflds, vflds in [('pol_validation.csv', 'pat_policy', ['PseudoPolicyID'],
+                                    ['PolRetainedLimit', 'PolLimit', 'PolParticipation', 'PolRetention', 'PolPremium']),
+                                ('loc_validation.csv', 'pat_location', ['PseudoPolicyID'],
+                                    ['occupancy_scheme', 'occupancy_code','AOI','RatingGroup']),
+                                ('fac_validation.csv', 'pat_facultative', ['PseudoPolicyID','FacKey'], 
+                                    ['FacLimit', 'FacAttachment', 'FacCeded'])]:
                 if d in zf.namelist():
                     df =  pd.read_csv(zf.open(d))
-                    if len(df) > 0:
+                    if len(df) > 0 and all(k in df.columns for k in kflds):
+                        mask0 = np.full(len(df),False)
+                        for f0 in vflds:
+                            if f0 in df.columns:
+                                f = f0 +'_revised'
+                                if f in df.columns:
+                                    mask = df[f].notna() & (df[f] != df[f0])
+                                    df.loc[mask, [f0]] = df.loc[mask,f]
+                                    df.loc[~mask, [f0]] = None
+                                    mask0 |= mask
+                                else:
+                                    df[f0] = None
+                            else:
+                                df[f0] = None
+
+                        df = df[mask0]
                         df['job_id'] = job_id
                         df['data_type'] = int(2)
-                        df = df.drop(columns=['Notes'])
-
-                        to_sql(df,t, creds, index=False, if_exists='append')
-                        return len(df)
+                        df = df[['job_id','data_type',*kflds, *vflds]]
+                        if len(df) > 0:
+                            to_sql(df,t, creds, index=False, if_exists='append')
+                        ret = True      
+        return ret
 
     @classmethod
     def get_job_list(cls, user:str=None):

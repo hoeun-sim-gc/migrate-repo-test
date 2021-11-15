@@ -70,12 +70,6 @@ create table pat_job(
 );
 create index idx_pat_job on pat_job (job_id asc);
 
-create table pat_flag(
-    flag_code integer primary key,
-    flag_name varchar(100),
-    descr varchar(500)
-);
-
 create table pat_policy(
     job_id int not null,
     data_type int, --0:used, 1: raw, 2: corrected 
