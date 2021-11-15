@@ -211,7 +211,6 @@ export default function JobPage(props) {
             data_flag: data.server+"|" + data.edm+"|" + data.rdm + "|" + data.portinfoid + "|"  + data.perilid  + "|" + data.analysisid
           });
 
-          data['job_name'] = data['job_name'] + '_copy';
           data['job_guid'] = '';
           data['user_name'] = user?.name;
           data['user_email'] = user?.email;
@@ -571,6 +570,7 @@ export default function JobPage(props) {
     return costs[s2.length];
   };
 
+
   const handleConfirm = (isOK) => {
     var it = confirm
     setConfirm('');
@@ -579,6 +579,19 @@ export default function JobPage(props) {
       else if (it === "start/rerun the current analysis") handleStartJob();
       else if (it === "submit jobs") setUploadingJob(true);
       else if (it === "delete the selected job") handleDelJob();
+      else if (it === "update the selected job") handleUpdateJob();
+    }
+  };
+
+  const handleUpdateJob = () => {
+    var lst = jobList;
+    if(lst){
+      var sel= lst.find(j => j.parameter['job_guid'] === selectedNewJob);
+      if(sel){
+          sel.parameter = {...newJob.parameter, job_guid:selectedNewJob}
+          sel.data_file = newJob.data_file;
+          setJobList(lst);
+      }
     }
   };
 
@@ -723,7 +736,7 @@ export default function JobPage(props) {
               />
             </Box>
             <div class="row" style={{ alignItems: 'center' }} >
-              <div class="col-md-4 align-left vertical-align-top">
+              <div class="col-md-2 align-left vertical-align-top">
                 <Button variant="raised" component="span" className={classes.button}
                   onClick={(e) => {
                     var lst = jobList;
@@ -740,16 +753,13 @@ export default function JobPage(props) {
                       job.parameter.ref_analysis = parseInt(refJob.job_id);
                     else job.parameter.ref_analysis = 0;
                     lst.push(job);
+
                     setJobList(lst);
-                    setNewJob({ ...newJob, parameter: { 
-                        ...newJob.parameter,
-                        job_name: newJob.parameter.job_name + "_copy"
-                      }, 
-                      data_file: null })
+                    setSelectedNewJob(job.parameter.job_guid);
                   }}> Add
                 </Button>
               </div>
-              <div class="col-md-4 align-left vertical-align-top">
+              <div class="col-md-2 align-left vertical-align-top">
                 <Button variant="raised" component="span" className={classes.button}
                   disabled={!jobList || jobList.length <= 0 || !selectedNewJob || !jobList.find(j => j.parameter['job_guid'] === selectedNewJob) } 
                   onClick={() => {
@@ -757,7 +767,16 @@ export default function JobPage(props) {
                   }}>
                   Remove
                 </Button>
-              </div>              
+              </div>
+              <div class="col-md-2 align-left vertical-align-top">
+                <Button variant="raised" component="span" className={classes.button}
+                  disabled={!jobList || jobList.length <= 0 || !selectedNewJob || !jobList.find(j => j.parameter['job_guid'] === selectedNewJob) } 
+                  onClick={() => {
+                    setConfirm("update the selected job");
+                  }}>
+                  Update
+                </Button>
+              </div>       
               <div class="col-md-4 align-left vertical-align-top">
                 <Button variant="raised" component="span" className={classes.button}
                   disabled={!jobList || jobList.length <= 0}
@@ -781,8 +800,7 @@ export default function JobPage(props) {
                   if (sel){
                     var para= JSON.parse(JSON.stringify(sel.parameter));
                     para['job_guid'] = '';
-                    para['data_correction'] = ''; 
-                    setNewJob({parameter:para, use_ref:sel.use_ref, data_file:null});
+                    setNewJob({parameter:para, use_ref:sel.use_ref, data_file:sel.data_file});
                     setSelectedNewJob(event.target.value);
                   }
                 }
