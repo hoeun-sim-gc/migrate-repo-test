@@ -92,6 +92,9 @@ create table pat_location(
     LocationIDStack varchar(20),
     occupancy_scheme varchar(20), 
     occupancy_code varchar(20),
+    Building float,
+    Contents float,
+    BI float,
     AOI float,
     RatingGroup int,
     flag int
@@ -112,17 +115,12 @@ create index idx_pat_facultative on pat_facultative (job_id asc);
 
 create table pat_premium(
     job_id int,
-    Limit float,
-    Retention float,
-    Premium float, 
-    Participation float, 
-    AOI float,
-    LocationIDStack varchar(20),
-    RatingGroup int,
-    OriginalPolicyID int,
-    ACCGRPID int,
     PseudoPolicyID varchar(50),
     PseudoLayerID int,
+    Limit float,
+    Retention float,
+    Participation float, 
+    Premium float, 
     PolLAS float,
     DedLAS float
 );

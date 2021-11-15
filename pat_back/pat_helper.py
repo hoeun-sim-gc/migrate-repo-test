@@ -81,7 +81,7 @@ class PatHelper:
             for d, t, kflds, vflds in [('pol_validation.csv', 'pat_policy', ['PseudoPolicyID'],
                                     ['PolRetainedLimit', 'PolLimit', 'PolParticipation', 'PolRetention', 'PolPremium']),
                                 ('loc_validation.csv', 'pat_location', ['PseudoPolicyID'],
-                                    ['occupancy_scheme', 'occupancy_code','AOI','RatingGroup']),
+                                    ['occupancy_scheme', 'occupancy_code','Building','Contents','BI','AOI','RatingGroup']),
                                 ('fac_validation.csv', 'pat_facultative', ['PseudoPolicyID','FacKey'], 
                                     ['FacLimit', 'FacAttachment', 'FacCeded'])]:
                 if d in zf.namelist():
@@ -157,22 +157,31 @@ class PatHelper:
     @classmethod
     def get_results(cls, job_lst):
         with pyodbc.connect(cls.job_conn) as conn:
-            df = pd.read_sql_query(f"""select job_id, Limit, Retention, Premium, Participation, AOI, LocationIDStack, 
-                                            RatingGroup, OriginalPolicyID, ACCGRPID, PseudoPolicyID, PseudoLayerID, PolLAS, DedLAS
-                                       from pat_premium where job_id in ({','.join([f'{a}' for a in job_lst])})
-                                       order by job_id, LocationIDStack, OriginalPolicyID, ACCGRPID""", conn)
+            jlst= f"""({','.join([f'{a}' for a in job_lst])})"""
+            df = pd.read_sql_query(f"""select a.job_id, 
+                        Limit, Retention, 
+                        Premium as Allocated_Premium, 
+                        Participation, 
+                        Building,Contents, BI, AOI, 
+                        LocationIDStack as Original_Location_ID, 
+                        RatingGroup as Rating_Group, 
+                        OriginalPolicyID as Original_Policy_ID,
+                        ACCGRPID, 
+                        a.PseudoPolicyID, 
+                        PseudoLayerID as Pseudo_Layer_ID,
+                        PolLAS as PolicyLAS,
+                        DedLAS as DeductibleLAS
+                    from pat_premium a
+                        left join 
+                            (select * from pat_policy where job_id in {jlst} and data_type = 0) b  
+                                on a.job_id = b.job_id and a.PseudoPolicyID = b.PseudoPolicyID
+                        left join 
+                            (select * from pat_location where job_id in {jlst} and data_type = 0) c  
+                                on a.job_id =c.job_id and a.PseudoPolicyID = c.PseudoPolicyID
+                    where a.job_id in {jlst}
+                    order by a.job_id, c.LocationIDStack, b.OriginalPolicyID, b.ACCGRPID""", conn)
 
-            df.rename(columns={
-                'Premium':'Allocated_Premium',
-                'RatingGroup':'Rating_Group',
-                'OriginalPolicyID':'Original_Policy_ID',
-                'PseudoLayerID': 'Pseudo_Layer_ID',
-                'PolLAS':'PolicyLAS',
-                'DedLAS':'DeductibleLAS',
-                'LocationIDStack':'Original_Location_ID'
-                }, inplace=True)
-            
-            if len(job_lst) > 1:
+            if len(job_lst) <= 1:
                 df =df.drop(columns=['job_id'])
 
             return df

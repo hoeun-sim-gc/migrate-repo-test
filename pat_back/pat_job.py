@@ -175,7 +175,8 @@ class PatJob:
             cur.execute(f"""insert into pat_location
                         select {self.job_id} as job_id, 1 as data_type,
                         PseudoPolicyID, LocationIDStack, occupancy_scheme, 
-                        occupancy_code, AOI,
+                        occupancy_code, 
+                        Building, Contents, BI, AOI,
                         0 RatingGroup, 
                         0 as flag
                     from pat_location 
@@ -482,11 +483,9 @@ class PatJob:
         return len(df_pol)
 
     def __extract_location(self, conn, suffix):
-        aoi = "locpol.bldgval + locpol.contval + locpol.bival" if self.para[
-            'coverage'] == "Building + Contents + Time Element" else "locpol.bldgval + locpol.contval"
         df_loc = pd.read_sql_query(f"""select concat(locpol.policyid, '_', locpol.locid) as PseudoPolicyID, 
                     locpol.locid as LocationIDStack,
-                    {aoi} as AOI, 
+                    locpol.bldgval as Building, locpol.contval as Contents, locpol.bival as BI,
                     loc.occscheme as occupancy_scheme, loc.occtype as occupancy_code 
                 from #sqlpremalloc_{suffix} as locpol 
                     inner join loc on locpol.locid = loc.locid""", conn)
@@ -544,8 +543,9 @@ class PatJob:
                                 a.PseudoPolicyID,
                                 COALESCE(b.PolRetainedLimit, a.PolRetainedLimit) as PolRetainedLimit,
                                 COALESCE(b.PolLimit, a.PolLimit) as PolLimit,
-                                (case when round(COALESCE(b.PolRetainedLimit, a.PolRetainedLimit) - COALESCE(b.PolLimit, a.PolLimit) * 
-                                        COALESCE(b.PolParticipation, a.PolParticipation), 1) <= 2
+                                (case when round(COALESCE(b.PolRetainedLimit, a.PolRetainedLimit)
+                                        - COALESCE(b.PolLimit, a.PolLimit) 
+                                        * COALESCE(b.PolParticipation, a.PolParticipation), 1) <= 2
                                         then COALESCE(b.PolRetainedLimit, a.PolRetainedLimit) / COALESCE(b.PolLimit, a.PolLimit)
                                     else COALESCE(b.PolParticipation, a.PolParticipation) end) as PolParticipation,
                                 COALESCE(b.PolRetention, a.PolRetention) as PolRetention,
@@ -598,14 +598,20 @@ class PatJob:
             row = cur.fetchone()
             min_psold_rg, max_psold_rg = row
 
+            aoi = "COALESCE(b.Building, a.Building) + COALESCE(b.Contents, a.Contents)" + \
+                    " + COALESCE(b.BI, a.BI)" if self.para['coverage'] == "Building + Contents + Time Element" else ""
+
             cur.execute(f"""insert into pat_location
                             select a.job_id, 0 data_type, a.PseudoPolicyID, 
                                 COALESCE(b.LocationIDStack, a.LocationIDStack) as LocationIDStack,
                                 COALESCE(b.occupancy_scheme, a.occupancy_scheme) as occupancy_scheme,
                                 COALESCE(b.occupancy_code, a.occupancy_code) as occupancy_code,
-                                COALESCE(b.AOI, a.AOI) as AOI,
+                                COALESCE(b.Building, a.Building) as Building,
+                                COALESCE(b.Contents, a.Contents) as Contents,
+                                COALESCE(b.BI, a.BI) as BI,
+                                COALESCE(b.AOI, {aoi}) as AOI,
                                 COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_region}) as RatingGroup,
-                                (case when COALESCE(b.AOI, a.AOI) < 0 then {PatFlag.FlagLocNA} else 0 end)
+                                (case when COALESCE(b.AOI, {aoi}) < 0 then {PatFlag.FlagLocNA} else 0 end)
                                 + (case when COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_region}) < {min_psold_rg} 
                                     or COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_region}) > {max_psold_rg}
                                     then {PatFlag.FlagLocRG} else 0 end) as flag
@@ -625,7 +631,7 @@ class PatJob:
                             from pat_location
                             where job_id = {self.job_id} and data_type = 0 and LocationIDStack is not null
                             group by LocationIDStack
-                            having count(distinct round(aoi, 1)) > 1;
+                            having count(distinct round(aoi, 0)) > 1;
                             update a set a.aoi = b.max_aoi
                             from pat_location a join #tmp_f b
                                 on a.LocationIDStack = b.LocationIDStack
@@ -652,7 +658,7 @@ class PatJob:
                             from pat_location
                             where job_id = {self.job_id} and data_type = 0 and LocationIDStack is not null
                             group by LocationIDStack
-                            having count(distinct round(aoi, 1)) > 1;
+                            having count(distinct round(aoi,0)) > 1;
                             update a set a.flag = a.flag + b.flag
                             from pat_location a join #tmp_f b
                                 on a.LocationIDStack = b.LocationIDStack
@@ -767,7 +773,7 @@ class PatJob:
                             left join #pol2 on #pol1.PseudoPolicyID = #pol2.PseudoPolicyID 
                         where #pol2.PseudoPolicyID is null
                     )
-                    select OriginalPolicyID, ACCGRPID, a.PseudoPolicyID, PolRetainedLimit, PolLimit, 
+                    select OriginalPolicyID, a.PseudoPolicyID, PolRetainedLimit, PolLimit, 
                             case when PolParticipation > 1 then 1 else PolParticipation end as PolParticipation, 
                             PolRetention, PolPremium,
                             PolLimit + PolRetention as PolTopLine
@@ -804,23 +810,23 @@ class PatJob:
                          join cte2 b on a.PseudoPolicyID = b.PseudoPolicyID and a.LayerKey = b.LayerKey - 1
                          where b.LayerLow - a.LayerLow > 1),
                     cte4 as
-                        (select a.*, b.OriginalPolicyID, b.ACCGRPID, b.PolParticipation as Participation, b.PolPremium, 
+                        (select a.*, b.OriginalPolicyID, b.PolParticipation as Participation, b.PolPremium, 
                             case when c.FacCeded is null then 0 else c.FacCeded end as Ceded
                         from cte3 a
                             Left Join #dfPolUse b ON a.PseudoPolicyID = b.PseudoPolicyID
                             Left Join #dfPolFac c ON a.PseudoPolicyID = c.PseudoPolicyID 
                                 and a.LayerLow >= c.FacGupAttachment and a.LayerHigh <= FacGupTopLine
                     )
-                    select OriginalPolicyID, ACCGRPID,PseudoPolicyID,LayerLow,LayerHigh,Participation,max(PolPremium) as PolPremium,
+                    select OriginalPolicyID, PseudoPolicyID,LayerLow,LayerHigh,Participation,max(PolPremium) as PolPremium,
                         sum(case when Ceded is null then 0 else Ceded end) as Ceded,
                         row_number() OVER (PARTITION BY PseudoPolicyID ORDER BY LayerLow) as LayerID
                         into #dfLayers
                     from cte4
-                    group by PseudoPolicyID,OriginalPolicyID, ACCGRPID, LayerLow,LayerHigh,Participation""")
+                    group by PseudoPolicyID,OriginalPolicyID, LayerLow,LayerHigh,Participation""")
                 cur.commit()
 
                 cur.execute(f"""select distinct PseudoPolicyID into #ceded100 
-                                from #dfLayers where round(Ceded, 4) >1""")
+                                from #dfLayers where round(Ceded, 4) > 1""")
                 cur.commit()
                 if self.valid_rules & ValidRule.ValidFac100:
                     cur.execute(f"""update a set a.Ceded = 1
@@ -837,7 +843,7 @@ class PatJob:
                     cur.commit()
             
             #? why old R code have to include all participation = 0 layers?
-            df_facnet = pd.read_sql_query(f"""select OriginalPolicyID, ACCGRPID, a.PseudoPolicyID, LayerID as PseudoLayerID,
+            df_facnet = pd.read_sql_query(f"""select OriginalPolicyID, a.PseudoPolicyID, LayerID as PseudoLayerID,
                     LayerHigh - LayerLow as Limit, LayerLow as Retention, 
                     PolPremium as OriginalPremium, 
                     case when Ceded >= 1 then 0 else Participation * (1 - Ceded) end as Participation,
@@ -902,10 +908,8 @@ class PatJob:
             /(dfLoc.PolLAS - dfLoc.DedLAS) * self.loss_ratio*dfLoc.EffPrem )/.01
 
         # Final
-        df_pat = dfLoc[["Limit", "Retention", "Premium", "Participation", "AOI", "LocationIDStack",
-                    "RatingGroup", "OriginalPolicyID", "ACCGRPID", "PseudoPolicyID", "PseudoLayerID", "PolLAS", "DedLAS"]] \
-                .sort_values(by=['OriginalPolicyID', 'ACCGRPID', 'PseudoPolicyID', 'PseudoLayerID'])
-
+        df_pat = dfLoc[["PseudoPolicyID", "PseudoLayerID","Limit", "Retention", "Participation", "Premium", "PolLAS", "DedLAS"]]
+        
         return df_pat
       
     def __calc_weights(self,tableWgts, guNewPSTable, gdMu, AOI_split):
