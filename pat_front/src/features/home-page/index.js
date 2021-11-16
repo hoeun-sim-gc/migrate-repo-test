@@ -121,11 +121,12 @@ export default function HomePage(props) {
         if(currentJob && currentJob.job_id>0)
         {
           var sel = data.find(j=>j.job_id===currentJob.job_id);
-          if(sel) setCurrentJob(sel);
+          if(sel)  setCurrentJob(sel);
         }
         if(data.length>0 &&(!currentJob || currentJob.job_id <=0 ))
         {
           setCurrentJob(data[0]);  
+          tableRef.current.selectionContext.selected.push(data[0].job_id);
         }
       })
       .catch(error => {
@@ -340,7 +341,6 @@ export default function HomePage(props) {
     var sel = multiSel?'checkbox':'radio';
     return  {
       mode: sel,
-      selected: [currentJob?.job_id],
       clickToSelect: true,
       style: { backgroundColor: theme.palette.action.selected, fontWeight: 'bold' },
       onSelect: (row, isSelect) => {
