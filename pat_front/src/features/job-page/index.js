@@ -12,6 +12,8 @@ import AdapterDateFns from '@mui/lab/AdapterDateFns';
 import LocalizationProvider from '@mui/lab/LocalizationProvider';
 import DatePicker from '@mui/lab/DatePicker';
 
+import Tooltip from '@mui/material/Tooltip';
+
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -151,7 +153,7 @@ export default function JobPage(props) {
   const [selectedNewJob, setSelectedNewJob] = useState('');
   
 
-  const [inpExpanded, setInpExpanded] = useState(0x09);
+  const [inpExpanded, setInpExpanded] = useState(0x08);
   const [loadingServerList, setLoadingServerList] = useState(false);
   const [serverList, setServerList] = useState();
 
@@ -716,82 +718,65 @@ export default function JobPage(props) {
             </DialogActions>
           </Dialog>
         </div>
-        <div class="job_mid_row">
-          <FormControl className={classes.formControl}>
-            <Box
-              component="form"
-              sx={{
-                '& > :not(style)': { m: 1, width: '62ch' }
-              }}
-              noValidate
-              autoComplete="off"
-            >
-              <TextField id="alae-basic" label="New Job" variant="standard"
-                value={newJob.parameter.job_name}
-                onChange={event => {
-                  if (newJob.parameter.job_name !== event.target.value) {
-                    setNewJob({ ...newJob, parameter: { ...newJob.parameter, job_name: event.target.value } });
-                  }
-                }}
-              />
-            </Box>
-            <div class="row" style={{ alignItems: 'center' }} >
-              <div class="col-md-2 align-left vertical-align-top">
-                <Button variant="raised" component="span" className={classes.button}
-                  onClick={(e) => {
-                    var lst = jobList;
-                    if (!lst) lst = []
-                    var job = {
-                      parameter: JSON.parse(JSON.stringify(newJob.parameter)),
-                      data_file: newJob.data_file,
-                      use_ref: newJob.use_ref
-                    };
-                    job.parameter['job_guid'] = uuidv4();
-                    if (refJob && refJob.job_id > 0 && job.use_ref && 
-                          job.parameter.server+"|" + job.parameter.edm+"|" + job.parameter.rdm +"|"+ job.parameter.portinfoid 
-                          + "|" + job.parameter.perilid  + "|" + job.parameter.analysisid === refJob.data_flag) 
-                      job.parameter.ref_analysis = parseInt(refJob.job_id);
-                    else job.parameter.ref_analysis = 0;
-                    lst.push(job);
+        <div class='row' style={{marginLeft: '2px'}}>
+          <Tooltip title="Add job to list">
+            <Button style={{outline: 'none', height:'36px'}}
+                onClick={(e) => {
+                  var lst = jobList;
+                  if (!lst) lst = []
+                  var job = {
+                    parameter: JSON.parse(JSON.stringify(newJob.parameter)),
+                    data_file: newJob.data_file,
+                    use_ref: newJob.use_ref
+                  };
+                  job.parameter['job_guid'] = uuidv4();
+                  if (refJob && refJob.job_id > 0 && job.use_ref && 
+                        job.parameter.server+"|" + job.parameter.edm+"|" + job.parameter.rdm +"|"+ job.parameter.portinfoid 
+                        + "|" + job.parameter.perilid  + "|" + job.parameter.analysisid === refJob.data_flag) 
+                    job.parameter.ref_analysis = parseInt(refJob.job_id);
+                  else job.parameter.ref_analysis = 0;
+                  lst.push(job);
 
-                    setJobList(lst);
-                    setSelectedNewJob(job.parameter.job_guid);
-                  }}> Add
-                </Button>
-              </div>
-              <div class="col-md-2 align-left vertical-align-top">
-                <Button variant="raised" component="span" className={classes.button}
-                  disabled={!jobList || jobList.length <= 0 || !selectedNewJob || !jobList.find(j => j.parameter['job_guid'] === selectedNewJob) } 
-                  onClick={() => {
-                    setConfirm("delete the selected job");
-                  }}>
-                  Remove
-                </Button>
-              </div>
-              <div class="col-md-2 align-left vertical-align-top">
-                <Button variant="raised" component="span" className={classes.button}
-                  disabled={!jobList || jobList.length <= 0 || !selectedNewJob || !jobList.find(j => j.parameter['job_guid'] === selectedNewJob) } 
-                  onClick={() => {
-                    setConfirm("update the selected job");
-                  }}>
-                  Update
-                </Button>
-              </div>       
-              <div class="col-md-4 align-left vertical-align-top">
-                <Button variant="raised" component="span" className={classes.button}
-                  disabled={!jobList || jobList.length <= 0}
-                  onClick={() => {
-                    setConfirm("submit jobs");
-                  }}> Submit All
-                </Button>
-              </div>
-            </div>
-          </FormControl>
+                  setJobList(lst);
+                  setSelectedNewJob(job.parameter.job_guid);
+                }}
+              >Add
+            </Button>
+          </Tooltip>
+          <Tooltip title="Remove selected job from list">
+            <Button style={{outline: 'none', height:'36px'}}
+                disabled={!jobList || jobList.length <= 0 || !selectedNewJob || !jobList.find(j => j.parameter['job_guid'] === selectedNewJob) } 
+                onClick={() => {
+                  setConfirm("delete the selected job");
+                }}
+              >Remove
+            </Button>
+          </Tooltip>
+          <Tooltip title="Update selected job with the new settings">
+            <Button style={{outline: 'none', height:'36px'}}
+                disabled={!jobList || jobList.length <= 0 || !selectedNewJob || !jobList.find(j => j.parameter['job_guid'] === selectedNewJob) } 
+                onClick={() => {
+                  setConfirm("update the selected job");
+                }}
+              >Update
+            </Button>
+          </Tooltip>
+          <Divider orientation="vertical" flexItem />
+          <Tooltip title="Submit jobs in the list to backend service">
+            <Button style={{outline: 'none', height:'36px'}}
+                disabled={!jobList || jobList.length <= 0}
+                onClick={() => {
+                  setConfirm("submit jobs");
+                }}
+              >Submit
+            </Button>
+          </Tooltip>
         </div>
         <div box class="job_bottom_row">
           <FormControl component="fieldset">
             <RadioGroup
               defaultValue=""
+              value={selectedNewJob}
               name="radio-buttons-group"
               onChange={(event) => {
                 var lst= jobList;
@@ -802,6 +787,7 @@ export default function JobPage(props) {
                     para['job_guid'] = '';
                     setNewJob({parameter:para, use_ref:sel.use_ref, data_file:sel.data_file});
                     setSelectedNewJob(event.target.value);
+                    console.log(event.target.value);
                   }
                 }
               }}
@@ -815,6 +801,25 @@ export default function JobPage(props) {
       </div>
       <div class="job_right_col">
         <div>
+          <FormControl className={classes.formControl}>
+                  <Box
+                    component="form"
+                    sx={{
+                      '& > :not(style)': { m: 1, width: '62ch' }
+                    }}
+                    noValidate
+                    autoComplete="off"
+                  >
+                    <TextField id="alae-basic" label="New Job" variant="standard"
+                      value={newJob.parameter.job_name}
+                      onChange={event => {
+                        if (newJob.parameter.job_name !== event.target.value) {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, job_name: event.target.value } });
+                        }
+                      }}
+                    />
+                  </Box>
+                </FormControl>
           <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
             expanded={inpExpanded & 0x01}
             onChange={(event, isExpanded) => {
