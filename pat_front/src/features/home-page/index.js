@@ -410,7 +410,7 @@ export default function HomePage(props) {
           <Tooltip title="Copy settings to a new analysis"  >
             <Button style={{outline: 'none', height:'36px'}}
                 onClick={(e) => { handleNewJob(currentJob?.job_id); }}
-              >Copy Settings
+              >Copy
             </Button>
           </Tooltip>
           <Dialog

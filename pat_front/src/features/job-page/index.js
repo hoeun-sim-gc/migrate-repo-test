@@ -272,6 +272,7 @@ export default function JobPage(props) {
       throw new TypeError("Oops, we haven't got data!");
     })
       .then(data => {
+        if (data && data.rdm) data.rdm = [''].concat(data.rdm);
         setDbList(data);
         if (!data.edm.includes(newJob.parameter.edm)) {
           setNewJob({ ...newJob, parameter: { ...newJob.parameter, edm: data.edm[0], portinfoid: 0, perilid: 0 } });
@@ -1342,7 +1343,7 @@ export default function JobPage(props) {
               expandIcon={<ExpandMoreIcon />}
               aria-controls="corr-content"
               id="corr-header">
-              <Typography>Summary</Typography>
+              <Typography>Summary (Open each of the above tabs to edit)</Typography>
             </AccordionSummary>
             <AccordionDetails>
               <div>
