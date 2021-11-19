@@ -35,22 +35,8 @@ def get_job_list(user:str=None):
         return df.to_dict('records')
 
 @app.get('/api/job/{job_id}')
-def summary(job_id:int):
-    df = PatHelper.get_summary(job_id)
-    if df is not None and len(df) > 0:
-        return df.to_dict('records')
-
-@app.get('/api/para/{job_id}')
-def get_job_para(job_id:int):
-    ret= PatHelper.get_job_para(job_id)
-    if ret:
-        return ret
-
-@app.get('/api/status/{job_id}')
-def get_job_status(job_id: int) -> str:
-    ret= PatHelper.get_job_status(job_id)
-    if ret:
-        return ret
+def get_job(job_id:int):
+    return PatHelper.get_job(job_id)
 
 def send_zip_file(name, *df_lst) -> StreamingResponse:
     try:

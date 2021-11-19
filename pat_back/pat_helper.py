@@ -123,36 +123,37 @@ class PatHelper:
             return df
 
     @classmethod
-    def get_job_para(cls, job_id):
+    def get_job(cls, job_id):
         with pyodbc.connect(cls.job_conn) as conn:
-            df = pd.read_sql_query(f"""select parameters from pat_job where job_id = {job_id}""", conn)
+            df = pd.read_sql_query(f"""select job_id job_id, job_guid, job_name, 
+                    receive_time, update_time, 
+                    status, data_extracted,
+                    user_name, user_email,
+                    parameters
+                from pat_job
+                where job_id = {job_id}""", conn)
             if df is not None and len(df) > 0:
-                return json.loads(df.parameters[0])
-
-    @classmethod
-    def get_job_status(cls, job_id):
-        with pyodbc.connect(cls.job_conn) as conn:
-            df = pd.read_sql_query(f"""select status from pat_job where job_id = {job_id}""", conn)
-            if df is not None and len(df) > 0:
-                return df.status[0]
-
-    @classmethod
-    def get_summary(cls, job_id):
-        summary = pd.DataFrame(columns=['item', 'cnt'])
-        summary1 = pd.DataFrame(columns=['item', 'cnt'])
-        with pyodbc.connect(cls.job_conn) as conn:
-            for t in ['Policy', 'Location', 'Facultative']:
-                df = pd.read_sql_query(f"""select flag, count(*) as cnt 
-                                from pat_{t} where job_id = {job_id} and data_type = 0 group by flag""", conn)
-                summary.loc[summary.shape[0]]=[f'{t} Records Processed', df.cnt.sum()]
-                
-                df["Notes"] = df.apply(split_flag, axis=1)
-                df = df.explode("Notes").groupby('Notes').agg({'cnt': 'sum'}).reset_index()
-                df=df[df.Notes != ''].rename(columns={'Notes':'item'})
-                if len(df) > 0:
-                    summary1= pd.concat((summary1,df), ignore_index = True, axis = 0)
-        
-        return pd.concat((summary,summary1), ignore_index = True, axis = 0)
+                job = df.to_dict('records')[0]
+                if job['data_extracted']:
+                    try:
+                        summary = pd.DataFrame(columns=['item', 'cnt'])
+                        summary1 = pd.DataFrame(columns=['item', 'cnt'])
+                        for t in ['Policy', 'Location', 'Facultative']:
+                            df = pd.read_sql_query(f"""select flag, count(*) as cnt 
+                                            from pat_{t} where job_id = {job_id} and data_type = 0 group by flag""", conn)
+                            summary.loc[summary.shape[0]]=[f'{t} Records Processed', df.cnt.sum()]
+                            
+                            df["Notes"] = df.apply(split_flag, axis=1)
+                            df = df.explode("Notes").groupby('Notes').agg({'cnt': 'sum'}).reset_index()
+                            df=df[df.Notes != ''].rename(columns={'Notes':'item'})
+                            if len(df) > 0:
+                                summary1 = pd.concat((summary1,df), ignore_index = True, axis = 0)
+                        if len(summary)>0 or len(summary1)>0:
+                            job['summary'] = pd.concat((summary,summary1), ignore_index = True, axis = 0).to_dict('records')
+                    except:
+                        pass
+                    
+                return job
 
     @classmethod
     def get_results(cls, job_lst):

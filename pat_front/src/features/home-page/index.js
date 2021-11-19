@@ -75,14 +75,11 @@ export default function HomePage(props) {
   const [confirm, setConfirm] = React.useState('');
 
   const [loadingJobList, setLoadingJobList] = useState(false);
-  const [currentJob, setCurrentJob] = useState(null);
   const [jobList, setJobList] = useState([]);
 
+  const [currentJob, setCurrentJob] = useState(null);
   const [loadingJobPara, setLoadingJobPara] = useState(false);
-  const [currentPara, setCurrentPara] = useState(null);
-
-  const [loadingJobSum, setLoadingJobSum] = useState(false);
-  const [currentSum, setCurrentSum] = useState([]);
+  const [currentPara, setCurrentPara] = useState({parameter:'', summary:[]});
 
   const [downloadingResults, setDownloadingResults] = useState(false);
   const [downloadingData, setDownloadingData] = useState(false);
@@ -139,14 +136,11 @@ export default function HomePage(props) {
   }, [loadingJobList]);
 
   React.useEffect(() => {
-    setCurrentPara('');
+    setCurrentPara({parameter:'', summary:[]});
     setLoadingJobPara(true);
-
-    setCurrentSum([]);
-    setLoadingJobSum(true);
   }, [currentJob]);
 
-  //job para
+  //job para and summary
   React.useEffect(() => {
     if (!loadingJobPara) return;
     if (!currentJob) {
@@ -154,7 +148,7 @@ export default function HomePage(props) {
       return;
     }
 
-    const request = '/api/para/' + currentJob.job_id
+    const request = '/api/job/' + currentJob.job_id
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -162,7 +156,8 @@ export default function HomePage(props) {
       throw new TypeError("Oops, we haven't got data!");
     })
       .then(data => {
-        setCurrentPara(JSON.stringify(data, null,'  '));
+        setCurrentPara({parameter:JSON.stringify(JSON.parse(data['parameters']),null, '    '),
+          summary:data['summary']});
       })
       .catch(error => {
         console.log(error);
@@ -172,33 +167,6 @@ export default function HomePage(props) {
       });
     // eslint-disable-next-line
   }, [loadingJobPara, currentJob]);
-
-  //job summary
-  React.useEffect(() => {
-    if (!loadingJobSum) return;
-    if (!currentJob) {
-      setLoadingJobSum(false);
-      return;
-    }
-
-    const request = '/api/job/' + currentJob.job_id;
-    fetch(request).then(response => {
-      if (response.ok) {
-        return response.json();
-      }
-      throw new TypeError("Oops, we haven't got data!");
-    })
-      .then(data => {
-        setCurrentSum(data);
-      })
-      .catch(error => {
-        console.log(error);
-      })
-      .then(() => {
-        setLoadingJobSum(false);
-      });
-    // eslint-disable-next-line
-  }, [loadingJobSum, currentJob]);
 
   //results
   React.useEffect(() => {
@@ -474,7 +442,7 @@ export default function HomePage(props) {
           <h5>Parameters:</h5>
           <span>{currentJob?.job_id}</span>
         </div>
-      <textarea value={currentPara}
+      <textarea value={currentPara?.parameter}
           readOnly={true}
           class="para_row"
           style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
@@ -489,7 +457,7 @@ export default function HomePage(props) {
               </tr>
             </thead>
             <tbody>
-              {currentSum.map(row => (
+              {currentPara?.summary?.map(row => (
                 <tr key={row.item}>
                   <td>{row.item}</td>
                   <td>{row.cnt}</td>

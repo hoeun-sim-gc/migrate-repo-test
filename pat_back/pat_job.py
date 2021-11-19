@@ -32,7 +32,7 @@ class PatJob:
     def __init__(self, job_id):
         self.job_id = 0
         self.data_extracted = False
-        self.valid_rules = ValidRule(-1)
+        self.valid_rules = ValidRule(0)
         self.default_region = 0
         with pyodbc.connect(self.job_conn) as conn:
             df = pd.read_sql(f"select data_extracted, parameters from pat_job where job_id = {job_id} and status='wait_to_start'",conn)
@@ -45,9 +45,9 @@ class PatJob:
         self.__update_status("started")
         self.logger.info(f"""Start to process job:{self.job_id}""")
 
-        if 'valid_rules' in self.para:
+        if 'valid_rules' in self.para and self.para['valid_rules']:
             self.valid_rules = ValidRule(self.para['valid_rules'])
-        if 'default_region' in self.para:
+        if 'default_region' in self.para and self.para['default_region']:
             self.default_region = self.para['default_region']
         self.user_name = self.para['user_name'] if 'user_name' in self.para else None
         self.user_email = self.para['user_email'] if 'user_email' in self.para else None
@@ -84,17 +84,22 @@ class PatJob:
             self.__update_status("extracting_data")
 
             if "ref_analysis" in self.para and self.para['ref_analysis'] > 0:
-                self.__extract_ref_data(self.para['ref_analysis'])
-            else:
-                self.__extract_edm_rdm()
-            self.data_extracted = True
-            with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
-                cur.execute(f"""update pat_job set data_extracted = 1, 
-                    update_time = '{datetime.utcnow().isoformat()}'
-                    where job_id = {self.job_id}""")
-                cur.commit()
+                self.data_extracted = self.__extract_ref_data(self.para['ref_analysis'])
             
-            self.logger.info("Import data...OK")
+            if not self.data_extracted:
+                self.data_extracted = self.__extract_edm_rdm()
+            if self.data_extracted:
+                with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
+                    cur.execute(f"""update pat_job set data_extracted = 1, 
+                        update_time = '{datetime.utcnow().isoformat()}'
+                        where job_id = {self.job_id}""")
+                    cur.commit()
+                self.logger.info("Import data...OK")
+            else:
+                self.logger.info("Import data...Error")
+                self.__update_status("error")
+                return
+
         if stop_cb and stop_cb():
             self.logger.warning("User cancelled the analysis")
             self.__update_status('cancelled')
@@ -112,7 +117,7 @@ class PatJob:
         if self.__need_correction():
             if (self.valid_rules & ValidRule.ValidContinue) ==0:
                 self.logger.error("Need to correct data then run again")
-                self.__update_status("cancelled")
+                self.__update_status("error")
                 return
             else:
                 self.logger.warning("Skip erroneous data and continue (item removed)")
@@ -191,6 +196,8 @@ class PatJob:
                     where job_id = {ref_job} and data_type = 1""")  
             cur.commit()
 
+            return True
+
     def __extract_edm_rdm(self):
         conn_str = f'''DRIVER={{SQL Server}};Server={self.para["server"]};Database={self.para["edm"]};
             Trusted_Connection=True;MultipleActiveResultSets=true;'''
@@ -208,10 +215,14 @@ class PatJob:
             
             self.logger.debug("Extract policy table...")
             n = self.__extract_policy(conn, suffix)
+            if n<=0: 
+                return False
             self.logger.debug(f"Extract policy table...OK ({n})")
             
             self.logger.debug("Extract location table...")
             n = self.__extract_location(conn, suffix)
+            if n<=0: 
+                return False
             self.logger.debug(f"Extract location table...OK ({n})")
             
             self.logger.debug("Extract fac table...")
@@ -221,6 +232,8 @@ class PatJob:
             with conn.cursor() as cur:            
                 cur.execute(f"drop table #sqlpremalloc_{suffix}")
                 cur.commit()
+            
+        return True
 
     def __verify_edm_rdm(self, conn):
         # Check that PerilID is valid
@@ -239,7 +252,7 @@ class PatJob:
             return 'portfolio ID is not valid!'
 
         # Check that analysis ID is valid
-        if 'rdm' in self.para and 'analysisid' in self.para:
+        if 'rdm' in self.para and self.para['rdm'] and 'analysisid' in self.para and self.para['analysisid']:
             if len(pd.read_sql_query(f"""select top 1 1
             FROM [{self.para['edm']}]..loccvg 
                 inner join [{self.para['edm']}]..property on loccvg.locid = property.locid 
@@ -349,7 +362,7 @@ class PatJob:
             cur.commit()
 
             # sqlpremalloc
-            if 'rdm' in self.para and 'analysisid' in self.para:
+            if 'rdm' in self.para and self.para['rdm'] and 'analysisid' in self.para and self.para['analysisid']:
                 cur.execute(f"""with locpoltotals as (
                     select a.id as policyid, p.blanlimamt, p.partof, 
                         p.undcovamt, p.polded, res1value as locid, a.eventid,
@@ -431,7 +444,7 @@ class PatJob:
                             else p.blanlimamt end as spidergel, p.blanpreamt
                         into #sqlpremalloc_{suffix}
                         from accgrp as a 
-                            inner join policy_standard as p on a.accgrpid = p.accgrpid 
+                            inner join #policy_standard_{suffix} as p on a.accgrpid = p.accgrpid 
                             inner join policy as pol on p.policyid = pol.policyid 
                             inner join 
                                 (select loc.accgrpid, loc.locid, sum(valueamt) as tiv,

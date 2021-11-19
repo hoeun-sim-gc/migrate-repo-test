@@ -112,7 +112,7 @@ export default function JobPage(props) {
   // current active job that showing the odometer; The parameter passes to the newjob 
   const [currentJob, setCurrentJob] = useState({ job_id: job_id ? job_id : 0, status: '', finished: 0 })
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
-  const [refJob, setRefJob] = useState({ job_id: 0, data_flag:'' })
+  const [refJob, setRefJob] = useState(null)
 
   const [newJob, setNewJob] = useState(
     {
@@ -201,7 +201,7 @@ export default function JobPage(props) {
 
     //reference 
     if (job_id && job_id > 0) {
-      const request = '/api/para/' + job_id;
+      const request = '/api/job/' + job_id;
       fetch(request).then(response => {
         if (response.ok) {
           return response.json();
@@ -209,20 +209,22 @@ export default function JobPage(props) {
         throw new TypeError("Oops, we haven't got data!");
       })
         .then(data => {
-          setRefJob({job_id: job_id, 
-            data_flag: data.server+"|" + data.edm+"|" + data.rdm + "|" + data.portinfoid + "|"  + data.perilid  + "|" + data.analysisid
-          });
+          var job = JSON.parse(data.parameters);
+          if (data.data_extracted > 0){
+            setRefJob({job_id: data.job_id, 
+              data_flag: job.server+"|" + job.edm+"|" + job.rdm + "|" + job.portinfoid + "|" + job.perilid  + "|" + job.analysisid
+            })
+          };
 
-          data['job_guid'] = '';
-          data['user_name'] = user?.name;
-          data['user_email'] = user?.email;
-          data['data_correction'] = ''
-          data['ref_analysis'] = 0;
+          job['job_guid'] = '';
+          job['user_name'] = user?.name;
+          job['user_email'] = user?.email;
+          job['data_correction'] = ''
+          job['ref_analysis'] = 0;
 
-          delete data.error_action;
-          setNewJob({ parameter: {...newJob.parameter,...data}, data_file: null, use_ref:true });
+          setNewJob({ parameter: {...newJob.parameter,...job}, data_file: null, use_ref:true });
 
-          if ('server' in data) svr = data['server'];
+          if ('server' in job) svr = job['server'];
           else svr = localStorage.getItem('currentServer');
           if (svr) {
             lst.push(svr)
@@ -496,7 +498,8 @@ export default function JobPage(props) {
     'net_of_fac': 40,
     'allocating': 60,
     'upload_results': 90,
-    'finished': 100
+    'finished': 100,
+    'error': 100
   }
   React.useEffect(() => {
     if (!loadingCurrentJob) return;
@@ -505,7 +508,7 @@ export default function JobPage(props) {
       return;
     }
 
-    const request = '/api/status/' + currentJob.job_id;
+    const request = '/api/job/' + currentJob.job_id;
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -513,9 +516,9 @@ export default function JobPage(props) {
       throw new TypeError("Oops, we haven't got data!");
     })
       .then(data => {
-        if (data) {
-          var perc = data in status_percent ? status_percent[data] : 0;
-          setCurrentJob({ ...currentJob, status: data, finished: perc })
+        if (data.status) {
+          var perc = data.status in status_percent ? status_percent[data.status] : 0;
+          setCurrentJob({ ...currentJob, status: data.status, finished: perc })
         }
         else {
           setCurrentJob({ ...currentJob, status: '', finished: 0 })
@@ -731,7 +734,7 @@ export default function JobPage(props) {
                     use_ref: newJob.use_ref
                   };
                   job.parameter['job_guid'] = uuidv4();
-                  if (refJob && refJob.job_id > 0 && job.use_ref && 
+                  if (refJob && job.use_ref && 
                         job.parameter.server+"|" + job.parameter.edm+"|" + job.parameter.rdm +"|"+ job.parameter.portinfoid 
                         + "|" + job.parameter.perilid  + "|" + job.parameter.analysisid === refJob.data_flag) 
                     job.parameter.ref_analysis = parseInt(refJob.job_id);
@@ -917,7 +920,7 @@ export default function JobPage(props) {
                       }
                     }}
                   >
-                    {portList.map((p) => {
+                    {portList?.map((p) => {
                       return <MenuItem value={p.portinfoid}>{ }{p.portinfoid > 0 ? '(' + p.portinfoid + ') ' + p.portname : ''}</MenuItem>
                     })}
                   </Select>
@@ -937,7 +940,7 @@ export default function JobPage(props) {
                       }
                     }}
                   >
-                    {perilList.map((p) => {
+                    {perilList?.map((p) => {
                       return <MenuItem value={p}>{ }{p > 0 && p <= peril_name.length ? '(' + p + ') ' + peril_name[p - 1] : p}</MenuItem>
                     })}
                   </Select>
@@ -1000,7 +1003,7 @@ export default function JobPage(props) {
                       }
                     }}
                   >
-                    {anlsList.map((a) => {
+                    {anlsList?.map((a) => {
                       return <MenuItem value={a.id}>{ }{a.id > 0 ? '(' + a.id + ') ' + a.name : ''}</MenuItem>
                     })}
                   </Select>
@@ -1010,16 +1013,16 @@ export default function JobPage(props) {
                 <FormControl className={classes.formControl}>
                   <FormControlLabel control={
                     <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
-                      disabled={!newJob || !newJob.parameter || !refJob || refJob.job_id <= 0 ||   
+                      disabled={!newJob || !newJob.parameter || !refJob ||   
                         newJob.parameter.server+"|" + newJob.parameter.edm+"|" + newJob.parameter.rdm +"|"+ newJob.parameter.portinfoid 
                           + "|" + newJob.parameter.perilid  + "|" + newJob.parameter.analysisid !== refJob.data_flag }
-                      checked={newJob && newJob.use_ref && newJob.parameter && refJob && refJob.job_id > 0 &&   
+                      checked={newJob && newJob.use_ref && newJob.parameter && refJob &&   
                         newJob.parameter.server+"|" + newJob.parameter.edm+"|" + newJob.parameter.rdm +"|"+ newJob.parameter.portinfoid 
                           + "|" + newJob.parameter.perilid  + "|" + newJob.parameter.analysisid === refJob.data_flag }
                       onChange={event => {
                         setNewJob({ ...newJob, use_ref:event.target.checked });
                       }}
-                    />} label={"Use raw data from the reference analysis " + refJob.job_id}
+                    />} label={"Use raw data from the reference analysis " + refJob?.job_id}
                   />
                 </FormControl>
               </div>
