@@ -55,11 +55,12 @@ class PatJob:
         self.AddtlCovg = float(self.para['additional_coverage'])
         self.dCurrencyAdj = 1.0
         self.iDedType = 1 if self.para['deductible_treatment'] == "Retains Limit" else 2
-        self.dSubjPrem = float(self.para['subject_premium'])
         self.loss_ratio = float(self.para['loss_alae_ratio'])
         self.dtAveAccDate = datetime.strptime(self.para['average_accident_date'], '%m/%d/%Y')
         self.gdtPSTrendFrom = datetime(2015,12,31)
         self.gdPSTrendFactor = float(self.para['trend_factor'])
+
+        # self.dSubjPrem =1e6 #subject_premium
         self.gdReinsuranceLimit = 1000000 # global reinsurance limit
         self.gdReinsuranceRetention = 1000000 # global reinsurance retention
 

@@ -7,7 +7,6 @@
     "type_of_rating": "PSOLD",
     "coverage": "Building + Contents + Time Element",
     "peril_subline": "All Perils",
-    "subject_premium": 100000000.0,
     "loss_alae_ratio": 1,
     "average_accident_date": "1/1/2022",
     "trend_factor": 1.035,

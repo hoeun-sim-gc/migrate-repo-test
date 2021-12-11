@@ -135,11 +135,10 @@ export default function JobPage(props) {
         type_of_rating: "PSOLD",
         coverage: "Building + Contents + Time Element",
         peril_subline: "All Perils",
-        subject_premium: 100000000,
         loss_alae_ratio: 1,
         average_accident_date: "1/1/2022",
         trend_factor: 1.035,
-        additional_coverage: 2,
+        additional_coverage: 2.0,
         deductible_treatment: "Retains Limit",     
 
         user_name: user?.name,
@@ -405,11 +404,6 @@ export default function JobPage(props) {
 
     if (job.perilid <= 0) {
       console.log("Need peril id!");
-      return false;
-    }
-
-    if (job.subject_premium <= 0) {
-      console.log("Need subject premium!");
       return false;
     }
 
@@ -824,6 +818,23 @@ export default function JobPage(props) {
                     />
                   </Box>
                 </FormControl>
+                <div>
+                <FormControl className={classes.formControl}>
+                  <FormControlLabel control={
+                    <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
+                      disabled={!newJob || !newJob.parameter || !refJob ||   
+                        newJob.parameter.server+"|" + newJob.parameter.edm+"|" + newJob.parameter.rdm +"|"+ newJob.parameter.portinfoid 
+                          + "|" + newJob.parameter.perilid  + "|" + newJob.parameter.analysisid !== refJob.data_flag }
+                      checked={newJob && newJob.use_ref && newJob.parameter && refJob &&   
+                        newJob.parameter.server+"|" + newJob.parameter.edm+"|" + newJob.parameter.rdm +"|"+ newJob.parameter.portinfoid 
+                          + "|" + newJob.parameter.perilid  + "|" + newJob.parameter.analysisid === refJob.data_flag }
+                      onChange={event => {
+                        setNewJob({ ...newJob, use_ref:event.target.checked });
+                      }}
+                    />} label={"Use raw data from the reference analysis " + refJob?.job_id}
+                  />
+                </FormControl>
+                </div>
           <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
             expanded={inpExpanded & 0x01}
             onChange={(event, isExpanded) => {
@@ -1009,23 +1020,6 @@ export default function JobPage(props) {
                   </Select>
                 </FormControl>
               </div>
-              <div>
-                <FormControl className={classes.formControl}>
-                  <FormControlLabel control={
-                    <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
-                      disabled={!newJob || !newJob.parameter || !refJob ||   
-                        newJob.parameter.server+"|" + newJob.parameter.edm+"|" + newJob.parameter.rdm +"|"+ newJob.parameter.portinfoid 
-                          + "|" + newJob.parameter.perilid  + "|" + newJob.parameter.analysisid !== refJob.data_flag }
-                      checked={newJob && newJob.use_ref && newJob.parameter && refJob &&   
-                        newJob.parameter.server+"|" + newJob.parameter.edm+"|" + newJob.parameter.rdm +"|"+ newJob.parameter.portinfoid 
-                          + "|" + newJob.parameter.perilid  + "|" + newJob.parameter.analysisid === refJob.data_flag }
-                      onChange={event => {
-                        setNewJob({ ...newJob, use_ref:event.target.checked });
-                      }}
-                    />} label={"Use raw data from the reference analysis " + refJob?.job_id}
-                  />
-                </FormControl>
-              </div>
             </AccordionDetails>
           </Accordion>
 
@@ -1062,6 +1056,50 @@ export default function JobPage(props) {
                     <MenuItem value='PSOLD'>PSOLD</MenuItem>
                   </Select>
                 </FormControl>
+                <FormControl className={classes.formControl}>
+                <InputLabel shrink id="peril-placeholder-label">
+                  Peril / Subline
+                </InputLabel>
+                <Select
+                  labelId="peril-placeholder-label"
+                  id="peril-placeholder"
+                  value={newJob.parameter.peril_subline}
+                  defaultValue={'All Perils'}
+                  onChange={event => {
+                    if (newJob.parameter.peril_subline !== event.target.value) {
+                      setNewJob({ ...newJob, parameter: { ...newJob.parameter, peril_subline: event.target.value } });
+                    }
+                  }}
+                >
+                  {['Fire', 'Wind', 'Special Cause of Loss', 'All Perils']
+                    .map((n) => {
+                      return <MenuItem value={n}>{ }{n}</MenuItem>
+                    })}
+                </Select>
+              </FormControl>
+              <FormControl className={classes.formControl}>
+                  <Box
+                    component="form"
+                    sx={{
+                      '& > :not(style)': { m: 1, width: '18ch' },
+                    }}
+                    noValidate
+                    autoComplete="off"
+                  >
+                    <TextField id="alae-basic" label="Loss & ALAE ratio" variant="standard" type='number'
+                      value={newJob.parameter.loss_alae_ratio}
+                      inputProps={{
+                        maxLength: 13,
+                        step: "0.1"
+                      }}
+                      onChange={event => {
+                        if (newJob.parameter.loss_alae_ratio !== event.target.value) {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, loss_alae_ratio: parseFloat(event.target.value) } });
+                        }
+                      }}
+                    />
+                  </Box>
+                </FormControl>
               </div>
               <FormControl className={classes.formControl}>
                 <InputLabel shrink id="coverage-placeholder-label">
@@ -1085,70 +1123,24 @@ export default function JobPage(props) {
                 </Select>
               </FormControl>
               <FormControl className={classes.formControl}>
-                <InputLabel shrink id="peril-placeholder-label">
-                  Peril / Subline
-                </InputLabel>
-                <Select
-                  labelId="peril-placeholder-label"
-                  id="peril-placeholder"
-                  value={newJob.parameter.peril_subline}
-                  defaultValue={'All Perils'}
-                  onChange={event => {
-                    if (newJob.parameter.peril_subline !== event.target.value) {
-                      setNewJob({ ...newJob, parameter: { ...newJob.parameter, peril_subline: event.target.value } });
-                    }
+                <Box
+                  component="form"
+                  sx={{
+                    '& > :not(style)': { m: 1, width: '22ch' },
                   }}
+                  noValidate
+                  autoComplete="off"
                 >
-                  {['Fire', 'Wind', 'Special Cause of Loss', 'All Perils']
-                    .map((n) => {
-                      return <MenuItem value={n}>{ }{n}</MenuItem>
-                    })}
-                </Select>
+                  <TextField id="addl-basic" label="Additional Coverage" variant="standard" type='number'
+                    value={newJob.parameter.additional_coverage}
+                    onChange={event => {
+                      if (newJob.parameter.additional_coverage !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, additional_coverage: parseFloat(event.target.value) } });
+                      }
+                    }}
+                  />
+                </Box>
               </FormControl>
-              <div>
-                <FormControl className={classes.formControl}>
-                  <Box
-                    component="form"
-                    sx={{
-                      '& > :not(style)': { m: 1, width: '22ch' },
-                    }}
-                    noValidate
-                    autoComplete="off"
-                  >
-                    <TextField id="premium-basic" label="Subject Premium" variant="standard"
-                      value={newJob.parameter.subject_premium?.toLocaleString(
-                        undefined, // leave undefined to use the visitor's browser 
-                        // locale or a string like 'en-US' to override it.
-                        { minimumFractionDigits: 0 }
-                      )}
-                      onChange={event => {
-                        if (newJob.parameter.subject_premium !== event.target.value) {
-                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, subject_premium: parseFloat(event.target.value) } });
-                        }
-                      }}
-                    />
-                  </Box>
-                </FormControl>
-                <FormControl className={classes.formControl}>
-                  <Box
-                    component="form"
-                    sx={{
-                      '& > :not(style)': { m: 1, width: '18ch' },
-                    }}
-                    noValidate
-                    autoComplete="off"
-                  >
-                    <TextField id="alae-basic" label="Loss & ALAE ratio" variant="standard"
-                      value={newJob.parameter.loss_alae_ratio}
-                      onChange={event => {
-                        if (newJob.parameter.loss_alae_ratio !== event.target.value) {
-                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, loss_alae_ratio: parseFloat(event.target.value) } });
-                        }
-                      }}
-                    />
-                  </Box>
-                </FormControl>
-              </div>
               <div>
                 <FormControl className={classes.formControl}>
                   <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -1172,32 +1164,15 @@ export default function JobPage(props) {
                     noValidate
                     autoComplete="off"
                   >
-                    <TextField id="trend-basic" label="Trend Factor" variant="standard"
+                    <TextField id="trend-basic" label="Trend Factor" variant="standard" type='number'
                       value={newJob.parameter.trend_factor}
+                      inputProps={{
+                        maxLength: 13,
+                        step: "0.01"
+                      }}
                       onChange={event => {
                         if (newJob.parameter.trend_factor !== event.target.value) {
                           setNewJob({ ...newJob, parameter: { ...newJob.parameter, trend_factor: parseFloat(event.target.value) } });
-                        }
-                      }}
-                    />
-                  </Box>
-                </FormControl>
-              </div>
-              <div>
-                <FormControl className={classes.formControl}>
-                  <Box
-                    component="form"
-                    sx={{
-                      '& > :not(style)': { m: 1, width: '22ch' },
-                    }}
-                    noValidate
-                    autoComplete="off"
-                  >
-                    <TextField id="addl-basic" label="Additional Coverage" variant="standard"
-                      value={newJob.parameter.additional_coverage}
-                      onChange={event => {
-                        if (newJob.parameter.additional_coverage !== event.target.value) {
-                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, additional_coverage: parseFloat(event.target.value) } });
                         }
                       }}
                     />
