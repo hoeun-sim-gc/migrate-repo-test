@@ -13,11 +13,20 @@ create table psold_mapping(
     Expiration varchar(15)
 );
 
-create table psold_weight(
+create table psold_weight0(
+    RG int,
     OccupancyType varchar(50),
     PremiumWeight float,
     HPRMap varchar(10),
-    PremiumPercent float,
+    HPRTable int
+);
+
+create table psold_weight(
+    index int,
+    AOI_gross int,
+    AOI_gross int,
+    PremiumWeight float,
+    HPRMap varchar(10),
     HPRTable int
 );
 
@@ -70,25 +79,17 @@ create table pat_job(
 );
 create index idx_pat_job on pat_job (job_id asc);
 
-create table pat_policy(
+create table pat_pseudo_policy(
     job_id int not null,
     data_type int, --0:used, 1: raw, 2: corrected 
-    OriginalPolicyID int,
-    ACCGRPID int,
     PseudoPolicyID varchar(50),
+    ACCGRPID int,
+    OriginalPolicyID int,
     PolRetainedLimit float,
     PolLimit float,
     PolParticipation float,
     PolRetention float,
     PolPremium float,
-    flag int
-);
-create index idx_pat_policy on pat_policy (job_id asc);
-
-create table pat_location(
-    job_id int not null,
-    data_type int, --0:used, 1: raw, 2: corrected 
-    PseudoPolicyID varchar(50),
     LocationIDStack varchar(20),
     occupancy_scheme varchar(20), 
     occupancy_code varchar(20),
@@ -99,7 +100,7 @@ create table pat_location(
     RatingGroup int,
     flag int
 );
-create index idx_pat_location on pat_location (job_id asc);
+create index idx_pat_pseudo_policy on pat_pseudo_policy (job_id asc);
 
 create table pat_facultative(
     job_id int not null,

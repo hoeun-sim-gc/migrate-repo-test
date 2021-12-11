@@ -12,13 +12,6 @@ from .pat_worker import PatWorker
 from .settings import AppSettings
 from .pat_flag import PatFlag
 
-def split_flag(row):
-    if row is None or len(row)<=0: 
-        return []
-         
-    desc = PatFlag.describe(row[0])
-    return desc.split(',') if desc else []
-
 class PatHelper:
     """Class to manage PAT jobs"""
 
@@ -78,10 +71,9 @@ class PatHelper:
         ret= False
         creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
         with pyodbc.connect(cls.job_conn) as conn, zipfile.ZipFile(BytesIO(data),'r') as zf:
-            for d, t, kflds, vflds in [('pol_validation.csv', 'pat_policy', ['PseudoPolicyID'],
-                                    ['PolRetainedLimit', 'PolLimit', 'PolParticipation', 'PolRetention', 'PolPremium']),
-                                ('loc_validation.csv', 'pat_location', ['PseudoPolicyID'],
-                                    ['occupancy_scheme', 'occupancy_code','Building','Contents','BI','AOI','RatingGroup']),
+            for d, t, kflds, vflds in [('pol_validation.csv', 'pat_pseudo_policy', ['PseudoPolicyID'],
+                                    ['PolRetainedLimit', 'PolLimit', 'PolParticipation', 'PolRetention', 'PolPremium',
+                                        'occupancy_scheme', 'occupancy_code','Building','Contents','BI','AOI','RatingGroup']),
                                 ('fac_validation.csv', 'pat_facultative', ['PseudoPolicyID','FacKey'], 
                                     ['FacLimit', 'FacAttachment', 'FacCeded'])]:
                 if d in zf.namelist():
@@ -135,25 +127,32 @@ class PatHelper:
             if df is not None and len(df) > 0:
                 job = df.to_dict('records')[0]
                 if job['data_extracted']:
-                    try:
-                        summary = pd.DataFrame(columns=['item', 'cnt'])
-                        summary1 = pd.DataFrame(columns=['item', 'cnt'])
-                        for t in ['Policy', 'Location', 'Facultative']:
-                            df = pd.read_sql_query(f"""select flag, count(*) as cnt 
-                                            from pat_{t} where job_id = {job_id} and data_type = 0 group by flag""", conn)
-                            summary.loc[summary.shape[0]]=[f'{t} Records Processed', df.cnt.sum()]
-                            
-                            df["Notes"] = df.apply(split_flag, axis=1)
-                            df = df.explode("Notes").groupby('Notes').agg({'cnt': 'sum'}).reset_index()
-                            df=df[df.Notes != ''].rename(columns={'Notes':'item'})
-                            if len(df) > 0:
-                                summary1 = pd.concat((summary1,df), ignore_index = True, axis = 0)
-                        if len(summary)>0 or len(summary1)>0:
-                            job['summary'] = pd.concat((summary,summary1), ignore_index = True, axis = 0).to_dict('records')
-                    except:
-                        pass
-                    
+                    job['summary'] =cls.summary(job_id)
+
                 return job
+
+    @classmethod
+    def summary(cls,job_id):
+        summary = []
+        with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+            cur.execute(f"""select count(*) n1, count(distinct OriginalPolicyID) n2, count(distinct LocationIDStack) n3
+                from pat_pseudo_policy where job_id = {job_id} and data_type = 0""")
+            n1, n2, n3 = cur.fetchone()
+
+            summary.append({'item': '# Policy', 'cnt': n2})
+            summary.append({'item': '# Location', 'cnt': n3})
+            summary.append({'item': '# Pseudo Policy', 'cnt': n1})
+
+            cur.execute(f"""select count(*) from pat_facultative where job_id = {job_id} and data_type = 0""")
+            n1, = cur.fetchone()
+            summary.append({'item': '# Facultative', 'cnt': n1})
+
+            cur.execute(f"""select flag, count(*) from pat_pseudo_policy where job_id = {job_id} and data_type = 0 and flag!=0 group by flag""")
+            rows = cur.fetchall()
+            for row in rows:
+                summary.append({'item': f"* {PatFlag.describe(row[0])}", 'cnt': row[1]})
+
+        return summary
 
     @classmethod
     def get_results(cls, job_lst):
@@ -173,14 +172,10 @@ class PatHelper:
                         PolLAS as PolicyLAS,
                         DedLAS as DeductibleLAS
                     from pat_premium a
-                        left join 
-                            (select * from pat_policy where job_id in {jlst} and data_type = 0) b  
-                                on a.job_id = b.job_id and a.PseudoPolicyID = b.PseudoPolicyID
-                        left join 
-                            (select * from pat_location where job_id in {jlst} and data_type = 0) c  
-                                on a.job_id =c.job_id and a.PseudoPolicyID = c.PseudoPolicyID
+                        left join pat_pseudo_policy b on a.job_id = b.job_id and a.PseudoPolicyID = b.PseudoPolicyID
+                            and b.job_id in {jlst} and b.data_type = 0
                     where a.job_id in {jlst}
-                    order by a.job_id, c.LocationIDStack, b.OriginalPolicyID, b.ACCGRPID""", conn)
+                    order by a.job_id, b.LocationIDStack, b.OriginalPolicyID, b.ACCGRPID""", conn)
 
             if len(job_lst) <= 1:
                 df =df.drop(columns=['job_id'])
@@ -192,7 +187,7 @@ class PatHelper:
         if len(job_lst) >0 :  
             lst= [f"{a}" for a in job_lst]
             with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-                for t in ['pat_job','pat_policy','pat_location', 'pat_facultative', 'pat_premium']:
+                for t in ['pat_job','pat_pseudo_policy', 'pat_facultative', 'pat_premium']:
                     cur.execute(f"""delete from [{t}] where job_id in ({','.join(lst)})""")
                     cur.commit()
         
@@ -201,15 +196,15 @@ class PatHelper:
     @classmethod
     def get_validation_data(self, job_id, flagged:bool=True):
         with pyodbc.connect(self.job_conn) as conn:
-            df1 = pd.read_sql_query(f"""select * from pat_policy 
+            df1 = pd.read_sql_query(f"""select * from pat_pseudo_policy 
                 where job_id = {job_id} and data_type = 0 {('and flag != 0' if flagged else '')}
                 order by PseudoPolicyID""",conn)
             if len(df1) > 0:
                 df = df1[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
                 df1 = df1.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
-            
-            df2 = pd.read_sql_query(f"""select * from pat_location 
+
+            df2 = pd.read_sql_query(f"""select * from pat_facultative 
                 where job_id = {job_id} and data_type = 0 {('and flag != 0' if flagged else '')}
                 order by PseudoPolicyID""",conn)
             if len(df2) > 0:
@@ -217,15 +212,7 @@ class PatHelper:
                 df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
                 df2 = df2.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
-            df3 = pd.read_sql_query(f"""select * from pat_facultative 
-                where job_id = {job_id} and data_type = 0 {('and flag != 0' if flagged else '')}
-                order by PseudoPolicyID""",conn)
-            if len(df3) > 0:
-                df = df3[['flag']].drop_duplicates(ignore_index=True)
-                df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
-                df3 = df3.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
-
-        return (df1, df2, df3)
+        return (df1, df2)
     
     @classmethod
     def reset_jobs(cls, lst):
@@ -234,12 +221,12 @@ class PatHelper:
             df =pd.read_sql_query(f"select job_id, data_extracted from pat_job where job_id in ({jlst})",conn)
             if np.any(df.data_extracted==0):
                 jlst1 = ','.join([f'{j}' for j in df[df.data_extracted==0]['job_id']]) 
-                for tab in ['pat_policy', 'pat_location','pat_facultative']:
+                for tab in ['pat_pseudo_policy','pat_facultative']:
                     cur.execute(f"""delete from {tab} where job_id in ({jlst1}) and data_type != 2;""")
                     cur.commit()
             if np.any(df.data_extracted!=0):
                 jlst2 = ','.join([f'{j}' for j in df[df.data_extracted!=0]['job_id']]) 
-                for tab in ['pat_policy', 'pat_location','pat_facultative']:
+                for tab in ['pat_pseudo_policy','pat_facultative']:
                     cur.execute(f"""delete from {tab} where job_id in ({jlst2}) and data_type =0;""")
                     cur.commit()
             
@@ -253,7 +240,7 @@ class PatHelper:
     @classmethod
     def update_job(cls, job_id, para):
         with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-            for tab in ['pat_policy', 'pat_location','pat_facultative']:
+            for tab in ['pat_pseudo_policy','pat_facultative']:
                 cur.execute(f"""delete from {tab} where job_id = {job_id} and data_type = 0;""")
                 cur.commit()
 

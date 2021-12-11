@@ -66,11 +66,10 @@ def results(job_lst:str) -> StreamingResponse:
 
 @app.get('/api/valid/{job_id}')
 def get_validate_data(job_id:int, flagged:bool=True) -> StreamingResponse:
-    df1, df2, df3 = PatHelper.get_validation_data(job_id, flagged)
+    df1, df2 = PatHelper.get_validation_data(job_id, flagged)
     return send_zip_file(f'pat_validation_{job_id}.zip', 
         ('pol_validation.csv', df1),
-        ('loc_validation.csv', df2),
-        ('fac_validation.csv', df3)
+        ('fac_validation.csv', df2)
     )
 
 @app.post('/api/job')

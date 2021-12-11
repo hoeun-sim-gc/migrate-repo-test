@@ -3,15 +3,12 @@ import pandas as pd
 from enum import IntFlag
 
 flag_descrs = {
-        'FlagPolDupe' : "Duplicate policy records" ,
-        'FlagPolOrphan' : "Orphan Policy Record" ,
+        'FlagPolLocDupe' : "Duplicate policy/location records",
         'FlagPolNA' : "NonNumeric or negative field in policies" ,
         'FlagPolLimitParticipation' : "Algebraic inconsistency in policy profile (limit/participation)" ,
         'FlagPolParticipation' : "Participation exceeds 100%" ,
         'FlagFacOrphan' : "Orphan Facultative Record" ,
         'FlagFacNA' : "NonNumeric or negative field in fac table" ,
-        'FlagLocDupe' : "Duplicate location records" ,
-        'FlagLocOrphan' : "Orphan Location Record" ,
         'FlagLocIDDupe' : "AOI differences on location ID stack value",
         'FlagLocNA' : "NonNumeric or negative field in location table",
         'FlagLocRG' : "Rating Group is not in the range",
@@ -22,18 +19,15 @@ flag_descrs = {
     #'NoteFacOverexposed1' : "Fac exposure exceeds policy exposure",
 
 class PatFlag(IntFlag):
-    FlagPolDupe = 0x00000001
-    FlagPolOrphan = 0x00000002
-    FlagPolNA = 0x00000004
-    FlagPolLimitParticipation = 0x00000008
-    FlagPolParticipation = 0x00000010
-    FlagFacOrphan = 0x00000020
-    FlagFacNA = 0x00000040
-    FlagLocDupe = 0x00000080
-    FlagLocOrphan = 0x00000100
-    FlagLocIDDupe = 0x00000200
-    FlagLocNA = 0x00000400
-    FlagLocRG = 0x00000800
+    FlagPolLocDupe = 0x00000001
+    FlagPolNA = 0x00000002
+    FlagPolLimitParticipation = 0x00000004
+    FlagPolParticipation = 0x00000008
+    FlagFacOrphan = 0x00000010
+    FlagFacNA = 0x00000020
+    FlagLocIDDupe = 0x00000040
+    FlagLocNA = 0x00000080
+    FlagLocRG = 0x00000100
 
     FlagFacOverexposed = 0x00001000
     FlagCeded100 =  0x00002000

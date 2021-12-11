@@ -45,7 +45,7 @@ class PatWorker(threading.Thread):
                 if job.job_id == job_id:
                     self.job_id = job_id
                     try:
-                        job.perform_analysis(self.stopped)
+                        job.run(self.stopped)
                     finally:
                         self.job_id = 0
                         if self.stopped():
