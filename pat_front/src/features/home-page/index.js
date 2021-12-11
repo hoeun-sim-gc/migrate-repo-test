@@ -342,10 +342,10 @@ export default function HomePage(props) {
             </Button>
           </Tooltip>
           <Divider orientation="vertical" flexItem />
-          <Tooltip title="Stop selected analyses"  >
+          <Tooltip title="Cancel selected analyses"  >
             <Button style={{outline: 'none', height:'36px'}}
                 onClick={(e) => { setConfirm("stop the selected jobs"); }}
-              >Stop
+              >Cancel
             </Button>
           </Tooltip>
           <Tooltip title="Run selected analysis"  >
@@ -355,16 +355,11 @@ export default function HomePage(props) {
             </Button>
           </Tooltip>
           <Divider orientation="vertical" flexItem />
-          <Tooltip title="Download Results">
-            <Button style={{outline: 'none', height:'36px'}}
-                onClick={(e) => { setDownloadingResults(true); }}
-              >Results
-            </Button>
-          </Tooltip>
-          <Tooltip title="Export detail data for validation">
-             <WbMenu header="Export" items={[
+          <Tooltip title="Download data">
+             <WbMenu header="Download" items={[
                 { text: 'All Data', onClick: () => { setFlaggedOnly(false);  setDownloadingData(true) } },
-                { text: 'Flagged Data', onClick: () => { setFlaggedOnly(true);  setDownloadingData(true)} },
+                { text: 'Validation Data', onClick: () => { setFlaggedOnly(true);  setDownloadingData(true)} },
+                { text: 'Results', onClick: () => { setDownloadingResults(true); } },
               ]} />
           </Tooltip>
           {/* <Divider orientation="vertical" flexItem />
@@ -375,10 +370,10 @@ export default function HomePage(props) {
             </Button>
           </Tooltip> */}
           <Divider orientation="vertical" flexItem />
-          <Tooltip title="Copy settings to a new analysis"  >
+          <Tooltip title="Go to details/Set up new analyses"  >
             <Button style={{outline: 'none', height:'36px'}}
                 onClick={(e) => { handleNewJob(currentJob?.job_id); }}
-              >Copy
+              >Details...
             </Button>
           </Tooltip>
           <Dialog
