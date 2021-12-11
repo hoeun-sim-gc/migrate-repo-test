@@ -209,17 +209,16 @@ export default function JobPage(props) {
       })
         .then(data => {
           var job = JSON.parse(data.parameters);
-          if (data.data_extracted > 0){
-            setRefJob({job_id: data.job_id, 
-              data_flag: job.server+"|" + job.edm+"|" + job.rdm + "|" + job.portinfoid + "|" + job.perilid  + "|" + job.analysisid
-            })
-          };
-
           job['job_guid'] = '';
           job['user_name'] = user?.name;
           job['user_email'] = user?.email;
           job['data_correction'] = ''
           job['ref_analysis'] = 0;
+          if (data.data_extracted > 0){
+            setRefJob({job_id: data.job_id, 
+              data_flag: flagRefJob(job)
+            })
+          };
 
           setNewJob({ parameter: {...newJob.parameter,...job}, data_file: null, use_ref:true });
 
@@ -624,6 +623,14 @@ export default function JobPage(props) {
     });
   };
 
+  const flagRefJob = (job) => {
+    if(job) return job.server
+        + "|" + job.edm + "|" + job.rdm + "|" + job.portinfoid 
+        + "|" + job.perilid  + "|" + job.analysisid 
+        + "|" + job.additional_coverage + "|" + job.deductible_treatment
+    else return null
+  };
+
   return (
     <div class="job_container">
       {(loadingServerList || loadingDbList || loadingPortList || loadingPerilList || loadingDbList || uploadingJob || loadingCurrentJob) &&
@@ -728,9 +735,7 @@ export default function JobPage(props) {
                     use_ref: newJob.use_ref
                   };
                   job.parameter['job_guid'] = uuidv4();
-                  if (refJob && job.use_ref && 
-                        job.parameter.server+"|" + job.parameter.edm+"|" + job.parameter.rdm +"|"+ job.parameter.portinfoid 
-                        + "|" + job.parameter.perilid  + "|" + job.parameter.analysisid === refJob.data_flag) 
+                  if (refJob && job.use_ref && flagRefJob(job.parameter) === refJob.data_flag) 
                     job.parameter.ref_analysis = parseInt(refJob.job_id);
                   else job.parameter.ref_analysis = 0;
                   lst.push(job);
@@ -823,11 +828,9 @@ export default function JobPage(props) {
                   <FormControlLabel control={
                     <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
                       disabled={!newJob || !newJob.parameter || !refJob ||   
-                        newJob.parameter.server+"|" + newJob.parameter.edm+"|" + newJob.parameter.rdm +"|"+ newJob.parameter.portinfoid 
-                          + "|" + newJob.parameter.perilid  + "|" + newJob.parameter.analysisid !== refJob.data_flag }
+                        flagRefJob(newJob?.parameter) !== refJob.data_flag }
                       checked={newJob && newJob.use_ref && newJob.parameter && refJob &&   
-                        newJob.parameter.server+"|" + newJob.parameter.edm+"|" + newJob.parameter.rdm +"|"+ newJob.parameter.portinfoid 
-                          + "|" + newJob.parameter.perilid  + "|" + newJob.parameter.analysisid === refJob.data_flag }
+                        flagRefJob(newJob?.parameter) === refJob.data_flag }
                       onChange={event => {
                         setNewJob({ ...newJob, use_ref:event.target.checked });
                       }}
