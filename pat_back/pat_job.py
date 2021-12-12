@@ -774,11 +774,13 @@ class PatJob:
         dfLoc = df_facnet.merge(dfFacNetLast, left_on='PseudoPolicyID', right_index=True)
 
         with pyodbc.connect(self.job_conn) as conn:
+            tableWgts = pd.read_sql_query(f"""select PremiumWeight/sum(PremiumWeight) over() as PremiumPercent 
+                                            from psold_weight order by rg""", conn)
             AOI_split = pd.read_sql_query(f"""select * from psold_aoi order by AOI""", conn).AOI.to_numpy() 
             guNewPSTable = pd.read_sql_query(f"""select * from psold_gu_2016 order by COVG, SUBGRP, RG, EG""", conn)
-
+        
         gdMu = [1000 * (np.sqrt(10)**(i-1)) for i in range(1,12)]
-        dfWeights = self.__calc_weights(guNewPSTable, gdMu, AOI_split) #? this should be calculated one time and save in DB
+        dfWeights = self.__calc_weights(tableWgts, guNewPSTable, gdMu, AOI_split)
 
         # dfLocation3
         dfLoc = self.__calc_detail_info(dfLoc, AOI_split)
@@ -817,24 +819,10 @@ class PatJob:
         
         return df_pat
       
-    def __calc_weights(self, guNewPSTable, gdMu, AOI_split):
-        with pyodbc.connect(self.job_conn) as conn:
-            tableWgts = pd.read_sql_query(f"""select PremiumWeight as PremiumPercent from psold_weight order by rg""", conn)
-            tt = tableWgts['PremiumPercent'].sum()
-            tableWgts['PremiumPercent'] = tableWgts['PremiumPercent']/tt
-        
-        # Initialize Variables
-        # holds relative counts for custom mix of occupancies (NET) - i.e. green area in model
-        
-        uPSCustom_uNet_dOccCnt = [0] * 60
-        uPSCustom_uGross_dOccCnt = [0] * 60                  
-        # holds relative counts for custom mix of occupancies (GROSS) - i.e. green area in model
-        # holds weights for custom mix of occupancies (NET) - i.e. blue area in model
-        uPSCustom_uNet_dW = pd.DataFrame(np.zeros((11,60), dtype=float), columns=[f"AOI{i+1}" for i in range(60)])
-        # holds weights for custom mix of occupancies (GROSS) - i.e. blue area in model
-        uPSCustom_uGross_dW = pd.DataFrame(np.zeros((11,60), dtype=float), columns=[f"AOI{i+1}" for i in range(60)])
-        
-        dAdjFactor = 1    
+    def __calc_weights(self, tableWgts, guNewPSTable, gdMu, AOI_split):        
+        dfWeights =pd.DataFrame(columns=['AOI',*[f'G{i}' for i in range(12)],*[f'R{i}' for i in range(12)]])
+            
+        dAdjFactor = 1 #?   
         guNewPSTable_sub = guNewPSTable[(guNewPSTable.COVG == self.iCovg) & (guNewPSTable.SUBGRP == self.iSubGrp)]
         for iAOI in range(1,61):
             guNewPSTable_sub2 = guNewPSTable_sub[guNewPSTable_sub.EG == iAOI].reset_index(drop=True)
@@ -846,16 +834,14 @@ class PatJob:
                 lambda a: (np.sum(a * dAdjFactor * gdMu * (1-np.exp(
                         (-1 * AOI_split[iAOI] * (1 + self.AddtlCovg)) /
                         (dAdjFactor * gdMu))))
-                    ) / np.sum(a), axis = 1) * 
-                guNewPSTable_sub2.OCC * tableWgts.PremiumPercent)
+                    ) / np.sum(a), axis = 1) * guNewPSTable_sub2.OCC * tableWgts.PremiumPercent)
 
             # GROSS CALCULATIONS
             dSumGrossPrem = np.sum(guNewPSTable_sub2[[f"G{i+1}" for i in range(11)]].apply(
                 lambda a: (np.sum(a * dAdjFactor * gdMu * (1-np.exp(
                         (-1 * AOI_split[iAOI] * (1 + self.AddtlCovg)) /
                         (dAdjFactor * gdMu))))
-                    ) / np.sum(a), axis = 1) * 
-                guNewPSTable_sub2.AOCC * (tableWgts.PremiumPercent))
+                    ) / np.sum(a), axis = 1) * guNewPSTable_sub2.AOCC * tableWgts.PremiumPercent)
             
             
             # If the rating group is selected in the premium weight portion of the user input table, 
@@ -867,8 +853,8 @@ class PatJob:
                     lambda a: np.sum(a * dAdjFactor * gdMu *
                         (1-np.exp((-1*AOI_split[iAOI] * (1+self.AddtlCovg)) / (dAdjFactor * gdMu)))) 
                         / sum(a), axis =1)
-            uPSCustom_uNet_dOccCnt[iAOI-1] = np.sum(dtmpOccCnt)
-            uPSCustom_uNet_dW[f"AOI{iAOI}"] = np.dot(
+            uNet_dOccCnt = np.sum(dtmpOccCnt)
+            uNet_dW = np.dot(
                 guNewPSTable_sub2[[f"R{i+1}" for i in range(11)]].T,
                 dtmpOccCnt
             )
@@ -879,31 +865,18 @@ class PatJob:
                     lambda a: np.sum(a * dAdjFactor * gdMu *
                         (1-np.exp((-1*AOI_split[iAOI] * (1+self.AddtlCovg)) / (dAdjFactor * gdMu)))) 
                         / sum(a), axis =1)
-            uPSCustom_uGross_dOccCnt[iAOI-1] = np.sum(dtmpOccCnt)
-            uPSCustom_uGross_dW[f"AOI{iAOI}"] = np.dot(
+            uGross_dOccCnt = np.sum(dtmpOccCnt)
+            uGross_dW = np.dot(
                 guNewPSTable_sub2[[f"G{i+1}" for i in range(11)]].T,
                 dtmpOccCnt
             )
 
-            # Convert uPSCustom.dOccCnt from list to vector of length 60
-            # uPSCustom_uNet_dOccCnt = unlist(uPSCustom_uNet_dOccCnt)
-            # uPSCustom_uGross_dOccCnt = unlist(uPSCustom_uGross_dOccCnt)
-            
-            uPSCustom_uNet_dW[f"AOI{iAOI}"] = uPSCustom_uNet_dW[f"AOI{iAOI}"] / uPSCustom_uNet_dOccCnt[iAOI-1]
-            uPSCustom_uGross_dW[f"AOI{iAOI}"] = uPSCustom_uGross_dW[f"AOI{iAOI}"] / uPSCustom_uGross_dOccCnt[iAOI-1]
+            uNet_dW = uNet_dW / uNet_dOccCnt
+            uGross_dW = uGross_dW / uGross_dOccCnt
 
-        # Combine the occurrence counts and weights into one table (one for Net and one for Gross)
-        
-        PSCustomNet = pd.DataFrame(np.reshape(uPSCustom_uNet_dOccCnt,(1,60)), columns =uPSCustom_uNet_dW.columns)\
-            .append(uPSCustom_uNet_dW, ignore_index=True)
+            dfWeights.loc[iAOI-1]=[iAOI,uGross_dOccCnt,*uGross_dW,uNet_dOccCnt,*uNet_dW]
 
-        PSCustomGross = pd.DataFrame(np.reshape(uPSCustom_uGross_dOccCnt,(1,60)), columns =uPSCustom_uNet_dW.columns)\
-            .append(uPSCustom_uGross_dW, ignore_index=True)
-        
-        PSCustom = PSCustomGross.join(PSCustomNet,lsuffix='_gross', rsuffix='_net').reset_index()
-        # PSCustom.index = ['OccCnt'] + [f"GrossWgt{i+1}" for i in range(11)]
-
-        return PSCustom
+        return dfWeights
 
     def __calc_detail_info(self, df, AOI_split):
         dTotalPrem = df.OriginalPremium.sum()
@@ -965,8 +938,7 @@ class PatJob:
     def __calc_las(self, df, gdMu, dfWeights, dfUnique):
         df['w'] = 0
         df['sum_w'] = 0
-        rein = max(min(self.gdReinsuranceRetention *
-                    1e-8, self.gdReinsuranceLimit), 1e-2)
+        rein = max(min(self.gdReinsuranceRetention * 1e-8, self.gdReinsuranceLimit), 1e-2)
 
         for n, X in [('PolLAS', df.dX),
                     ('DedLAS', df.dPolDed),
@@ -981,10 +953,16 @@ class PatJob:
             df['sum_w'] = 0
             for i in range(11):
                 df['w'] = 0
-                df.loc[np.logical_and(mask1, np.logical_and(mask2, mask3)), [
-                        'w']] = dfWeights[f'AOI{i+1}_gross'][i+1]
-                df.loc[np.logical_and(mask1, np.logical_and(mask2, ~mask3)), [
-                    'w']] = dfWeights[f'AOI{i+1}_net'][i+1]
+
+                mask = np.logical_and(mask1, np.logical_and(mask2, mask3))
+                if any(mask):
+                    df.loc[mask, ['w']] = df.merge(dfWeights[['AOI',f'G{i+1}']],
+                        left_on='iAOI', right_on='AOI', how='left').loc[mask,f'G{i+1}']
+
+                mask = np.logical_and(mask1, np.logical_and(mask2, ~mask3))
+                if any(mask):
+                    df.loc[mask, ['w']] = df.merge(dfWeights[['AOI',f'R{i+1}']],
+                        left_on='iAOI', right_on='AOI', how='left').loc[mask,f'R{i+1}']
 
                 mask = np.logical_and(mask1, np.logical_and(~mask2, mask3))
                 if np.any(mask) :

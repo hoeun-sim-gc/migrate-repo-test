@@ -13,18 +13,9 @@ create table psold_mapping(
     Expiration varchar(15)
 );
 
-create table psold_weight0(
+create table psold_weight(
     RG int,
     OccupancyType varchar(50),
-    PremiumWeight float,
-    HPRMap varchar(10),
-    HPRTable int
-);
-
-create table psold_weight(
-    index int,
-    AOI_gross int,
-    AOI_gross int,
     PremiumWeight float,
     HPRMap varchar(10),
     HPRTable int
