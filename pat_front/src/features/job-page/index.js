@@ -150,7 +150,9 @@ export default function JobPage(props) {
   const [paraString, setParaString] = useState('');
   const [jobList, setJobList] = useState([]);
   const [selectedNewJob, setSelectedNewJob] = useState('');
-  
+
+  const [batchFile, setBatchFile] = useState('');
+  const [readingBatch, setReadingBatch] = useState(false);
 
   const [inpExpanded, setInpExpanded] = useState(0x08);
   const [loadingServerList, setLoadingServerList] = useState(false);
@@ -252,7 +254,14 @@ export default function JobPage(props) {
 
 
   React.useEffect(() => {
-    setParaString(JSON.stringify(newJob?.parameter, null, '  '))
+    if(newJob){
+      var js= newJob.parameter;
+      if (refJob && newJob.use_ref && flagRefJob(js) === refJob.data_flag) 
+        js.ref_analysis = parseInt(refJob.job_id);
+      else js.ref_analysis = 0;
+      setParaString(JSON.stringify(js, null, '  '))
+    }
+    else setParaString('');
   }, [newJob.parameter]);
 
 
@@ -577,7 +586,8 @@ export default function JobPage(props) {
       if (it === "stop the current analysis") handleStopJob();
       else if (it === "start/rerun the current analysis") handleStartJob();
       else if (it === "submit jobs") setUploadingJob(true);
-      else if (it === "delete the selected job") handleDelJob();
+      else if (it === "delete the SELECTED job") handleDelJob(false);
+      else if (it === "delete ALL jobs in the list") handleDelJob(true);
       else if (it === "update the selected job") handleUpdateJob();
     }
   };
@@ -594,14 +604,19 @@ export default function JobPage(props) {
     }
   };
 
-  const handleDelJob = () => {
+  const handleDelJob = (all=false) => {
     var lst = jobList;
-    if(lst){
-      var sel= lst.find(j => j.parameter['job_guid'] === selectedNewJob);
-      if(sel){
-          lst.pop(sel);
-          setJobList(lst);
-      }    
+    if(all){
+      setJobList([]);
+    }
+    else{
+      if(lst){
+        var sel= lst.find(j => j.parameter['job_guid'] === selectedNewJob);
+        if(sel){
+            lst.pop(sel);
+            setJobList(lst);
+        }    
+      }
     }
   };
 
@@ -622,6 +637,54 @@ export default function JobPage(props) {
       }
     });
   };
+  
+  React.useEffect(() => {
+    if (!setReadingBatch) return;
+    if (!batchFile) {
+      setReadingBatch(false);
+      return;
+    }
+
+    var fr = new FileReader();
+    fr.onload = function () {
+      var lns = fr.result.split(/\r?\n/g);
+      var head = lns[0].split(',');
+      var n = head.length;
+
+      var lst = jobList;
+      if (!lst) lst = []
+      
+      lns.slice(1).forEach(ln => {
+        var col = ln.split(',');
+        if (col.length === n) {
+
+          var job = {
+            parameter: JSON.parse(JSON.stringify(newJob.parameter)),
+            data_file: newJob.data_file,
+            use_ref: newJob.use_ref
+          };
+          job.parameter['job_guid'] = uuidv4();
+
+          for (var i = 0; i < n; i++) {
+            if (typeof (job.parameter[head[i]]) === 'number') job.parameter[head[i]] = Number(col[i]);
+            else job.parameter[head[i]] = col[i];
+          }
+
+          if (refJob && job.use_ref && flagRefJob(job.parameter) === refJob.data_flag) 
+            job.parameter.ref_analysis = parseInt(refJob.job_id);
+          else job.parameter.ref_analysis = 0; 
+
+          lst.push(job);
+        }
+      });
+
+      setJobList(lst);
+      setBatchFile('');
+      setReadingBatch(false);
+    };
+    fr.readAsText(batchFile);
+    // eslint-disable-next-line
+  }, [readingBatch]);
 
   const flagRefJob = (job) => {
     if(job) return job.server
@@ -631,14 +694,18 @@ export default function JobPage(props) {
     else return null
   };
 
+  const pulseLoading=()=>{
+      return loadingServerList || loadingPortList || loadingPerilList || loadingDbList || uploadingJob || loadingCurrentJob || readingBatch;
+  };
+
   return (
     <div class="job_container">
-      {(loadingServerList || loadingDbList || loadingPortList || loadingPerilList || loadingDbList || uploadingJob || loadingCurrentJob) &&
+      { pulseLoading() &&
         <div className={classes.spinner}>
           <PulseLoader
             size={30}
             color={"#2BAD60"}
-            loading={loadingServerList || loadingPortList || loadingPerilList || loadingDbList || loadingDbList || uploadingJob || loadingCurrentJob}
+            loading={pulseLoading()}
           />
         </div>
       }
@@ -694,11 +761,6 @@ export default function JobPage(props) {
                       }}
                     >Start Current</MenuItem>
                   </MenuList>
-                  <input type='file' id='file' ref={inputFile} style={{ display: 'none' }} onChange={(e) => {
-                    if (e.target.files && e.target.files.length > 0) {
-                      setUploadingJob(true);
-                    }
-                  }} />
                 </Grid>
               </Grid>
             </CardContent>
@@ -727,30 +789,42 @@ export default function JobPage(props) {
           <Tooltip title="Add job to list">
             <Button style={{outline: 'none', height:'36px'}}
                 onClick={(e) => {
-                  var lst = jobList;
-                  if (!lst) lst = []
-                  var job = {
-                    parameter: JSON.parse(JSON.stringify(newJob.parameter)),
-                    data_file: newJob.data_file,
-                    use_ref: newJob.use_ref
-                  };
-                  job.parameter['job_guid'] = uuidv4();
-                  if (refJob && job.use_ref && flagRefJob(job.parameter) === refJob.data_flag) 
-                    job.parameter.ref_analysis = parseInt(refJob.job_id);
-                  else job.parameter.ref_analysis = 0;
-                  lst.push(job);
+                  if(e.shiftKey || e.ctrlKey) inputFile.current.click();
+                  else 
+                  {
+                    var lst = jobList;
+                    if (!lst) lst = []
 
-                  setJobList(lst);
-                  setSelectedNewJob(job.parameter.job_guid);
+                    var job = {
+                      parameter: JSON.parse(JSON.stringify(newJob.parameter)),
+                      data_file: newJob.data_file,
+                      use_ref: newJob.use_ref
+                    };
+                    job.parameter['job_guid'] = uuidv4();
+                    if (refJob && job.use_ref && flagRefJob(job.parameter) === refJob.data_flag) 
+                      job.parameter.ref_analysis = parseInt(refJob.job_id);
+                    else job.parameter.ref_analysis = 0;    
+                    
+                    lst.push(job);
+                    setJobList(lst);
+                    setSelectedNewJob(job.parameter.job_guid);
+                  }
                 }}
               >Add
             </Button>
           </Tooltip>
+          <input type='file' id='file' ref={inputFile} style={{ display: 'none' }} onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      setBatchFile(e.target.files[0]);
+                      setReadingBatch(true);
+                    }
+                  }} />
           <Tooltip title="Remove selected job from list">
             <Button style={{outline: 'none', height:'36px'}}
                 disabled={!jobList || jobList.length <= 0 || !selectedNewJob || !jobList.find(j => j.parameter['job_guid'] === selectedNewJob) } 
-                onClick={() => {
-                  setConfirm("delete the selected job");
+                onClick={(e) => {
+                  if(e.shiftKey || e.ctrlKey) setConfirm("delete ALL jobs in the list");
+                  else setConfirm("delete the SELECTED job");
                 }}
               >Remove
             </Button>
