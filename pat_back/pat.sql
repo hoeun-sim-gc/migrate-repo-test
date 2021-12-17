@@ -61,14 +61,14 @@ create table pat_job(
     job_guid char(100),
     job_name varchar(100),
     receive_time varchar(30),
-    update_time varchar(30),
+    start_time varchar(30),
+    finish_time varchar(30),
     status varchar(100),
     data_extracted int,
     user_name varchar(100),
     user_email varchar(100),
     parameters varchar(max)
 );
-create index idx_pat_job on pat_job (job_id asc);
 
 create table pat_pseudo_policy(
     job_id int not null,

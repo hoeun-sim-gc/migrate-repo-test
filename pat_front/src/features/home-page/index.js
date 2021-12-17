@@ -23,7 +23,7 @@ import WbMenu from '../../app/menu';
 
 import { UserContext } from "../../app/user-context";
 import columns from './header';
-import { convertTime } from '../../app/theme'
+import { convertTime, calcDuration} from '../../app/theme'
 
 import './index.css';
 import { Checkbox } from '@mui/material';
@@ -110,9 +110,29 @@ export default function HomePage(props) {
         //data = data.filter(u => u.user_email.toLowerCase() === user.email.toLowerCase())
         data.forEach(job => {
           job.receive_time = convertTime(job.receive_time);
-          job.update_time = convertTime(job.update_time);
+          job.start_time = convertTime(job.start_time);
+          job.finish_time = convertTime(job.finish_time);
+          job.duration = calcDuration(job.start_time, job.finish_time) 
         });
-        data.sort((a, b) => (a.update_time > b.update_time) ? -1 : 1);
+        data.sort((a, b) => {
+          var diff = (Date.parse(b.finish_time)- Date.parse(a.finish_time));
+          if (!isNaN(diff)) {
+            if(diff > 0 ) return 1;
+            else if(diff<0 ) return -1;
+          }
+          diff = (Date.parse(b.start_time)- Date.parse(a.start_time));
+          if (!isNaN(diff)) {
+            if(diff>0 ) return 1;
+            else if(diff<0 ) return -1;
+          }
+          diff = (Date.parse(b.receive_time)- Date.parse(a.receive_time));
+          if (!isNaN(diff)) {
+            if(diff>0 ) return 1;
+            else if(diff<0 ) return -1;
+          }
+
+          return 0;
+        });
         setJobList(data);
 
         if(currentJob && currentJob.job_id>0)

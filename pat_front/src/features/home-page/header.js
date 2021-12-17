@@ -18,11 +18,23 @@ const columns = [{
     style: { overflow: 'hidden' },
     headerStyle: { width: '110px'}
   }, {
-    dataField: 'update_time',
-    text: 'Update',
+    dataField: 'start_time',
+    text: 'Started',
     sort: true,
     style: { overflow: 'hidden' },
     headerStyle: { width: '110px'}
+  }, {
+    dataField: 'finish_time',
+    text: 'Finished',
+    sort: true,
+    style: { overflow: 'hidden' },
+    headerStyle: { width: '110px'}
+  }, {
+    dataField: 'duration',
+    text: 'Duration',
+    sort: true,
+    style: { overflow: 'hidden' },
+    headerStyle: { width: '65px'}
   }, {
     dataField: 'status',
     text: 'Status',

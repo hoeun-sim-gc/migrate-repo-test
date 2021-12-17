@@ -786,10 +786,10 @@ export default function JobPage(props) {
           </Dialog>
         </div>
         <div class='row' style={{marginLeft: '2px'}}>
-          <Tooltip title="Add job to list">
+          <Tooltip title="Add job to list (Hold Ctrl key to add with batch)">
             <Button style={{outline: 'none', height:'36px'}}
                 onClick={(e) => {
-                  if(e.shiftKey || e.ctrlKey) inputFile.current.click();
+                  if(e.ctrlKey) inputFile.current.click();
                   else 
                   {
                     var lst = jobList;
@@ -819,11 +819,11 @@ export default function JobPage(props) {
                       setReadingBatch(true);
                     }
                   }} />
-          <Tooltip title="Remove selected job from list">
+          <Tooltip title="Remove selected job from list (Hold Ctrl key to remove all)">
             <Button style={{outline: 'none', height:'36px'}}
                 disabled={!jobList || jobList.length <= 0 || !selectedNewJob || !jobList.find(j => j.parameter['job_guid'] === selectedNewJob) } 
                 onClick={(e) => {
-                  if(e.shiftKey || e.ctrlKey) setConfirm("delete ALL jobs in the list");
+                  if(e.ctrlKey) setConfirm("delete ALL jobs in the list");
                   else setConfirm("delete the SELECTED job");
                 }}
               >Remove

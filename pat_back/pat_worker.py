@@ -67,7 +67,7 @@ class PatWorker(threading.Thread):
             else:
                 cur.execute(f"""update pat_job set status = 'wait_to_start_{flag}'
                     where job_id in 
-                    (select top 1 job_id from pat_job where status = 'received' order by update_time, job_id)""")
+                    (select top 1 job_id from pat_job where status = 'received' order by receive_time, job_id)""")
             cur.commit()
 
             cur.execute(f"""select top 1 job_id from pat_job where status = 'wait_to_start_{flag}'""")

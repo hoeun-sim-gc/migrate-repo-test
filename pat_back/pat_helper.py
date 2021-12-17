@@ -107,10 +107,10 @@ class PatHelper:
         with pyodbc.connect(cls.job_conn) as conn:
             u_str= f"where lower(user_email) = '{user}'" if user else ""
             df = pd.read_sql_query(f"""select job_id job_id, job_guid, job_name, 
-                    receive_time, update_time, status, user_name, user_email
+                    receive_time, start_time, finish_time, status, user_name, user_email
                 from pat_job
                 {u_str}
-                order by update_time desc, job_id desc""", conn)
+                order by finish_time desc, job_id desc""", conn)
 
             return df
 
@@ -118,7 +118,7 @@ class PatHelper:
     def get_job(cls, job_id):
         with pyodbc.connect(cls.job_conn) as conn:
             df = pd.read_sql_query(f"""select job_id job_id, job_guid, job_name, 
-                    receive_time, update_time, 
+                    receive_time, start_time, finish_time, 
                     status, data_extracted,
                     user_name, user_email,
                     parameters
@@ -232,8 +232,7 @@ class PatHelper:
             
             cur.execute(f"""delete from pat_premium where job_id in ({jlst})""")
             cur.commit()
-            cur.execute(f"""update pat_job set status = 'received',
-                    update_time = '{datetime.utcnow().isoformat()}'
+            cur.execute(f"""update pat_job set status = 'received', start_time =null, finish_time =null
                     where job_id in ({jlst});""")
             cur.commit()
     
@@ -247,9 +246,8 @@ class PatHelper:
             cur.execute(f"""delete from pat_premium where job_id = {job_id}""")
             cur.commit()
             
-            cur.execute(f"""update pat_job set status = 'received',
-                    parameters = '{json.dumps(para).replace("'", "''")}'  
-                    update_time = '{datetime.utcnow().isoformat()}'
+            cur.execute(f"""update pat_job set status = 'received', start_time = null, finish_time = null,
+                    parameters = '{json.dumps(para).replace("'", "''")}'
                     where job_id = {job_id};""")
             cur.commit()
 
@@ -257,8 +255,7 @@ class PatHelper:
     def cancel_jobs(cls, lst):
         jlst= ','.join([f'{j}' for j in lst])
         with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-            cur.execute(f"""update pat_job set status = 'cancelled',
-                    update_time = '{datetime.utcnow().isoformat()}'
+            cur.execute(f"""update pat_job set status = 'cancelled', start_time = null, finish_time = null
                     where job_id in ({jlst});""")
             cur.commit()
 

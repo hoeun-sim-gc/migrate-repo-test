@@ -65,14 +65,21 @@ class PatJob:
         self.gdReinsuranceRetention = 1000000 # global reinsurance retention
 
     def __update_status(self, st):
+        tm = ''
+        if st == 'started': 
+            tm +=f", start_time = '{datetime.utcnow().isoformat()}'"
+        elif st == 'finished': 
+            tm +=f", finish_time = '{datetime.utcnow().isoformat()}'"
+        
         with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
-            cur.execute(f"""update pat_job set status = '{st.replace("'","''")}', 
-                update_time = '{datetime.utcnow().isoformat()}'
+            cur.execute(f"""update pat_job set status = '{st.replace("'","''")}'
+                {tm}           
                 where job_id = {self.job_id}""")
             cur.commit()
 
-    def run(self, stop_cb=None):
+    def run(self, stop_cb = None):
         self.logger.info("Import data...")
+        self.__update_status("started")
 
         if not self.data_extracted:
             self.__update_status("extracting_data")
@@ -84,9 +91,7 @@ class PatJob:
                 self.data_extracted = self.__extract_edm_rdm()
             if self.data_extracted:
                 with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
-                    cur.execute(f"""update pat_job set data_extracted = 1, 
-                        update_time = '{datetime.utcnow().isoformat()}'
-                        where job_id = {self.job_id}""")
+                    cur.execute(f"""update pat_job set data_extracted = 1 where job_id = {self.job_id}""")
                     cur.commit()
                 self.logger.info("Import data...OK")
             else:
