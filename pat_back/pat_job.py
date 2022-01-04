@@ -77,6 +77,12 @@ class PatJob:
                 where job_id = {self.job_id}""")
             cur.commit()
 
+    def __check_stop(self, stop_cb):
+        if stop_cb and stop_cb():
+            self.logger.warning("User cancelled the analysis")
+            self.__update_status('cancelled')
+            return True
+
     def run(self, stop_cb = None):
         self.logger.info("Import data...")
         self.__update_status("started")
@@ -98,21 +104,14 @@ class PatJob:
                 self.logger.info("Import data...Error")
                 self.__update_status("error")
                 return
-
-        if stop_cb and stop_cb():
-            self.logger.warning("User cancelled the analysis")
-            self.__update_status('cancelled')
-            return
+        if stop_cb and self.__check_stop(stop_cb): return
 
         self.__update_status('checking_data')
         self.logger.debug("Check data...")
         self.__check_pseudo_policy()
         self.__check_facultative()
         self.logger.debug("Check data...OK")
-        if stop_cb and stop_cb():
-            self.logger.warning("User cancelled the analysis")
-            self.__update_status('cancelled')
-            return
+        if stop_cb and self.__check_stop(stop_cb): return
 
         if self.__need_correction():
             if (self.valid_rules & ValidRule.ValidContinue) ==0:
@@ -121,10 +120,7 @@ class PatJob:
                 return
             else:
                 self.logger.warning("Skip erroneous data and continue (item removed)")
-        if stop_cb and stop_cb():
-            self.logger.warning("User cancelled the analysis")
-            self.__update_status('cancelled')
-            return
+        if stop_cb and self.__check_stop(stop_cb): return
         
         # start calculation
         self.__update_status("net_of_fac")
@@ -135,19 +131,13 @@ class PatJob:
             self.__update_status("finished")
             return 
         self.logger.info(f"Create the net of FAC layer stack...OK ({len(df_facnet)})")
-        if stop_cb and stop_cb():
-            self.logger.warning("User cancelled the analysis")
-            self.__update_status('cancelled')
-            return
+        if stop_cb and self.__check_stop(stop_cb): return
 
         self.__update_status("allocating")
         self.logger.info("Allocate premium with PSOLD...")
         df_pat = self.__allocate_with_psold(df_facnet)
         self.logger.info("Allocate premium with PSOLD...OK")
-        if stop_cb and stop_cb():
-            self.logger.warning("User cancelled the analysis")
-            self.__update_status('cancelled')
-            return
+        if stop_cb and self.__check_stop(stop_cb): return
 
         # save results
         self.__update_status("upload_results")
