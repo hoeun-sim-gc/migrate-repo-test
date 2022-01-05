@@ -23,6 +23,11 @@ class PatJob:
             MultipleActiveResultSets=true;'''
 
     def __init__(self, job_id):
+        """Class to represent a PAT analysis"""
+
+        ## Need to make sure the code for covg, subgrp
+
+
         self.job_id = 0
         self.data_extracted = False
         self.valid_rules = ValidRule(0)
