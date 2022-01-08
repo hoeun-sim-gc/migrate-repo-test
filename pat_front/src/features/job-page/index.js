@@ -132,14 +132,15 @@ export default function JobPage(props) {
         default_region: 0,
         valid_rules: 0,
         
-        type_of_rating: "PSOLD",
-        coverage: "Building + Contents + Time Element",
-        peril_subline: "All Perils",
+        type_of_rating: "PSOLD_2016",
+        curve_type: 'Gross',
+        coverage: "Building_Contents_BI",
+        peril_subline: "All_Perils",
         loss_alae_ratio: 1,
         average_accident_date: "1/1/2022",
         trend_factor: 1.035,
         additional_coverage: 2.0,
-        deductible_treatment: "Retains Limit",     
+        deductible_treatment: "Retains_Limit",     
 
         user_name: user?.name,
         user_email: user?.email,
@@ -1123,38 +1124,62 @@ export default function JobPage(props) {
                     labelId="rate-placeholder-label"
                     id="rate-placeholder"
                     value={newJob.parameter.type_of_rating}
-                    defaultValue={'PSOLD'}
+                    defaultValue={'PSOLD_2016'}
                     onChange={event => {
                       if (newJob.parameter.type_of_rating !== event.target.value) {
                         setNewJob({ ...newJob, parameter: { ...newJob.parameter, type_of_rating: event.target.value } });
                       }
                     }}
                   >
-                    <MenuItem value='PSOLD'>PSOLD</MenuItem>
+                    {['PSOLD_2016', 'PSOLD_2020']
+                      .map((n) => {
+                        return <MenuItem value={n}>{ }{n}</MenuItem>
+                      })}
                   </Select>
                 </FormControl>
                 <FormControl className={classes.formControl}>
-                <InputLabel shrink id="peril-placeholder-label">
-                  Peril / Subline
-                </InputLabel>
-                <Select
-                  labelId="peril-placeholder-label"
-                  id="peril-placeholder"
-                  value={newJob.parameter.peril_subline}
-                  defaultValue={'All Perils'}
-                  onChange={event => {
-                    if (newJob.parameter.peril_subline !== event.target.value) {
-                      setNewJob({ ...newJob, parameter: { ...newJob.parameter, peril_subline: event.target.value } });
-                    }
-                  }}
-                >
-                  {['Fire', 'Wind', 'Special Cause of Loss', 'All Perils']
-                    .map((n) => {
-                      return <MenuItem value={n}>{ }{n}</MenuItem>
-                    })}
-                </Select>
-              </FormControl>
-              <FormControl className={classes.formControl}>
+                  <InputLabel shrink id="curve-placeholder-label">
+                    Curve Type
+                  </InputLabel>
+                  <Select
+                    labelId="curve-placeholder-label"
+                    id="curve-placeholder"
+                    value={newJob.parameter.curve_type}
+                    defaultValue={'Gross'}
+                    onChange={event => {
+                      if (newJob.parameter.curve_type !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, curve_type: event.target.value } });
+                      }
+                    }}
+                  >
+                    {['Gross', 'Net']
+                      .map((n) => {
+                        return <MenuItem value={n}>{ }{n}</MenuItem>
+                      })}
+                  </Select>
+                </FormControl>
+                <FormControl className={classes.formControl}>
+                  <InputLabel shrink id="peril-placeholder-label">
+                    Peril / Subline
+                  </InputLabel>
+                  <Select
+                    labelId="peril-placeholder-label"
+                    id="peril-placeholder"
+                    value={newJob.parameter.peril_subline}
+                    defaultValue={'All_Perils'}
+                    onChange={event => {
+                      if (newJob.parameter.peril_subline !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, peril_subline: event.target.value } });
+                      }
+                    }}
+                  >
+                    {['Fire', 'Wind', 'Special_Causes', 'All_Perils']
+                      .map((n) => {
+                        return <MenuItem value={n}>{ }{n}</MenuItem>
+                      })}
+                  </Select>
+                </FormControl>
+                <FormControl className={classes.formControl}>
                   <Box
                     component="form"
                     sx={{
@@ -1178,46 +1203,69 @@ export default function JobPage(props) {
                   </Box>
                 </FormControl>
               </div>
-              <FormControl className={classes.formControl}>
-                <InputLabel shrink id="coverage-placeholder-label">
-                  Coverage
-                </InputLabel>
-                <Select
-                  labelId="coverage-placeholder-label"
-                  id="coverage-placeholder"
-                  value={newJob.parameter.coverage}
-                  defaultValue={'Building + Contents + Time Element'}
-                  onChange={event => {
-                    if (newJob.parameter.coverage !== event.target.value) {
-                      setNewJob({ ...newJob, parameter: { ...newJob.parameter, coverage: event.target.value } });
-                    }
-                  }}
-                >
-                  {['Building + Contents + Time Element', 'Building + Contents']
-                    .map((n) => {
-                      return <MenuItem value={n}>{ }{n}</MenuItem>
-                    })}
-                </Select>
-              </FormControl>
-              <FormControl className={classes.formControl}>
-                <Box
-                  component="form"
-                  sx={{
-                    '& > :not(style)': { m: 1, width: '22ch' },
-                  }}
-                  noValidate
-                  autoComplete="off"
-                >
-                  <TextField id="addl-basic" label="Additional Coverage" variant="standard" type='number'
-                    value={newJob.parameter.additional_coverage}
+              <div>
+                <FormControl className={classes.formControl}>
+                  <InputLabel shrink id="coverage-placeholder-label">
+                    Coverage
+                  </InputLabel>
+                  <Select
+                    labelId="coverage-placeholder-label"
+                    id="coverage-placeholder"
+                    value={newJob.parameter.coverage}
+                    defaultValue={'Building_Contents_BI'}
                     onChange={event => {
-                      if (newJob.parameter.additional_coverage !== event.target.value) {
-                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, additional_coverage: parseFloat(event.target.value) } });
+                      if (newJob.parameter.coverage !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, coverage: event.target.value } });
                       }
                     }}
-                  />
-                </Box>
-              </FormControl>
+                  >
+                    {['Building_Contents_BI', 'Building_Contents', 'Building_Only', 'Contents_Only']
+                      .map((n) => {
+                        return <MenuItem value={n}>{ }{n}</MenuItem>
+                      })}
+                  </Select>
+                </FormControl>
+                <FormControl className={classes.formControl}>
+                  <Box
+                    component="form"
+                    sx={{
+                      '& > :not(style)': { m: 1, width: '22ch' },
+                    }}
+                    noValidate
+                    autoComplete="off"
+                  >
+                    <TextField id="addl-basic" label="Additional Coverage" variant="standard" type='number'
+                      value={newJob.parameter.additional_coverage}
+                      onChange={event => {
+                        if (newJob.parameter.additional_coverage !== event.target.value) {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, additional_coverage: parseFloat(event.target.value) } });
+                        }
+                      }}
+                    />
+                  </Box>
+                </FormControl>
+                <FormControl className={classes.formControl}>
+                  <InputLabel shrink id="deductible-placeholder-label">
+                    Deductible
+                  </InputLabel>
+                  <Select
+                    labelId="deductible-placeholder-label"
+                    id="deductible-placeholder"
+                    value={newJob.parameter.deductible_treatment}
+                    defaultValue={'Retains_Limit'}
+                    onChange={event => {
+                      if (newJob.parameter.deductible_treatment !== event.target.value) {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, deductible_treatment: event.target.value } });
+                      }
+                    }}
+                  >
+                    {['Retains_Limit', 'Erodes_Limit']
+                      .map((n) => {
+                        return <MenuItem value={n}>{ }{n}</MenuItem>
+                      })}
+                  </Select>
+                </FormControl>
+              </div>
               <div>
                 <FormControl className={classes.formControl}>
                   <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -1256,31 +1304,6 @@ export default function JobPage(props) {
                   </Box>
                 </FormControl>
               </div>
-              <div>
-                <FormControl className={classes.formControl}>
-                  <InputLabel shrink id="deductible-placeholder-label">
-                    Deductible
-                  </InputLabel>
-                  <Select
-                    labelId="deductible-placeholder-label"
-                    id="deductible-placeholder"
-                    value={newJob.parameter.deductible_treatment}
-                    defaultValue={'Retains Limit'}
-                    onChange={event => {
-                      if (newJob.parameter.deductible_treatment !== event.target.value) {
-                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, deductible_treatment: event.target.value } });
-                      }
-                    }}
-                  >
-                    {['Retains Limit', 'Erodes Limit']
-                      .map((n) => {
-                        return <MenuItem value={n}>{ }{n}</MenuItem>
-                      })}
-                  </Select>
-                </FormControl>
-              </div>
-
-
             </AccordionDetails>
           </Accordion>
           <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}

@@ -52,7 +52,7 @@ class PatHelper:
                                 begin 
                                 insert into pat_job values (next value for pat_analysis_id_seq, '{job_guid}', 
                                     '{(job_para['job_name'] if 'job_name' in job_para else 'No Name')}',
-                                    '{dt}', '{dt}', 'received',0,
+                                    '{dt}', null,null, 'received',0,
                                     '{(job_para['user_name'] if 'user_name' in job_para else 'No Name')}',
                                     '{(job_para['user_email'] if 'user_email' in job_para else '')}',
                                     '{json.dumps(job_para).replace("'", "''")}')

@@ -1,3 +1,4 @@
+from datetime import datetime
 import numpy as np
 import pandas as pd
 from enum import IntFlag
@@ -17,6 +18,11 @@ flag_descrs = {
         'FlagCeded100' : "Amount ceded exceeds 100%"
     }
     #'NoteFacOverexposed1' : "Fac exposure exceeds policy exposure",
+
+RateTrendFrom = {
+        'PSOLD_2016': datetime(2015,12,31),
+        'PSOLD_2020': datetime(2020,12,31)
+    }
 
 class PatFlag(IntFlag):
     FlagPolLocDupe = 0x00000001
@@ -51,3 +57,24 @@ class ValidRule(IntFlag):
     ValidFac100 = 0x00000002   # Cap FAC to 100%
 
     ValidContinue = 0x40000000   # Continue with unhandled error (item removed)
+
+class CoverageCode(IntFlag):
+    Building = 1,
+    Contents = 2,
+    BI = 4,
+
+    Building_Contents = 3, 
+    Building_Contents_BI = 7,
+    Building_Only = 1,
+    Contents_Only = 2 
+
+
+class SubGrpCode(IntFlag):
+    Fire = 1,
+    Wind = 2, 
+    Special_Causes = 3,
+    All_Perils = 4
+
+class DedCode(IntFlag):
+    Retains_Limit = 1,
+    Erodes_Limit = 2

@@ -25,35 +25,25 @@ create table psold_aoi(
     AOI float
 );
 
-create table psold_gu_2016(
+create table rating_curves(
+    ISOt varchar(50),
+    Curve varchar(20),
     COVG int,
     SUBGRP int,
     RG int,
     EG int,
-    AOCC float,
-    G1 float,
-    G2 float,
-    G3 float,
-    G4 float,
-    G5 float,
-    G6 float,
-    G7 float,
-    G8 float,
-    G9 float,
-    G10 float,
-    G11 float,
     OCC float,
-    R1 float,
-    R2 float,
-    R3 float,
-    R4 float,
-    R5 float,
-    R6 float,
-    R7 float,
-    R8 float,
-    R9 float,
-    R10 float,
-    R11 float
+    W1 float,
+    W2 float,
+    W3 float,
+    W4 float,
+    W5 float,
+    W6 float,
+    W7 float,
+    W8 float,
+    W9 float,
+    W10 float,
+    W11 float
 );
 
 create table pat_job(

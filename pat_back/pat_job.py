@@ -6,12 +6,14 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
+from pandas.core.frame import DataFrame
 
 import pyodbc
 from bcpandas import SqlCreds, to_sql
 
 from .settings import AppSettings
-from .pat_flag import PatFlag,ValidRule
+from .pat_flag import PatFlag,ValidRule,CoverageCode, SubGrpCode, DedCode, RateTrendFrom
+from .psold import Psold
 
 class PatJob:
     """Class to represent a PAT analysis"""
@@ -24,9 +26,6 @@ class PatJob:
 
     def __init__(self, job_id):
         """Class to represent a PAT analysis"""
-
-        ## Need to make sure the code for covg, subgrp
-
 
         self.job_id = 0
         self.data_extracted = False
@@ -49,25 +48,23 @@ class PatJob:
             self.default_region = self.para['default_region']
         self.user_name = self.para['user_name'] if 'user_name' in self.para else None
         self.user_email = self.para['user_email'] if 'user_email' in self.para else None
-        
-        self.iCovg = 2 if self.para['coverage'] == "Building + Contents + Time Element" else 1
-        self.iSubGrp = {
-                "Fire":1,
-                "Wind":2,
-                "Special Cause of Loss": 3,
-                "All Perils": 4
-                }[self.para['peril_subline']] 
-        self.AddtlCovg = float(self.para['additional_coverage'])
-        self.dCurrencyAdj = 1.0
-        self.iDedType = 1 if self.para['deductible_treatment'] == "Retains Limit" else 2
-        self.loss_ratio = float(self.para['loss_alae_ratio'])
-        self.dtAveAccDate = datetime.strptime(self.para['average_accident_date'], '%m/%d/%Y')
-        self.gdtPSTrendFrom = datetime(2015,12,31)
-        self.gdPSTrendFactor = float(self.para['trend_factor'])
 
-        # self.dSubjPrem =1e6 #subject_premium
-        self.gdReinsuranceLimit = 1000000 # global reinsurance limit
-        self.gdReinsuranceRetention = 1000000 # global reinsurance retention
+        self.rating_type= self.para['type_of_rating']
+        self.curve_type = self.para['curve_type'] if 'curve_type' in self.para else 'Gross'
+        self.currency_adj = 1.0
+        
+        self.trend_from = RateTrendFrom[self.rating_type]
+        self.trend_ftr = float(self.para['trend_factor'])
+
+        self.coverage = CoverageCode[self.para['coverage']] 
+        self.peril_subline = SubGrpCode[self.para['peril_subline']]
+
+        self.addt_cvg = float(self.para['additional_coverage'])
+        self.ded_type = DedCode[self.para['deductible_treatment']]
+        self.loss_ratio = float(self.para['loss_alae_ratio'])
+        self.avg_acc_date = datetime.strptime(self.para['average_accident_date'], '%m/%d/%Y')
+
+        # Add some error checking here  
 
     def __update_status(self, st):
         tm = ''
@@ -131,7 +128,7 @@ class PatJob:
         self.__update_status("net_of_fac")
         self.logger.info("Create the net of FAC layer stack ...")
         df_facnet = self.__net_of_fac()
-        if len(df_facnet)<=0:
+        if len(df_facnet) <= 0:
             self.logger.warning("Nothing to allocate! Finished.")
             self.__update_status("finished")
             return 
@@ -352,7 +349,7 @@ class PatJob:
                     where anlsid = {self.para['analysisid']}
                     group by a.id, res1value
                     having sum(case when perspcode = 'GU' then perspvalue else 0 end) * 
-                        {self.AddtlCovg + 1} > max(p.undcovamt) )
+                        {self.addt_cvg + 1} > max(p.undcovamt) )
 
                     select a.locid, b.accgrpid, a.policyid, b.policynum,
                         b.blanlimamt as orig_blanlim,
@@ -411,7 +408,7 @@ class PatJob:
                         into #sqlpremalloc_{suffix}
                         from #policy_standard_{suffix} as p
                             join #location_standard_{suffix} as l on p.accgrpid = l.accgrpid
-                        where l.tiv * {self.AddtlCovg + 1} > p.undcovamt;
+                        where l.tiv * {self.addt_cvg + 1} > p.undcovamt;
                         
                         drop table #policy_standard_{suffix};
                         drop table #location_standard_{suffix};""")
@@ -485,8 +482,14 @@ class PatJob:
             row = cur.fetchone()
             min_psold_rg, max_psold_rg = row
 
-            aoi = "COALESCE(b.Building, a.Building) + COALESCE(b.Contents, a.Contents)" + \
-                    " + COALESCE(b.BI, a.BI)" if self.para['coverage'] == "Building + Contents + Time Element" else ""
+            aoi=[]
+            if self.coverage | CoverageCode.Building:
+                aoi.append("COALESCE(b.Building, a.Building)")
+            if self.coverage | CoverageCode.Contents:
+                aoi.append("COALESCE(b.Contents, a.Contents)")
+            if self.coverage | CoverageCode.BI:
+                aoi.append("COALESCE(b.BI, a.BI)")
+            aoi=" + ".join(aoi)
 
             cur.execute(f"""insert into pat_pseudo_policy 
                             select a.job_id, 0 as data_type, 
@@ -753,12 +756,11 @@ class PatJob:
                 cur.execute("delete from #dfLayers where Ceded - 1 > -1e-6")
                 cur.commit()
                 
-            #? why old R code have to include all participation = 0 layers?
-            df_facnet = pd.read_sql_query(f"""select b.OriginalPolicyID, a.PseudoPolicyID, a.LayerID as PseudoLayerID,
+            df_facnet = pd.read_sql_query(f"""select b.OriginalPolicyID as PolicyID, a.PseudoPolicyID, a.LayerID as PseudoLayerID,
                     a.LayerHigh - a.LayerLow as Limit, a.LayerLow as Retention, 
-                    b.PolPremium as OriginalPremium, 
+                    b.PolPremium as PolPrem, 
                     Participation * (case when Ceded <= 0 then 1 when Ceded > 1 then 0 else 1-Ceded end) as Participation,
-                    b.AOI, b.LocationIDStack, b.RatingGroup
+                    b.AOI as TIV, b.LocationIDStack as LocStack, b.RatingGroup
                 from #dfLayers a
                     join pat_pseudo_policy b on a.PseudoPolicyID = b.PseudoPolicyID 
                         and b.job_id ={self.job_id} and b.data_type = 0 
@@ -768,239 +770,24 @@ class PatJob:
 
             return df_facnet
     
-    def __allocate_with_psold(self, df_facnet):     
-        dfFacNetLast = df_facnet.groupby('PseudoPolicyID').agg({'PseudoLayerID':max}).rename(columns={'PseudoLayerID':'LayerPosition'})
-        # dfLocation2
-        dfLoc = df_facnet.merge(dfFacNetLast, left_on='PseudoPolicyID', right_index=True)
-
+    def __allocate_with_psold(self, df_facnet) -> DataFrame:     
         with pyodbc.connect(self.job_conn) as conn:
-            tableWgts = pd.read_sql_query(f"""select PremiumWeight/sum(PremiumWeight) over() as PremiumPercent 
-                                            from psold_weight order by rg""", conn)
-            AOI_split = pd.read_sql_query(f"""select * from psold_aoi order by AOI""", conn).AOI.to_numpy() 
-            guNewPSTable = pd.read_sql_query(f"""select * from psold_gu_2016 order by COVG, SUBGRP, RG, EG""", conn)
+            aoi_split = pd.read_sql_query(f"""select * from psold_aoi order by AOI""", conn).AOI.to_numpy() 
+            df_wts = pd.read_sql_query(f"""select RG, PremiumWeight from psold_weight order by rg""", conn).set_index('RG')
+            df_psold = pd.read_sql_query(f"""select * 
+                from rating_curves  
+                where ISOt = '{self.rating_type}' and Curve ='{self.curve_type}' and COVG = {self.coverage} and SUBGRP = {self.peril_subline}""", 
+                conn).drop(columns=['ISOt','Curve','COVG','SUBGRP' ])
+        psold  = Psold(df_psold, aoi_split, self.trend_ftr, self.trend_from)
+
+        df_facnet['LossRatio'] = self.loss_ratio      
+        df_facnet = psold.pat(df_facnet, df_wts, 
+                    ded_type = self.ded_type, 
+                    curr_adj = self.currency_adj,
+                    avg_acc_date = self.avg_acc_date,
+                    addt_cvg = self.addt_cvg)
         
-        gdMu = [1000 * (np.sqrt(10)**(i-1)) for i in range(1,12)]
-        dfWeights = self.__calc_weights(tableWgts, guNewPSTable, gdMu, AOI_split)
+        df_facnet.rename(inplace=True, columns={'AllocPrem': 'Premium'})
+        df_facnet.sort_values(['PseudoPolicyID', 'PseudoLayerID', 'Retention'], inplace=True)
 
-        # dfLocation3
-        dfLoc = self.__calc_detail_info(dfLoc, AOI_split)
-        
-        # dfLocation4
-        dfLoc = self.__stack_check(dfLoc)
-        
-        iUniqueRG = dfLoc[['RatingGroup']].dropna().drop_duplicates().iloc[:,0].to_numpy()
-        iUniqueAOI = dfLoc[['iAOI']].dropna().drop_duplicates().iloc[:,0].to_numpy()
-        dfUniqueDetail = guNewPSTable[np.all([guNewPSTable.RG.isin(iUniqueRG),  
-            guNewPSTable.EG.isin(iUniqueAOI) ,
-            guNewPSTable.SUBGRP == self.iSubGrp,
-            guNewPSTable.COVG == self.iCovg], axis= 0)][["RG","EG","AOCC"] + [f"G{i+1}" for i in range(11)] +
-                [f"R{i+1}" for i in range(11)]]
-        
-        # dfLocation5
-        dfLoc = self.__calc_las(dfLoc, gdMu, dfWeights, dfUniqueDetail)
-
-        # dfLocation6
-        dfLoc['Premium'] = (dfLoc.PolLAS.fillna(value=0) - dfLoc.DedLAS.fillna(value=0)) \
-            * self.loss_ratio * dfLoc.Participation
-        dfLoc['Premium'] = dfLoc.OriginalPremium * dfLoc.Premium \
-            / dfLoc['Premium'].groupby(dfLoc.OriginalPolicyID).transform('sum')
-        
-        # dfLoc['sumLAS'] = (dfLoc.PolLAS-dfLoc.DedLAS)*self.loss_ratio*dfLoc.Participation
-        # dfLoc['sumLAS'] = dfLoc['sumLAS'].fillna(value=0)
-        # dfLoc['sumLAS'] = dfLoc['sumLAS'].groupby(dfLoc.OriginalPolicyID).transform('sum')
-        # dfLoc['premLAS'] = dfLoc.OriginalPremium / dfLoc.sumLAS
-        # dfLoc['Premium'] = (dfLoc.PolLAS - dfLoc.DedLAS) * self.loss_ratio * dfLoc.Participation * dfLoc.premLAS
-        # dfLoc['EffPrem'] = (dfLoc.Premium * self.dSubjPrem/ dfLoc.Premium.sum())
-        # dfLoc['ExpectedLossCount'] = ((np.minimum(dfLoc.RetStepLAS,dfLoc.PolLAS)-np.minimum(dfLoc.PolLAS, dfLoc.RetLAS)) \
-        #     /(dfLoc.PolLAS - dfLoc.DedLAS) * self.loss_ratio*dfLoc.EffPrem )/.01
-
-        # Final
-        df_pat = dfLoc[["PseudoPolicyID", "PseudoLayerID","Limit", "Retention", "Participation", "Premium", "PolLAS", "DedLAS"]]
-        
-        return df_pat
-      
-    def __calc_weights(self, tableWgts, guNewPSTable, gdMu, AOI_split):        
-        dfWeights =pd.DataFrame(columns=['AOI',*[f'G{i}' for i in range(12)],*[f'R{i}' for i in range(12)]])
-            
-        dAdjFactor = 1 #?   
-        guNewPSTable_sub = guNewPSTable[(guNewPSTable.COVG == self.iCovg) & (guNewPSTable.SUBGRP == self.iSubGrp)]
-        for iAOI in range(1,61):
-            guNewPSTable_sub2 = guNewPSTable_sub[guNewPSTable_sub.EG == iAOI].reset_index(drop=True)
-            # If the rating group is selected in the premium weight portion of the user input table,
-            # then calc a running total of the LAS for that rating group in the specific AOI band.
-            
-            # NET CALCULATIONS
-            dSumNetPrem = np.sum(guNewPSTable_sub2[[f"R{i+1}" for i in range(11)]].apply(
-                lambda a: (np.sum(a * dAdjFactor * gdMu * (1-np.exp(
-                        (-1 * AOI_split[iAOI] * (1 + self.AddtlCovg)) /
-                        (dAdjFactor * gdMu))))
-                    ) / np.sum(a), axis = 1) * guNewPSTable_sub2.OCC * tableWgts.PremiumPercent)
-
-            # GROSS CALCULATIONS
-            dSumGrossPrem = np.sum(guNewPSTable_sub2[[f"G{i+1}" for i in range(11)]].apply(
-                lambda a: (np.sum(a * dAdjFactor * gdMu * (1-np.exp(
-                        (-1 * AOI_split[iAOI] * (1 + self.AddtlCovg)) /
-                        (dAdjFactor * gdMu))))
-                    ) / np.sum(a), axis = 1) * guNewPSTable_sub2.AOCC * tableWgts.PremiumPercent)
-            
-            
-            # If the rating group is selected in the premium weight portion of the user input table, 
-            # then calc the relative frequency.
-            
-            # NET CALCULATIONS
-            dtmpOccCnt = tableWgts.PremiumPercent * dSumNetPrem \
-                / guNewPSTable_sub2[[f"R{i+1}" for i in range(11)]].apply(
-                    lambda a: np.sum(a * dAdjFactor * gdMu *
-                        (1-np.exp((-1*AOI_split[iAOI] * (1+self.AddtlCovg)) / (dAdjFactor * gdMu)))) 
-                        / sum(a), axis =1)
-            uNet_dOccCnt = np.sum(dtmpOccCnt)
-            uNet_dW = np.dot(
-                guNewPSTable_sub2[[f"R{i+1}" for i in range(11)]].T,
-                dtmpOccCnt
-            )
-
-            # GROSS CALCULATIONS
-            dtmpOccCnt = tableWgts.PremiumPercent * dSumGrossPrem \
-                / guNewPSTable_sub2[[f"G{i+1}" for i in range(11)]].apply(
-                    lambda a: np.sum(a * dAdjFactor * gdMu *
-                        (1-np.exp((-1*AOI_split[iAOI] * (1+self.AddtlCovg)) / (dAdjFactor * gdMu)))) 
-                        / sum(a), axis =1)
-            uGross_dOccCnt = np.sum(dtmpOccCnt)
-            uGross_dW = np.dot(
-                guNewPSTable_sub2[[f"G{i+1}" for i in range(11)]].T,
-                dtmpOccCnt
-            )
-
-            uNet_dW = uNet_dW / uNet_dOccCnt
-            uGross_dW = uGross_dW / uGross_dOccCnt
-
-            dfWeights.loc[iAOI-1]=[iAOI,uGross_dOccCnt,*uGross_dW,uNet_dOccCnt,*uNet_dW]
-
-        return dfWeights
-
-    def __calc_detail_info(self, df, AOI_split):
-        dTotalPrem = df.OriginalPremium.sum()
-        df['AddtlCovg'] = self.AddtlCovg
-        df['iCurveSwitch'] = 1
-        df.loc[df.Retention.isna(), ['iCurveSwitch']] = 2
-
-        df['dPolDed'] = 0
-        df.loc[df.Retention.notna(), ['dPolDed']] = df.Retention / self.dCurrencyAdj
-
-        df['dPolLmt'] = df.Limit / self.dCurrencyAdj
-        if self.iDedType == 1:
-            df['dPolLmt'] += df['dPolDed'] 
-
-        # df['EffPrem'] = df.OriginalPremium * self.dSubjPrem/dTotalPrem
-
-        df['dTIV'] = 0
-        df.loc[df.AOI.notna(), ['dTIV']] = df.AOI / self.dCurrencyAdj
-        df.loc[df.AOI.isna(), ['dTIV']] = df.Limit / self.dCurrencyAdj
-        if self.iDedType == 1:
-            df.loc[df.AOI.isna(), ['dTIV']] += df.dPolDed[df.AOI.isna()]
-
-        df.loc[df.Participation.isna(), ['Participation']] = 1
-        df.loc[df.LocationIDStack == '', ['LocationIDStack']] = np.nan
-
-        df['dX'] = np.maximum(df.dPolLmt - df.dPolDed, 0)
-        df.loc[df.LocationIDStack.isna(), ['dX']] *= (1+ self.AddtlCovg)
-        df['dX']=df.dX + df.dPolDed
-
-        df['dAdjFactor'] = self.dCurrencyAdj if self.dtAveAccDate == 0 \
-            else self.dCurrencyAdj * self.gdPSTrendFactor ** ((self.dtAveAccDate - self.gdtPSTrendFrom).days / 365.25)
-
-        df['dTIVAdj'] = df.dTIV / df.dAdjFactor
-        df['iAOI'] = np.searchsorted(AOI_split[1:-1],df.dTIVAdj, side='right') + 1
-
-        df['dEffLmt'] = df[["dTIV", "dPolLmt"]].min(axis=1)
-
-        return df
-
-    def __stack_check(self, df):
-        df['OrigOrder'] = df.index
-        df.loc[df.LocationIDStack.notna(), ['iCurveSwitch']] = 1
-
-        df['StackedPolicyLimit'] = (df.dPolLmt-df.dPolDed)*df.Participation
-        df['StackedPolicyLimit'] = df.sort_values(['LocationIDStack','Retention', 'Limit']) \
-            .groupby('LocationIDStack')['StackedPolicyLimit'].transform(lambda x: x.cumsum().shift())
-        df.loc[np.logical_or(df.LocationIDStack.isna(),df.StackedPolicyLimit.isna()), 
-            ['StackedPolicyLimit']] = 0
-
-        df['dEffLimRet'] = np.maximum(0, ((self.gdReinsuranceLimit + self.gdReinsuranceRetention)-df.StackedPolicyLimit)/df.Participation)
-        df['dEffRet'] = np.maximum(0, ((self.gdReinsuranceRetention)-df.StackedPolicyLimit)/df.Participation)
-        
-        df.set_index('OrigOrder').sort_index()
-        df.index.name = None
-        df.drop(columns=['OrigOrder'], inplace=True)
-
-        return df
-
-    def __calc_las(self, df, gdMu, dfWeights, dfUnique):
-        df['w'] = 0
-        df['sum_w'] = 0
-        rein = max(min(self.gdReinsuranceRetention * 1e-8, self.gdReinsuranceLimit), 1e-2)
-
-        for n, X in [('PolLAS', df.dX),
-                    ('DedLAS', df.dPolDed),
-                    ('LimRetLAS', (df.dPolDed + df.dEffLimRet)),
-                    ('RetLAS', (df.dPolDed + df.dEffRet)),
-                    ('RetStepLAS', (df.dPolDed + df.dEffRet + rein/df.Participation))]:
-
-            df[n] = 0
-            mask1 = np.logical_and(X.notna(), X > 0)
-            mask2 = df.RatingGroup.isna()
-            mask3 = df.iCurveSwitch[mask1] == 1
-            df['sum_w'] = 0
-            for i in range(11):
-                df['w'] = 0
-
-                mask = np.logical_and(mask1, np.logical_and(mask2, mask3))
-                if any(mask):
-                    df.loc[mask, ['w']] = df.merge(dfWeights[['AOI',f'G{i+1}']],
-                        left_on='iAOI', right_on='AOI', how='left').loc[mask,f'G{i+1}']
-
-                mask = np.logical_and(mask1, np.logical_and(mask2, ~mask3))
-                if any(mask):
-                    df.loc[mask, ['w']] = df.merge(dfWeights[['AOI',f'R{i+1}']],
-                        left_on='iAOI', right_on='AOI', how='left').loc[mask,f'R{i+1}']
-
-                mask = np.logical_and(mask1, np.logical_and(~mask2, mask3))
-                if np.any(mask) :
-                    df.loc[mask, ['w']] = df.merge(dfUnique, left_on=['RatingGroup', 'iAOI'], right_on=['RG', 'EG'], how='left').loc[mask,f'G{i+1}']
-
-                mask = np.logical_and(mask1, np.logical_and(~mask2, ~mask3))
-                if np.any(mask) :
-                    df.loc[mask, ['w']] = df.merge(dfUnique, left_on=['RatingGroup', 'iAOI'], right_on=['RG', 'EG'], how='left').loc[mask, f'R{i+1}']
-                df['sum_w'] = df.sum_w + df.w
-
-                df[n] += self.__me_las(df, X, gdMu[i])
-
-            df[n] /= df.sum_w
-
-        df.drop(columns=['sum_w', 'w'], inplace=True)
-        
-        # df['MaxLoss'] = 1e-10
-        # df.loc[df.OriginalPremium > 0, ['MaxLoss']] = np.maximum(np.minimum(
-        #     df.Limit*(1+df.AddtlCovg)-df.dPolDed, df.dEffLimRet)-df.dEffRet, 0) * df.Participation
-        # df['ExpectedLossCount'] = ((np.minimum(df.RetStepLAS, df.PolLAS) - np.minimum(
-        #     df.PolLAS, df.RetLAS)) / (df.PolLAS-df.DedLAS) * self.loss_ratio * df.EffPrem) / rein
-        
-        # df['PercentExpos'] = 0
-        # df.loc[df.OriginalPremium > 0, 'PercentExpos'] = \
-        #     (np.maximum(np.minimum(df.PolLAS, df.LimRetLAS)-df.DedLAS, 0) - 
-        #     np.maximum(np.minimum(df.PolLAS, df.RetLAS)-df.DedLAS, 0))/(df.PolLAS-df.DedLAS)
-        
-        return df
-
-    def __me_las(self,df, X, Mu):
-        Y = df[['dX']].rename(columns={'dX':'Y'})
-        Y['Y'] = 0
-
-        mask = np.logical_and(np.logical_and(X.notna(), X > 0), X <= (1+ df.AddtlCovg) * df.dEffLmt)
-        Y.loc[mask,['Y']] = df.dAdjFactor[mask] * Mu * df.w[mask] * (1- np.exp(-X[mask]/(df.dAdjFactor[mask] * Mu)))
-
-        mask = np.logical_and(np.logical_and(X.notna(), X > 0), X > (1+ df.AddtlCovg) * df.dEffLmt)
-        Y.loc[mask,['Y']] = df.dAdjFactor[mask] * Mu * df.w[mask] * (1- np.exp(-(1+ df.AddtlCovg[mask]) * df.dEffLmt[mask]/(df.dAdjFactor[mask] * Mu)))
-
-        return Y['Y']
-
+        return df_facnet[['PseudoPolicyID', 'PseudoLayerID', 'Limit','Retention', 'Participation', 'Premium','PolLAS', 'DedLAS' ]]
