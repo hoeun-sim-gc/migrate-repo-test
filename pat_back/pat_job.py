@@ -64,7 +64,7 @@ class PatJob:
         self.loss_ratio = float(self.para['loss_alae_ratio'])
         self.avg_acc_date = datetime.strptime(self.para['average_accident_date'], '%m/%d/%Y')
 
-        # Add some error checking here  
+        # Add some error checking here, e.g., Building only for 2016  
 
     def __update_status(self, st):
         tm = ''
