@@ -85,22 +85,22 @@ class Psold:
         adjf = curr_adj * trend_ftr
 
         if inplace: 
-            DT.fillna({'Retention':0,'Participation':1}, inplace=True)
+            DT.fillna({'Retention':0,'Participation':1,'TIV':0}, inplace=True)
         else:
             DT = DT.fillna({'Retention':0,'Participation':1,'TIV':0})
 
-        DT['Limit'] = (DT.Limit + (DT.Retention if ded_type == DedCode.Retains_Limit else 0)).fillna(0)
-        DT['Policy'] = DT.Retention + np.maximum(DT.Limit - DT.Retention, 0) * (DT['LocStack'].isna() * addt_cvg + 1) 
-        DT['EffLmt'] = np.minimum(DT.TIV, DT.Limit) * (addt_cvg + 1) 
-        DT['AOIr'] = np.searchsorted(self.aoi_split, DT.TIV / adjf, side='left') 
+        DT['Lx'] = (DT.Limit + (DT.Retention if ded_type == DedCode.Retains_Limit else 0)).fillna(0)
+        DT['Policy'] = DT.Retention + np.maximum(DT.Lx - DT.Retention, 0) * (DT['LocStack'].isna() * addt_cvg + 1) 
+        DT['EffLmt'] = np.minimum(DT.TIV, DT.Lx) * (addt_cvg + 1) 
+        DT['AOIr'] = np.searchsorted(self.aoi_split[1:-1], DT.TIV / adjf, side='left') # will be one less than the document which start from 1
 
         m = len(DT)
         wgt = pd.DataFrame(data = np.zeros((m, self.num_mix)), columns=[f'W{i}' for i in range (1, self.num_mix + 1)])
         mask_rg  = DT.RatingGroup.isna().to_numpy() #! important: Have to convert to numpy, otherwise can mess up if DT is not in natrual order  
         if any(mask_rg):
             wt, _ = self.get_blending_weights(df_wts, addt_cvg) 
-            wgt.loc[mask_rg] = wt[DT.loc[mask_rg,'AOIr'] -1 ,:]
-        wgt.loc[~mask_rg] = self.psold_a[DT.loc[~mask_rg,'AOIr'] - 1, DT.loc[~mask_rg,'RatingGroup'].astype('int') -1 ,:]
+            wgt.loc[mask_rg] = wt[DT.loc[mask_rg,'AOIr'],:]
+        wgt.loc[~mask_rg] = self.psold_a[DT.loc[~mask_rg,'AOIr'], DT.loc[~mask_rg,'RatingGroup'].astype('int') -1 ,:]
         wgt=wgt.to_numpy()
 
         x = np.vstack((np.minimum(DT.Policy,DT.EffLmt).to_numpy(),
@@ -112,8 +112,8 @@ class Psold:
             wgt = pd.DataFrame(data = np.zeros((m, self.num_mix)), columns=[f'W{i}' for i in range (1, self.num_mix + 1)])
             if any(mask_rg):
                 wt, _ = self.get_blending_weights(df_wts, addt_cvg, True) 
-                wgt.loc[mask_rg] = wt[DT.loc[mask_rg,'AOIr'] -1 ,:]
-            wgt.loc[~mask_rg] = self.psold_a[DT.loc[~mask_rg,'AOIr'] - 1, df_wts.HPRTable[DT.loc[~mask_rg,'RatingGroup'].astype('int')] - 1 ,:]
+                wgt.loc[mask_rg] = wt[DT.loc[mask_rg,'AOIr'],:]
+            wgt.loc[~mask_rg] = self.psold_a[DT.loc[~mask_rg,'AOIr'], df_wts.HPRTable[DT.loc[~mask_rg,'RatingGroup'].astype('int')] - 1 ,:]
             wgt=wgt.to_numpy()
 
             DT[['PolLASH','DedLASH']] =self.melas(x,wgt,self.mu*adjf).T
