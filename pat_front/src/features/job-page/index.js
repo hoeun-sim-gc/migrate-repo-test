@@ -21,6 +21,8 @@ import DatePicker from '@mui/lab/DatePicker';
 
 import Tooltip from '@mui/material/Tooltip';
 
+import Autocomplete from "@material-ui/lab/Autocomplete";
+
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -166,6 +168,8 @@ export default function JobPage(props) {
   const [inpExpanded, setInpExpanded] = useState(0x108);
   const [loadingServerList, setLoadingServerList] = useState(false);
   const [serverList, setServerList] = useState();
+  const [currServer, setCurrServer] = useState('');
+  
 
   const [loadingDbList, setLoadingDbList] = useState(false);
   const [dbList, setDbList] = useState({ rdm: [], edm: [] });
@@ -218,7 +222,7 @@ export default function JobPage(props) {
 
     var svr = localStorage.getItem('currentServer');
     if (svr) {
-      lst.push(svr)
+      lst.push(svr.toUpperCase())
       lst = [...new Set(lst)].sort();
       localStorage.setItem("Server_List", JSON.stringify(lst));
     }
@@ -267,11 +271,11 @@ export default function JobPage(props) {
           setNewJob({ parameter: { ...newJob.parameter, ...job }, data_file: null, use_ref: true });
 
           if ('server' in job) svr = job['server'];
-          else svr = localStorage.getItem('currentServer');
           if (svr) {
-            lst.push(svr)
+            lst.push(svr.toUpperCase())
             lst = [...new Set(lst)].sort();
-            localStorage.setItem("Server_List", JSON.stringify(lst));
+            setServerList(lst)
+            setCurrServer(svr);
 
             setDbList([]);
             setLoadingDbList(true);
@@ -332,6 +336,14 @@ export default function JobPage(props) {
         if (!data.rdm.includes(newJob.parameter.rdm)) {
           setNewJob({ ...newJob, parameter: { ...newJob.parameter, rdm: data.rdm[0], analysisid: 0 } });
         }
+
+        var lst = serverList;
+        lst.push(newJob.parameter.server.toUpperCase());
+        lst = [...new Set(lst)].sort();
+        setServerList(lst);
+        localStorage.setItem("Server_List", JSON.stringify(lst));
+        setCurrServer(newJob.parameter.server.toUpperCase())
+
         setLoadingPortList(true);
         setLoadingAnlsList(true);
       })
@@ -1074,28 +1086,40 @@ export default function JobPage(props) {
             </AccordionSummary>
             <AccordionDetails>
               <div>
-                <FormControl className={classes.formControl}>
-                  <InputLabel shrink id="server-placeholder-label">
-                    Server
-                  </InputLabel>
-                  <Select
-                    labelId="server-placeholder-label"
-                    id="server-placeholder"
-                    value={newJob.parameter.server}
-                    defaultValue={''}
-                    onChange={event => {
-                      if (newJob.parameter.server !== event.target.value) {
-                        localStorage.setItem("currentServer", event.target.value);
-                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, server: event.target.value, rdm: '', edm: '', portinfoid: 0, analysisid: 0 } });
-                        setLoadingDbList(true);
-                      }
-                    }}
-                  >
-                    {serverList?.map((n) => {
-                      return <MenuItem value={n}>{ }{n}</MenuItem>
-                    })}
-                  </Select>
-                </FormControl>
+                <Autocomplete className={classes.formControl}
+                  options={serverList}
+                  inputValue={currServer}
+                  noOptionsText="Enter to add a server"
+                  onInputChange={(event, newValue) => {
+                    if(!event && newValue==='') setCurrServer(newJob.parameter.server);
+                    else setCurrServer(newValue);
+
+                    if(event && (event.type ==='blur' || event.type ==='click' || (event.type === 'keydown' && event.key ==='Enter')) 
+                        && newValue !== newJob.parameter.server) {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, server: newValue, rdm: '', edm: '', portinfoid: 0, analysisid: 0 } });
+                          setLoadingDbList(true);
+                    }
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      defaultValue={''}
+                      label="Server"
+                      // variant="outlined"
+                      onKeyDown={(e) => {
+                        if (
+                          e.key === "Enter" && currServer && currServer.length > 1 &&
+                          serverList.findIndex((o) => o === currServer) === -1
+                        ) {
+                          var lst = serverList;
+                          var svr = currServer.toUpperCase();
+                          lst.push(svr);
+                          lst = [...new Set(lst)].sort();
+                          setServerList(lst);
+                      }}}
+                    />
+                  )}
+                />
               </div>
               <div>
                 <FormControl className={classes.formControl}>
