@@ -21,6 +21,11 @@ create table psold_weight(
     HPRTable int
 );
 
+create table psold_hpr_weight (
+    Limit float,
+    Weight float
+);
+
 create table psold_aoi(
     AOI float
 );

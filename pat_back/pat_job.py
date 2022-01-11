@@ -29,8 +29,7 @@ class PatJob:
 
         self.job_id = 0
         self.data_extracted = False
-        self.valid_rules = ValidRule(0)
-        self.default_region = 0
+
         with pyodbc.connect(self.job_conn) as conn:
             df = pd.read_sql(f"select data_extracted, parameters from pat_job where job_id = {job_id} and status='wait_to_start'",conn)
             if len(df) == 1:
@@ -42,13 +41,10 @@ class PatJob:
         self.__update_status("started")
         self.logger.info(f"""Start to process job:{self.job_id}""")
 
-        if 'valid_rules' in self.para and self.para['valid_rules']:
-            self.valid_rules = ValidRule(self.para['valid_rules'])
-        if 'default_region' in self.para and self.para['default_region']:
-            self.default_region = self.para['default_region']
-        self.user_name = self.para['user_name'] if 'user_name' in self.para else None
-        self.user_email = self.para['user_email'] if 'user_email' in self.para else None
-
+        self.valid_rules = ValidRule(self.para['valid_rules']) if 'valid_rules' in self.para else ValidRule(0)     
+        self.psold_blending = np.array(self.para['psold_blending']) if 'psold_blending' in self.para else None
+        self.hpr_blending = self.para['hpr_blending'] if 'hpr_blending' in self.para else None
+            
         self.rating_type= self.para['type_of_rating']
         self.curve_type = self.para['curve_type'] if 'curve_type' in self.para else 'Gross'
         self.currency_adj = 1.0
@@ -63,6 +59,9 @@ class PatJob:
         self.ded_type = DedCode[self.para['deductible_treatment']]
         self.loss_ratio = float(self.para['loss_alae_ratio'])
         self.avg_acc_date = datetime.strptime(self.para['average_accident_date'], '%m/%d/%Y')
+
+        self.user_name = self.para['user_name'] if 'user_name' in self.para else None
+        self.user_email = self.para['user_email'] if 'user_email' in self.para else None
 
         # Add some error checking here, e.g., Building only for 2016  
 
@@ -491,6 +490,12 @@ class PatJob:
                 aoi.append("COALESCE(b.BI, a.BI)")
             aoi=" + ".join(aoi)
 
+            blending = self.psold_blending is not None and np.any(self.psold_blending > 0)  
+            def_reg = np.argmax(self.psold_blending > 0) + 1 if blending and np.sum(self.psold_blending > 0) == 1 else 0
+            rg_flg = '' if blending else f''' + (case when COALESCE(b.RatingGroup, c.PSOLD_RG, 0) < {min_psold_rg} 
+                                        or COALESCE(b.RatingGroup, c.PSOLD_RG, 0) > {max_psold_rg}
+                                        then {PatFlag.FlagLocRG} else 0 end)'''
+
             cur.execute(f"""insert into pat_pseudo_policy 
                             select a.job_id, 0 as data_type, 
                                 a.PseudoPolicyID, 
@@ -513,7 +518,7 @@ class PatJob:
                                 COALESCE(b.Contents, a.Contents) as Contents,
                                 COALESCE(b.BI, a.BI) as BI,
                                 COALESCE(b.AOI, {aoi}) as AOI,
-                                COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_region}) as RatingGroup,
+                                COALESCE(b.RatingGroup, c.PSOLD_RG, {def_reg}) as RatingGroup,
                                 
                                 (case when COALESCE(b.PolLimit, a.PolLimit) is null 
                                             or COALESCE(b.PolRetention, a.PolRetention) is null 
@@ -536,10 +541,8 @@ class PatJob:
                                         then {PatFlag.FlagPolLimitParticipation} else 0 end) 
 
                                     + (case when COALESCE(b.AOI, {aoi}) < 0 then {PatFlag.FlagLocNA} else 0 end)
-                                    + (case when COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_region}) < {min_psold_rg} 
-                                        or COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_region}) > {max_psold_rg}
-                                        then {PatFlag.FlagLocRG} else 0 end)
-                                        as flag                                
+                                    
+                                    {rg_flg}  as flag                                
                             from pat_pseudo_policy a 
                                 left join (select * from pat_pseudo_policy where job_id = {self.job_id} and data_type = 2) b 
                                     on a.PseudoPolicyID = b.PseudoPolicyID
@@ -771,17 +774,30 @@ class PatJob:
             return df_facnet
     
     def __allocate_with_psold(self, df_facnet) -> DataFrame:     
+        df_wts = None
+        df_hpr = None
+
         with pyodbc.connect(self.job_conn) as conn:
             aoi_split = pd.read_sql_query(f"""select * from psold_aoi order by AOI""", conn).AOI.to_numpy() 
-            df_wts = pd.read_sql_query(f"""select RG, PremiumWeight from psold_weight order by rg""", conn).set_index('RG')
             df_psold = pd.read_sql_query(f"""select * 
                 from rating_curves  
                 where ISOt = '{self.rating_type}' and Curve ='{self.curve_type}' and COVG = {self.coverage} and SUBGRP = {self.peril_subline}""", 
                 conn).drop(columns=['ISOt','Curve','COVG','SUBGRP' ])
+
+            if self.psold_blending is not None and np.sum(self.psold_blending > 0 ) > 1:
+                df_wts = pd.read_sql_query(f"""select RG, HPRTable from psold_weight order by rg""", conn).set_index('RG')
+                df_wts['PremiumWeight'] = self.psold_blending
+                
+                if not self.hpr_blending: 
+                    df_wts.drop(columns=['HPRTable'])
+                else:
+                    df_hpr = pd.read_sql_query(f"""select Limit, Weight from psold_hpr_weight order by Limit""", conn)
+
+    
         psold  = Psold(df_psold, aoi_split, self.trend_ftr, self.trend_from)
 
         df_facnet['LossRatio'] = self.loss_ratio      
-        df_facnet = psold.pat(df_facnet, df_wts, 
+        df_facnet = psold.pat(df_facnet, df_wts, df_hpr, 
                     ded_type = self.ded_type, 
                     curr_adj = self.currency_adj,
                     avg_acc_date = self.avg_acc_date,

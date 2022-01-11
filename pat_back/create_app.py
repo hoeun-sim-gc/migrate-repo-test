@@ -62,7 +62,7 @@ def results(job_lst:str) -> StreamingResponse:
     if len(lst)>0:
         df = PatHelper.get_results(lst)
         if df is not None:
-            return send_zip_file("pat_results.zip", ('pat_results.csv', df))
+            return send_zip_file(f"pat_res_{lst[0]}.zip", (f'pat_res_{lst[0]}.csv', df))
 
 @app.get('/api/valid/{job_id}')
 def get_validate_data(job_id:int, flagged:bool=True) -> StreamingResponse:
@@ -112,6 +112,11 @@ def run_job(job_id:int)->str:
     PatWorker.stop_jobs([job_id])
     PatHelper.reset_jobs([job_id])
     PatWorker.start_worker(job_id)     
+    return "ok"
+
+@app.put('/api/rename/{job_id}/{new_name}')
+def rename_job(job_id:int, new_name:str) -> str:
+    PatHelper.rename_job(job_id, new_name)
     return "ok"
 
 @app.delete('/api/job/{job_id}')

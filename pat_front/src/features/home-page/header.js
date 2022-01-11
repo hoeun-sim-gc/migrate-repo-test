@@ -9,32 +9,33 @@ const columns = [{
     text: 'Job_Name',
     sort: true,
     style: { overflow: 'hidden' },
-    headerStyle: { width: '120px'}
+    headerStyle: { width: '120px'},
+    editable: true
   },
   {
     dataField: 'receive_time',
     text: 'Receive',
     sort: true,
     style: { overflow: 'hidden' },
-    headerStyle: { width: '110px'}
+    headerStyle: { width: '110px'},
   }, {
     dataField: 'start_time',
     text: 'Started',
     sort: true,
     style: { overflow: 'hidden' },
-    headerStyle: { width: '110px'}
+    headerStyle: { width: '110px'},
   }, {
     dataField: 'finish_time',
     text: 'Finished',
     sort: true,
     style: { overflow: 'hidden' },
-    headerStyle: { width: '110px'}
+    headerStyle: { width: '110px'},
   }, {
     dataField: 'duration',
     text: 'Duration',
     sort: true,
     style: { overflow: 'hidden' },
-    headerStyle: { width: '65px'}
+    headerStyle: { width: '65px'},
   }, {
     dataField: 'status',
     text: 'Status',
@@ -46,7 +47,8 @@ const columns = [{
     text: 'Analyst',
     sort: true,
     style: { overflow: 'hidden' },
-    headerStyle: { width: '80px'}
+    headerStyle: { width: '80px'},
+    editable: false
   }];
 
   export default columns;

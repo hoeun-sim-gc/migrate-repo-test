@@ -14,13 +14,13 @@ th, td {
   }
   
   .job_col {
-    flex: 3;
+    flex: 2;
     margin: 10px;
   }
   
   .para_col {
     margin: 10px;
-    flex: 2;
+    flex: 1;
     overflow: auto;
   }
 
