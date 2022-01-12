@@ -10,7 +10,7 @@ from bcpandas import SqlCreds, to_sql
 
 from .pat_worker import PatWorker
 from .settings import AppSettings
-from .pat_flag import PatFlag
+from .pat_flag import PAT_FLAG
 
 class PatHelper:
     """Class to manage PAT jobs"""
@@ -105,7 +105,7 @@ class PatHelper:
     @classmethod
     def get_job_list(cls, user:str=None):
         with pyodbc.connect(cls.job_conn) as conn:
-            u_str= f"where lower(user_email) = '{user}'" if user else ""
+            u_str= f"where user_email is null or lower(user_email) = '{user}'" if user else ""
             df = pd.read_sql_query(f"""select job_id job_id, job_guid, job_name, 
                     receive_time, start_time, finish_time, status, user_name, user_email
                 from pat_job
@@ -150,7 +150,7 @@ class PatHelper:
             cur.execute(f"""select flag, count(*) from pat_pseudo_policy where job_id = {job_id} and data_type = 0 and flag!=0 group by flag""")
             rows = cur.fetchall()
             for row in rows:
-                summary.append({'item': f"* {PatFlag.describe(row[0])}", 'cnt': row[1]})
+                summary.append({'item': f"* {PAT_FLAG.describe(row[0])}", 'cnt': row[1]})
 
         return summary
 
@@ -201,7 +201,7 @@ class PatHelper:
                 order by PseudoPolicyID""",conn)
             if len(df1) > 0:
                 df = df1[['flag']].drop_duplicates(ignore_index=True)
-                df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
+                df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
                 df1 = df1.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
             df2 = pd.read_sql_query(f"""select * from pat_facultative 
@@ -209,7 +209,7 @@ class PatHelper:
                 order by PseudoPolicyID""",conn)
             if len(df2) > 0:
                 df = df2[['flag']].drop_duplicates(ignore_index=True)
-                df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
+                df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
                 df2 = df2.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
         return (df1, df2)
@@ -268,6 +268,13 @@ class PatHelper:
         #     cur.execute(f"""update pat_job set job_name = '{new_name}'
         #             where job_id = {job_id};""")
         #     cur.commit()
+
+    @classmethod
+    def public_job(cls, job_id):
+        with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+            cur.execute(f"""update pat_job set user_name = 'developer',
+                user_email = null where job_id = {job_id};""")
+            cur.commit()        
 
     @classmethod
     def cancel_jobs(cls, lst):

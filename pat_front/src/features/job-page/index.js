@@ -45,6 +45,7 @@ import ValidRules from "./valid-flag";
 
 import { v4 as uuidv4 } from 'uuid';
 import { psold_rg, blending_columns } from './blend';
+import { psold_curves, fls_curves, mb_curves } from './curves';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -137,20 +138,35 @@ export default function JobPage(props) {
         perilid: 0,
         analysisid: 0,
 
-        psold_blending: psold_rg.map(w=>w.weight),
-        use_hpr_blending: false,
-        data_correction: "",
-        valid_rules: 0,
-
-        type_of_rating: "PSOLD_2016",
-        curve_type: 'Gross',
-        coverage: "Building_Contents_BI",
-        peril_subline: "All_Perils",
-        loss_alae_ratio: 1,
+        type_of_rating: "PSOLD",
+        curve_id: 2016,
         average_accident_date: "1/1/2022",
-        trend_factor: 1.035,
+        psold: {
+          curve_persp: 'Gross',
+          peril_subline: "All_Perils",
+          trend_factor: 1.035,
+          blending: psold_rg.map(w => w.weight),
+          hpr_blending: false
+        },
+        // fls: {
+        //   mu:0.0,
+        //   w:0.0,
+        //   tau:0.0,
+        //   theta:0.0,
+        //   beta:0.0,
+        //   cap:0.0
+        // },
+        // mb: {
+        //   b:0.0,
+        //   g:0.0,
+        // },
+        loss_alae_ratio: 1,
+        coverage_type: "Building_Contents_BI",
         additional_coverage: 2.0,
         deductible_treatment: "Retains_Limit",
+
+        data_correction: "",
+        valid_rules: 0,
 
         user_name: user?.name,
         user_email: user?.email,
@@ -169,7 +185,6 @@ export default function JobPage(props) {
   const [loadingServerList, setLoadingServerList] = useState(false);
   const [serverList, setServerList] = useState();
   const [currServer, setCurrServer] = useState('');
-  
 
   const [loadingDbList, setLoadingDbList] = useState(false);
   const [dbList, setDbList] = useState({ rdm: [], edm: [] });
@@ -186,20 +201,43 @@ export default function JobPage(props) {
   const [uploadingJob, setUploadingJob] = useState(false);
   const [confirm, setConfirm] = React.useState(false);
 
-  const [cvgTypeList, setCvgTypeList] = useState([])
-  const [psoldBlending, setPsoldBlending]= useState([])
+  const [curveList, setCurveList] = useState([])
+  const [psoldBlending, setPsoldBlending] = useState([])
+  const [savePsold, setSavePsold] = useState(
+    {
+      curve_persp: 'Gross',
+      peril_subline: "All_Perils",
+      trend_factor: 1.035,
+      blending: psold_rg.map(w => w.weight),
+      hpr_blending: false
+      })
+  const [saveFls, setSaveFls] = useState({ 
+      mu:0.0,
+      w:0.0,
+      tau:0.0,
+      theta:0.0,
+      beta:0.0,
+      cap:0.0
+    })
+  const [saveMb, setSaveMb] = useState({ 
+      b:0.0,
+      g:0.0
+    })
 
   React.useEffect(() => {
     setLoadingServerList(true);
-    
-    var lst= psold_rg.map(c=> {return {
-      id : c.id, 
-      name : c.name, 
-      weight: c.weight
-    }});
-    if(lst && lst.length > 0 && newJob && newJob.parameter && newJob.parameter.psold_blending ){
+
+    var lst = psold_rg.map(c => {
+      return {
+        id: c.id,
+        name: c.name,
+        weight: c.weight
+      }
+    });
+    if (lst && lst.length > 0 && newJob && newJob.parameter && newJob.parameter.psold
+      && newJob.parameter.psold.blending) {
       for (var i = 0; i < lst.length; i++) {
-        lst[i].weight = newJob.parameter.psold_blending[i];
+        lst[i].weight = newJob.parameter.psold.blending[i];
       }
       setPsoldBlending(lst)
     }
@@ -252,22 +290,26 @@ export default function JobPage(props) {
           };
 
           handleNewRateType(job.type_of_rating);
-          var lst1= []
-          if(job.psold_blending){
+          if(job.type_of_rating=='PSOLD'){
+            var lst1 = []
+            if (job.psold && job.psold.blending) {
               for (var i = 0; i < psoldBlending.length; i++) {
                 lst1[i] = {
-                  id : psoldBlending[i].id, 
-                  name : psoldBlending[i].name, 
-                  weight: job.psold_blending[i]
+                  id: psoldBlending[i].id,
+                  name: psoldBlending[i].name,
+                  weight: job.psold.blending[i]
                 };
               }
+            }
+            else lst1 = psold_rg.map(c => {
+              return {
+                id: c.id,
+                name: c.name,
+                weight: c.weight
+              }
+            });
+            setPsoldBlending(lst1)
           }
-          else lst1 = psold_rg.map(c=> {return {
-            id : c.id, 
-            name : c.name, 
-            weight: c.weight
-          }});
-          setPsoldBlending(lst1)
           setNewJob({ parameter: { ...newJob.parameter, ...job }, data_file: null, use_ref: true });
 
           if ('server' in job) svr = job['server'];
@@ -480,9 +522,35 @@ export default function JobPage(props) {
       return false;
     }
 
-    if (cvgTypeList.length > 0 && !cvgTypeList.find(c => c === job.coverage)) {
-      console.log("coverage type error!");
+    if(! job.type_of_rating || !job.curve_id)
+    {
+      console.log("Need rating curve!");
       return false;
+    }
+
+    if( job.type_of_rating=='PSOLD'){
+      if(!job.psold){
+        console.log("Need PSOLD parameter!");
+        return false;
+      };
+      if (job.fls) delete job.fls;
+      if (job.mb) delete job.mb;
+    }
+    else if( job.type_of_rating == 'FLS'){
+      if(job.curve_id==57 && !job.fls){
+        console.log("Need FLS parameter!");
+        return false;
+      };
+      if (job.psold) delete job.psold;
+      if (job.mb) delete job.mb;
+    }
+    else if( job.type_of_rating=='MB'){
+      if(job.curve_id==58 && !job.mb){
+        console.log("Need MB parameter!");
+        return false;
+      }
+      if (job.psold) delete job.psold;
+      if (job.fls) delete job.fls;
     }
 
     return true;
@@ -639,20 +707,15 @@ export default function JobPage(props) {
 
   const handleNewRateType = (rt) => {
     var lst = [];
-    if (rt === "PSOLD_2020") {
-      lst = (['Building_Contents_BI', 'Building_Contents', 'Building_Only', 'Contents_Only']);
+    if (rt === "PSOLD") {
+      if (newJob.parameter.coverage_type === 'Building_Only' || newJob.parameter.coverage_type === 'Contents_Only')
+        lst = psold_curves.filter(c => c.ID === 2020);
+      else lst = psold_curves;
     }
-    else if (rt === "PSOLD_2016") {
-      lst = (['Building_Contents_BI', 'Building_Contents']);
-    }
-    else lst = [];
+    else if (rt === "FLS") lst = fls_curves
+    else if (rt === "MB") lst = mb_curves
 
-    setCvgTypeList(lst);
-    // var sel = lst.find(j=>j===newJob.parameter.coverage);
-    // if(!sel)  {
-    //   if(lst.length>0) setNewJob({ ...newJob, parameter: { ...newJob.parameter, coverage: lst[0] } });
-    //   else setNewJob({ ...newJob, parameter: { ...newJob.parameter, coverage: null } });
-    // }
+    setCurveList(lst);
   };
 
   const handleConfirm = (isOK) => {
@@ -885,7 +948,7 @@ export default function JobPage(props) {
                     lst.push(job);
                     setJobList(lst);
                     setSelectedNewJob(job.parameter.job_guid);
-                    setNewJob({ ...newJob, parameter: { ...job.parameter, job_guid:''} });
+                    setNewJob({ ...newJob, parameter: { ...job.parameter, job_guid: '' } });
                   }
                   else alert("Job parameter error!")
                 }
@@ -944,16 +1007,16 @@ export default function JobPage(props) {
                     para['job_guid'] = '';
 
                     setNewJob({ parameter: para, use_ref: sel.use_ref, data_file: sel.data_file });
-                    setSelectedNewJob(event.target.value);                    
+                    setSelectedNewJob(event.target.value);
                     handleNewRateType(para.type_of_rating);
-                    if(para.psold_blending){
-                      var lst1= []
+                    if (para.type_of_rating=='PSOLD' && para.psold && para.psold.blending) {
+                      var lst1 = []
                       var wgts = psoldBlending;
                       for (var i = 0; i < wgts.length; i++) {
                         lst1[i] = {
-                          id : wgts[i].id, 
-                          name : wgts[i].name, 
-                          weight: para.psold_blending[i]
+                          id: wgts[i].id,
+                          name: wgts[i].name,
+                          weight: para.psold.blending[i]
                         };
                       }
                       setPsoldBlending(lst1)
@@ -1015,24 +1078,28 @@ export default function JobPage(props) {
               </Box>
             </FormControl>
             <FormControl className={classes.formControl}>
-              <InputLabel shrink id="deductible-placeholder-label">
-                Deductible
+              <InputLabel shrink id="coverage-placeholder-label">
+                Coverage Typs
               </InputLabel>
               <Select
-                labelId="deductible-placeholder-label"
-                id="deductible-placeholder"
-                value={newJob.parameter.deductible_treatment}
-                defaultValue={'Retains_Limit'}
+                labelId="coverage-placeholder-label"
+                id="coverage-placeholder"
+                value={newJob.parameter.coverage_type}
+                defaultValue={'Building_Contents_BI'}
                 onChange={event => {
-                  if (newJob.parameter.deductible_treatment !== event.target.value) {
-                    setNewJob({ ...newJob, parameter: { ...newJob.parameter, deductible_treatment: event.target.value } });
+                  if (newJob.parameter.coverage_type !== event.target.value) {
+                    var para = newJob.parameter;
+                    para.coverage_type = event.target.value;
+                    if ((event.target.value === 'Building_Only' || event.target.value === 'Contents_Only')
+                      && para.type_of_rating === "PSOLD") para.curve_id = 2020;
+                    setNewJob({ ...newJob, parameter: para });
+                    handleNewRateType(para.type_of_rating)
                   }
                 }}
               >
-                {['Retains_Limit', 'Erodes_Limit']
-                  .map((n) => {
-                    return <MenuItem value={n}>{ }{n}</MenuItem>
-                  })}
+                {['Building_Contents_BI', 'Building_Contents', 'Building_Only', 'Contents_Only'].map((n) => {
+                  return <MenuItem value={n}>{ }{n}</MenuItem>
+                })}
               </Select>
             </FormControl>
             <FormControl className={classes.formControl}>
@@ -1054,6 +1121,42 @@ export default function JobPage(props) {
                 />
               </Box>
             </FormControl>
+
+            <FormControl className={classes.formControl}>
+              <InputLabel shrink id="deductible-placeholder-label">
+                Deductible Type
+              </InputLabel>
+              <Select
+                labelId="deductible-placeholder-label"
+                id="deductible-placeholder"
+                value={newJob.parameter.deductible_treatment}
+                defaultValue={'Retains_Limit'}
+                onChange={event => {
+                  if (newJob.parameter.deductible_treatment !== event.target.value) {
+                    setNewJob({ ...newJob, parameter: { ...newJob.parameter, deductible_treatment: event.target.value } });
+                  }
+                }}
+              >
+                {['Retains_Limit', 'Erodes_Limit']
+                  .map((n) => {
+                    return <MenuItem value={n}>{ }{n}</MenuItem>
+                  })}
+              </Select>
+            </FormControl>
+
+            <FormControl className={classes.formControl}>
+                    <LocalizationProvider dateAdapter={AdapterDateFns}>
+                      <DatePicker
+                        label="Average Accident Date"
+                        value={newJob.parameter.average_accident_date}
+                        format="MM/DD/YYYY"
+                        onChange={(newValue) => {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, average_accident_date: newValue.toLocaleDateString('en-US') } });
+                        }}
+                        renderInput={(params) => <TextField {...params} />}
+                      />
+                    </LocalizationProvider>
+                  </FormControl>
           </div>
           <div>
             <FormControl className={classes.formControl}
@@ -1091,13 +1194,13 @@ export default function JobPage(props) {
                   inputValue={currServer}
                   noOptionsText="Enter to add a server"
                   onInputChange={(event, newValue) => {
-                    if(!event && newValue==='') setCurrServer(newJob.parameter.server);
+                    if (!event && newValue === '') setCurrServer(newJob.parameter.server);
                     else setCurrServer(newValue);
 
-                    if(event && (event.type ==='blur' || event.type ==='click' || (event.type === 'keydown' && event.key ==='Enter')) 
-                        && newValue !== newJob.parameter.server) {
-                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, server: newValue, rdm: '', edm: '', portinfoid: 0, analysisid: 0 } });
-                          setLoadingDbList(true);
+                    if (event && (event.type === 'blur' || event.type === 'click' || (event.type === 'keydown' && event.key === 'Enter'))
+                      && newValue !== newJob.parameter.server) {
+                      setNewJob({ ...newJob, parameter: { ...newJob.parameter, server: newValue, rdm: '', edm: '', portinfoid: 0, analysisid: 0 } });
+                      setLoadingDbList(true);
                     }
                   }}
                   renderInput={(params) => (
@@ -1116,7 +1219,8 @@ export default function JobPage(props) {
                           lst.push(svr);
                           lst = [...new Set(lst)].sort();
                           setServerList(lst);
-                      }}}
+                        }
+                      }}
                     />
                   )}
                 />
@@ -1294,179 +1398,344 @@ export default function JobPage(props) {
                     labelId="rate-placeholder-label"
                     id="rate-placeholder"
                     value={newJob.parameter.type_of_rating}
-                    defaultValue={'PSOLD_2016'}
+                    defaultValue={'PSOLD'}
                     onChange={event => {
                       if (newJob.parameter.type_of_rating !== event.target.value) {
-                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, type_of_rating: event.target.value } });
+                        var job = newJob.parameter;                        
+                        if(job['type_of_rating'] === 'PSOLD'){
+                          setSavePsold({...job.psold});
+                        }
+                        else if (job['type_of_rating']==='FLS' && job.curve_id === 57) {
+                          setSaveFls({...job.fls});
+                        }
+                        else if (job['type_of_rating']==='MB' && job.curve_id === 58) {
+                          setSaveMb({...job.mb});
+                        }
+                        job.curve_id =1;
+                        if (event.target.value === "PSOLD") {
+                          if (newJob.parameter.coverage_type === 'Building_Only' 
+                            || newJob.parameter.coverage_type === 'Contents_Only') 
+                            job.curve_id = 2020;
+                          else job.curve_id = 2016;
+                       
+                          job['psold']={...savePsold};
+                          if (job.fls) delete job.fls;
+                          if (job.mb) delete job.mb;
+                        }
+ 
+                        job['type_of_rating'] = event.target.value
+                        setNewJob({ ...newJob, parameter: {...job} });
                         handleNewRateType(event.target.value);
                       }
                     }}
                   >
-                    {['PSOLD_2016', 'PSOLD_2020']
-                      .map((n) => {
-                        return <MenuItem value={n}>{ }{n}</MenuItem>
-                      })}
-                  </Select>
-                </FormControl>
-              </div>
-              <div>
-                <FormControl className={classes.formControl}>
-                  <InputLabel shrink id="curve-placeholder-label">
-                    Curve Type
-                  </InputLabel>
-                  <Select
-                    labelId="curve-placeholder-label"
-                    id="curve-placeholder"
-                    value={newJob.parameter.curve_type}
-                    defaultValue={'Gross'}
-                    onChange={event => {
-                      if (newJob.parameter.curve_type !== event.target.value) {
-                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, curve_type: event.target.value } });
-                      }
-                    }}
-                  >
-                    {['Gross', 'Net']
-                      .map((n) => {
-                        return <MenuItem value={n}>{ }{n}</MenuItem>
-                      })}
-                  </Select>
-                </FormControl>
-                <FormControl className={classes.formControl}>
-                  <InputLabel shrink id="coverage-placeholder-label">
-                    Coverage
-                  </InputLabel>
-                  <Select
-                    labelId="coverage-placeholder-label"
-                    id="coverage-placeholder"
-                    value={newJob.parameter.coverage}
-                    defaultValue={'Building_Contents_BI'}
-                    onChange={event => {
-                      if (newJob.parameter.coverage !== event.target.value) {
-                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, coverage: event.target.value } });
-                      }
-                    }}
-                  >
-                    {cvgTypeList?.map((n) => {
+                    {['PSOLD', 'FLS', 'MB'].map((n) => {
                       return <MenuItem value={n}>{ }{n}</MenuItem>
                     })}
                   </Select>
                 </FormControl>
                 <FormControl className={classes.formControl}>
-                  <InputLabel shrink id="peril-placeholder-label">
-                    Peril / Subline
+                  <InputLabel shrink id="ct-placeholder-label">
+                    Curve ID
                   </InputLabel>
                   <Select
-                    labelId="peril-placeholder-label"
-                    id="peril-placeholder"
-                    value={newJob.parameter.peril_subline}
-                    defaultValue={'All_Perils'}
+                    labelId="ct-placeholder-label"
+                    id="ct-placeholder"
+                    value={newJob.parameter.curve_id}
                     onChange={event => {
-                      if (newJob.parameter.peril_subline !== event.target.value) {
-                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, peril_subline: event.target.value } });
+                      if (newJob.parameter.curve_id !== event.target.value) {
+                        var job = newJob.parameter;
+                        job['curve_id']= event.target.value;
+                        if(job['type_of_rating']==='PSOLD'){
+                          job['psold']={...savePsold};
+                          if (job.fls) delete job.fls;
+                          if (job.mb) delete job.mb;
+                        }
+                        else if (job['type_of_rating']==='FLS'){
+                          if(event.target.value == 57)  job['fls'] = {...saveFls};
+                          if (job.psold) delete job.psold;
+                          if (job.mb) delete job.mb;
+                        }
+                        else if (job['type_of_rating']==='MB') {
+                          if(event.target.value == 58) job['mb'] ={...saveMb};
+                          if (job.fls) delete job.fls;
+                          if (job.psold) delete job.psold;
+                        }
+                        setNewJob({ ...newJob, parameter: {...job} });
                       }
                     }}
                   >
-                    {['Fire', 'Wind', 'Special_Causes', 'All_Perils']
-                      .map((n) => {
-                        return <MenuItem value={n}>{ }{n}</MenuItem>
-                      })}
+                    {curveList.map((n) => {
+                      return <MenuItem value={n.ID}>{ }{ newJob.parameter.type_of_rating==='PSOLD'? n.name: n.ID + ' -- ' + n.name}</MenuItem>
+                    })}
                   </Select>
                 </FormControl>
               </div>
-              <div>
-                <FormControl className={classes.formControl}>
-                  <LocalizationProvider dateAdapter={AdapterDateFns}>
-                    <DatePicker
-                      label="Average Accident Date"
-                      value={newJob.parameter.average_accident_date}
-                      format="MM/DD/YYYY"
-                      onChange={(newValue) => {
-                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, average_accident_date: newValue.toLocaleDateString('en-US') } });
-                      }}
-                      renderInput={(params) => <TextField {...params} />}
-                    />
-                  </LocalizationProvider>
-                </FormControl>
-                <FormControl className={classes.formControl}>
-                  <Box
-                    component="form"
-                    sx={{
-                      '& > :not(style)': { m: 1, width: '18ch' },
-                    }}
-                    noValidate
-                    autoComplete="off"
-                  >
-                    <TextField id="trend-basic" label="Trend Factor" variant="standard" type='number'
-                      value={newJob.parameter.trend_factor}
-                      inputProps={{
-                        maxLength: 13,
-                        step: "0.01"
-                      }}
+              <div id='psold_para' hidden={newJob.parameter.type_of_rating !== 'PSOLD'}>
+                <div>
+                  <FormControl className={classes.formControl}>
+                    <InputLabel shrink id="curve-placeholder-label">
+                      Curve Type
+                    </InputLabel>
+                    <Select
+                      labelId="curve-placeholder-label"
+                      id="curve-placeholder"
+                      value={newJob.parameter.psold?.curve_persp}
+                      defaultValue={'Gross'}
                       onChange={event => {
-                        if (newJob.parameter.trend_factor !== event.target.value) {
-                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, trend_factor: parseFloat(event.target.value) } });
+                        if (newJob.parameter.psold?.curve_persp !== event.target.value) {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, psold: { ...newJob.parameter.psold, curve_persp: event.target.value } } });
                         }
                       }}
-                    />
-                  </Box>
+                    >
+                      {['Gross', 'Net']
+                        .map((n) => {
+                          return <MenuItem value={n}>{ }{n}</MenuItem>
+                        })}
+                    </Select>
+                  </FormControl>
+                  <FormControl className={classes.formControl}>
+                    <InputLabel shrink id="peril-placeholder-label">
+                      Peril / Subline
+                    </InputLabel>
+                    <Select
+                      labelId="peril-placeholder-label"
+                      id="peril-placeholder"
+                      value={newJob.parameter.psold?.peril_subline}
+                      defaultValue={'All_Perils'}
+                      onChange={event => {
+                        if (newJob.parameter.psold?.peril_subline !== event.target.value) {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, psold: { ...newJob.parameter.psold, peril_subline: event.target.value } } });
+                        }
+                      }}
+                    >
+                      {['Fire', 'Wind', 'Special_Causes', 'All_Perils']
+                        .map((n) => {
+                          return <MenuItem value={n}>{ }{n}</MenuItem>
+                        })}
+                    </Select>
+                  </FormControl>
+                  <FormControl className={classes.formControl}>
+                    <Box
+                      component="form"
+                      sx={{
+                        '& > :not(style)': { m: 1, width: '18ch' },
+                      }}
+                      noValidate
+                      autoComplete="off"
+                    >
+                      <TextField id="trend-basic" label="Trend Factor" variant="standard" type='number'
+                        value={newJob.parameter.psold?.trend_factor}
+                        inputProps={{
+                          maxLength: 13,
+                          step: "0.01"
+                        }}
+                        onChange={event => {
+                          if (newJob.parameter.psold?.trend_factor !== event.target.value) {
+                            setNewJob({ ...newJob, parameter: { ...newJob.parameter, psold: { ...newJob.parameter.psold, trend_factor: parseFloat(event.target.value) } } });
+                          }
+                        }}
+                      />
+                    </Box>
+                  </FormControl>
+                </div>
+                <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
+                  expanded={inpExpanded & 0x100}
+                  onChange={(event, isExpanded) => {
+                    if (isExpanded) setInpExpanded(inpExpanded | 0x100);
+                    else setInpExpanded(inpExpanded & ~0x100);
+                  }}>
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon />}
+                    aria-controls="corr-content"
+                    id="corr-header">
+                    <Typography>Blending Weights:</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <FormControl className={classes.formControl}>
+                      <ToolkitProvider
+                        keyField="id"
+                        data={psoldBlending}
+                        columns={blending_columns}
+                        bootstrap4
+                      >
+                        {
+                          props => (
+                            <div justify='flex-end'>
+                              <BootstrapTable classes={classes.table}
+                                cellEdit={cellEditFactory({
+                                  mode: 'click', blurToSave: true, afterSaveCell: (oldValue, newValue, row, column) => {
+                                    var job = newJob.parameter;
+                                    job['psold']['blending'] = psoldBlending.map(w => w.weight)
+                                    setNewJob({ ...newJob, parameter: {...job} });
+                                  }
+                                })}
+                                {...props.baseProps}
+                                rowClasses={classes.table_row}
+                                striped
+                                hover
+                                condensed
+                                pagination={paginationFactory({
+                                  sizePerPage: 10,
+                                  hideSizePerPage: true,
+                                  hidePageListOnlyOnePage: true,
+                                })}
+                              />
+                            </div>
+                          )
+                        }
+                      </ToolkitProvider>
+                    </FormControl>
+                  </AccordionDetails>
+                </Accordion>
+                <FormControl className={classes.formControl}>
+                  <FormControlLabel control={
+                    <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
+                      checked={newJob && newJob.parameter && newJob.parameter.psold?.hpr_blending}
+                      onChange={event => {
+                        setNewJob({ ...newJob, parameter: { ...newJob.parameter, psold: { ...newJob.parameter.psold, hpr_blending: event.target.checked } } });
+                      }}
+                    />} label={"Use HPR blending"}
+                  />
                 </FormControl>
               </div>
-              <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
-                expanded={inpExpanded & 0x100}
-                onChange={(event, isExpanded) => {
-                  if (isExpanded) setInpExpanded(inpExpanded | 0x100);
-                  else setInpExpanded(inpExpanded & ~0x100);
-                }}>
-                <AccordionSummary
-                  expandIcon={<ExpandMoreIcon />}
-                  aria-controls="corr-content"
-                  id="corr-header">
-                  <Typography>Blending Weights:</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <FormControl className={classes.formControl}>
-                    <ToolkitProvider
-                      keyField="id"
-                      data={psoldBlending}
-                      columns={blending_columns}
-                      bootstrap4
+
+              <div id='fls_para' hidden={newJob.parameter.type_of_rating !== 'FLS'  || !newJob.parameter.fls
+                  || newJob.parameter.curve_id !== 57}>
+                <FormControl className={classes.formControl}>
+                    <Box component="form" sx={{'& > :not(style)': { m: 1, width: '18ch' },}}
+                      noValidate
+                      autoComplete="off"
                     >
-                      {
-                        props => (
-                          <div justify='flex-end'>
-                            <BootstrapTable classes={classes.table}
-                              cellEdit={ cellEditFactory({ mode: 'click', blurToSave:true, afterSaveCell :(oldValue, newValue, row, column)=>{
-                                var job= newJob;
-                                setNewJob({...job,parameter:{...job.parameter,psold_blending: psoldBlending.map(w=>w.weight)}});
-                              } }) }
-                              {...props.baseProps}
-                              rowClasses={classes.table_row}
-                              striped
-                              hover
-                              condensed
-                              pagination={paginationFactory({
-                                sizePerPage: 10, 
-                                hideSizePerPage: true,
-                                hidePageListOnlyOnePage: true,
-                              })}
-                            />
-                          </div>
-                        )
-                      }
-                    </ToolkitProvider>
+                      <TextField label="mu" variant="standard" type='number'
+                        value={newJob.parameter.fls?.mu}
+                        inputProps={{maxLength: 13,step: "0.01"}}
+                        onChange={event => {
+                          if (newJob.parameter.fls?.mu !== event.target.value) {
+                            setNewJob({ ...newJob, parameter: { ...newJob.parameter, fls: { ...newJob.parameter.fls, mu: parseFloat(event.target.value) } } });
+                          }
+                        }}
+                      />
+                    </Box>
+                  </FormControl> 
+                   <FormControl className={classes.formControl}>
+                    <Box component="form" sx={{'& > :not(style)': { m: 1, width: '18ch' },}}
+                      noValidate
+                      autoComplete="off"
+                    >
+                      <TextField label="w" variant="standard" type='number'
+                        value={newJob.parameter.fls?.w}
+                        inputProps={{maxLength: 13,step: "0.1"}}
+                        onChange={event => {
+                          if (newJob.parameter.fls?.w !== event.target.value) {
+                            setNewJob({ ...newJob, parameter: { ...newJob.parameter, fls: { ...newJob.parameter.fls, w: parseFloat(event.target.value) } } });
+                          }
+                        }}
+                      />
+                    </Box>
+                  </FormControl> 
+                  <FormControl className={classes.formControl}>
+                    <Box component="form" sx={{'& > :not(style)': { m: 1, width: '18ch' },}}
+                      noValidate
+                      autoComplete="off"
+                    >
+                      <TextField label="tau" variant="standard" type='number'
+                        value={newJob.parameter.fls?.tau}
+                        inputProps={{maxLength: 13,step: "0.1"}}
+                        onChange={event => {
+                          if (newJob.parameter.fls?.tau !== event.target.value) {
+                            setNewJob({ ...newJob, parameter: { ...newJob.parameter, fls: { ...newJob.parameter.fls, tau: parseFloat(event.target.value) } } });
+                          }
+                        }}
+                      />
+                    </Box>
                   </FormControl>
-                </AccordionDetails>
-              </Accordion>
-              <FormControl className={classes.formControl}>
-                <FormControlLabel control={
-                  <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
-                    checked={newJob && newJob.parameter && newJob.parameter.use_hpr_blending}
-                    onChange={event => {
-                      setNewJob({ ...newJob, parameter: { ...newJob.parameter, use_hpr_blending: event.target.checked } });
-                    }}
-                  />} label={"Use HPR blending"}
-                />
-              </FormControl>
+                  <FormControl className={classes.formControl}>
+                    <Box component="form" sx={{'& > :not(style)': { m: 1, width: '18ch' },}}
+                      noValidate
+                      autoComplete="off"
+                    >
+                      <TextField label="theta" variant="standard" type='number'
+                        value={newJob.parameter.fls?.theta}
+                        inputProps={{maxLength: 13,step: "0.01"}}
+                        onChange={event => {
+                          if (newJob.parameter.fls?.theta !== event.target.value) {
+                            setNewJob({ ...newJob, parameter: { ...newJob.parameter, fls: { ...newJob.parameter.fls, theta: parseFloat(event.target.value) } } });
+                          }
+                        }}
+                      />
+                    </Box>
+                  </FormControl> 
+                  <FormControl className={classes.formControl}>
+                    <Box component="form" sx={{'& > :not(style)': { m: 1, width: '18ch' },}}
+                      noValidate
+                      autoComplete="off"
+                    >
+                      <TextField label="beta" variant="standard" type='number'
+                        value={newJob.parameter.fls?.beta}
+                        inputProps={{maxLength: 13,step: "0.01"}}
+                        onChange={event => {
+                          if (newJob.parameter.fls?.beta !== event.target.value) {
+                            setNewJob({ ...newJob, parameter: { ...newJob.parameter, fls: { ...newJob.parameter.fls, beta: parseFloat(event.target.value) } } });
+                          }
+                        }}
+                      />
+                    </Box>
+                  </FormControl> 
+                  <FormControl className={classes.formControl}>
+                    <Box component="form" sx={{'& > :not(style)': { m: 1, width: '18ch' },}}
+                      noValidate
+                      autoComplete="off"
+                    >
+                      <TextField label="cap" variant="standard" type='number'
+                        value={newJob.parameter.fls?.cap}
+                        inputProps={{maxLength: 13,step: "0.1"}}
+                        onChange={event => {
+                          if (newJob.parameter.fls?.cap !== event.target.value) {
+                            setNewJob({ ...newJob, parameter: { ...newJob.parameter, fls: { ...newJob.parameter.fls, cap: parseFloat(event.target.value) } } });
+                          }
+                        }}
+                      />
+                    </Box>
+                  </FormControl> 
+              </div>
+
+              <div id='mb_para' hidden={newJob.parameter.type_of_rating !== 'MB' || !newJob.parameter.mb
+                  || newJob.parameter.curve_id !== 58}>
+                  <FormControl className={classes.formControl}>
+                    <Box component="form" sx={{'& > :not(style)': { m: 1, width: '20ch' },}}
+                      noValidate
+                      autoComplete="off"
+                    >
+                      <TextField label="b" variant="standard" type='number'
+                        value={newJob.parameter.mb?.b}
+                        inputProps={{maxLength: 13,step: "0.01"}}
+                        onChange={event => {
+                          if (newJob.parameter.mb?.trend_factor !== event.target.value) {
+                            setNewJob({ ...newJob, parameter: { ...newJob.parameter, mb: { ...newJob.parameter.mb, b: parseFloat(event.target.value) } } });
+                          }
+                        }}
+                      />
+                    </Box>
+                  </FormControl> 
+                  <FormControl className={classes.formControl}>
+                    <Box component="form" sx={{'& > :not(style)': { m: 1, width: '20ch' },}}
+                      noValidate
+                      autoComplete="off"
+                    >
+                      <TextField label="g" variant="standard" type='number'
+                        value={newJob.parameter.mb?.g}
+                        inputProps={{maxLength: 13,step: "1"}}
+                        onChange={event => {
+                          if (newJob.parameter.mb?.trend_factor !== event.target.value) {
+                            setNewJob({ ...newJob, parameter: { ...newJob.parameter, mb: { ...newJob.parameter.mb, g: parseFloat(event.target.value) } } });
+                          }
+                        }}
+                      />
+                    </Box>
+                  </FormControl> 
+              </div>
+
             </AccordionDetails>
           </Accordion>
           <Accordion style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}

@@ -31,7 +31,7 @@ create table psold_aoi(
 );
 
 create table rating_curves(
-    ISOt varchar(50),
+    ID int not null, ---2016, 2020, or FLS, MB curve id
     Curve varchar(20),
     COVG int,
     SUBGRP int,
@@ -49,6 +49,28 @@ create table rating_curves(
     W9 float,
     W10 float,
     W11 float
+);
+
+create table fls_curves(
+	ID int primary key,
+	name varchar(255),
+	mu float,
+	w float,
+	tau float,
+	theta float,
+	beta float,
+	cap money,
+	uTgammaMean float,
+	limMean float
+);
+
+create table mb_curves(
+	ID int primary key,
+	name nvarchar(255),
+	c float,
+	b float,
+	g float,
+	cap float
 );
 
 create table pat_job(

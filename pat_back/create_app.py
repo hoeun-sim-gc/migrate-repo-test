@@ -119,6 +119,11 @@ def rename_job(job_id:int, new_name:str) -> str:
     PatHelper.rename_job(job_id, new_name)
     return "ok"
 
+@app.put('/api/public-job/{job_id}')
+def public_job(job_id:int) -> str:
+    PatHelper.public_job(job_id)
+    return "ok"    
+
 @app.delete('/api/job/{job_id}')
 def delete(job_id: int):
     df= PatHelper.delete(job_id)
