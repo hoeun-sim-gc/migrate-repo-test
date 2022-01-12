@@ -89,14 +89,15 @@ class Psold:
         else:
             DT = DT.fillna({'Retention':0,'Participation':1,'TIV':0})
 
-        DT['Lx'] = (DT.Limit + (DT.Retention if ded_type == DedCode.Retains_Limit else 0)).fillna(0)
-        DT['Policy'] = DT.Retention + np.maximum(DT.Lx - DT.Retention, 0) * (DT['LocStack'].isna() * addt_cvg + 1) 
-        DT['EffLmt'] = np.minimum(DT.TIV, DT.Lx) * (addt_cvg + 1) 
+        DT['Exh'] = (DT.Limit + (DT.Retention if ded_type == DedCode.Retains_Limit else 0)).fillna(0)
+        DT['Policy'] = DT.Retention + np.maximum(DT.Exh - DT.Retention, 0) * (DT['LocStack'].isna() * addt_cvg + 1) 
+        DT['EffLmt'] = np.minimum(DT.TIV, DT.Exh) * (addt_cvg + 1) 
         DT['AOIr'] = np.searchsorted(self.aoi_split[1:-1], DT.TIV / adjf, side='left') # will be one less than the document which start from 1
 
         m = len(DT)
         wgt = pd.DataFrame(data = np.zeros((m, self.num_mix)), columns=[f'W{i}' for i in range (1, self.num_mix + 1)])
-        mask_rg  = DT.RatingGroup.isna().to_numpy() #! important: Have to convert to numpy, otherwise can mess up if DT is not in natrual order  
+        mask_rg = ( DT.RatingGroup.isna() | (DT.RatingGroup <=0) | (DT.RatingGroup > self.max_rg)
+                ).to_numpy() #! important: Have to convert to numpy, otherwise can mess up if DT is not in natrual order  
         if any(mask_rg):
             wt, _ = self.get_blending_weights(df_wts, addt_cvg) 
             wgt.loc[mask_rg] = wt[DT.loc[mask_rg,'AOIr'],:]

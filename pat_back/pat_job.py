@@ -43,7 +43,7 @@ class PatJob:
 
         self.valid_rules = ValidRule(self.para['valid_rules']) if 'valid_rules' in self.para else ValidRule(0)     
         self.psold_blending = np.array(self.para['psold_blending']) if 'psold_blending' in self.para else None
-        self.hpr_blending = self.para['hpr_blending'] if 'hpr_blending' in self.para else None
+        self.use_hpr_blending = self.para['use_hpr_blending'] if 'use_hpr_blending' in self.para else None
             
         self.rating_type= self.para['type_of_rating']
         self.curve_type = self.para['curve_type'] if 'curve_type' in self.para else 'Gross'
@@ -164,7 +164,7 @@ class PatJob:
                         PseudoPolicyID, ACCGRPID, OriginalPolicyID, PolRetainedLimit, PolLimit, 
                         PolParticipation, PolRetention, PolPremium, LocationIDStack, 
                         occupancy_scheme, occupancy_code, Building, Contents, BI, AOI, 
-                        0 RatingGroup,
+                        null RatingGroup,
                         0 as flag
                     from pat_pseudo_policy 
                     where job_id = {ref_job} and data_type = 1""")  
@@ -490,11 +490,29 @@ class PatJob:
                 aoi.append("COALESCE(b.BI, a.BI)")
             aoi=" + ".join(aoi)
 
-            blending = self.psold_blending is not None and np.any(self.psold_blending > 0)  
-            def_reg = np.argmax(self.psold_blending > 0) + 1 if blending and np.sum(self.psold_blending > 0) == 1 else 0
-            rg_flg = '' if blending else f''' + (case when COALESCE(b.RatingGroup, c.PSOLD_RG, 0) < {min_psold_rg} 
-                                        or COALESCE(b.RatingGroup, c.PSOLD_RG, 0) > {max_psold_rg}
-                                        then {PatFlag.FlagLocRG} else 0 end)'''
+            blending = self.psold_blending is not None and np.any(
+                self.psold_blending > 0)
+            def_rg = np.argmax(self.psold_blending > 0) + 1 if blending and \
+                np.sum(self.psold_blending > 0) == 1 else None
+            # def_rg supposed to be always in the range
+
+            if def_rg:
+                rg_col = f"""case when COALESCE(b.RatingGroup, c.PSOLD_RG, {def_rg}) < {min_psold_rg}
+                    or COALESCE(b.RatingGroup, c.PSOLD_RG, {def_rg}) > {max_psold_rg} then {def_rg}
+                    else COALESCE(b.RatingGroup, c.PSOLD_RG, {def_rg}) end"""
+                rg_flg = ''
+            else:
+                rg_col = f"""case when COALESCE(b.RatingGroup, c.PSOLD_RG) is null 
+                    or COALESCE(b.RatingGroup, c.PSOLD_RG) < {min_psold_rg} 
+                    or COALESCE(b.RatingGroup, c.PSOLD_RG) > {max_psold_rg} then null
+                    else COALESCE(b.RatingGroup, c.PSOLD_RG) end"""
+                if blending:
+                    rg_flg=''    
+                else:
+                    rg_flg = f"""+ (case when COALESCE(b.RatingGroup, c.PSOLD_RG) is null 
+                        or COALESCE(b.RatingGroup, c.PSOLD_RG) < {min_psold_rg} 
+                        or COALESCE(b.RatingGroup, c.PSOLD_RG) > {max_psold_rg} 
+                        then {PatFlag.FlagLocRG} else 0 end)"""
 
             cur.execute(f"""insert into pat_pseudo_policy 
                             select a.job_id, 0 as data_type, 
@@ -518,7 +536,7 @@ class PatJob:
                                 COALESCE(b.Contents, a.Contents) as Contents,
                                 COALESCE(b.BI, a.BI) as BI,
                                 COALESCE(b.AOI, {aoi}) as AOI,
-                                COALESCE(b.RatingGroup, c.PSOLD_RG, {def_reg}) as RatingGroup,
+                                {rg_col} as RatingGroup,
                                 
                                 (case when COALESCE(b.PolLimit, a.PolLimit) is null 
                                             or COALESCE(b.PolRetention, a.PolRetention) is null 
@@ -541,7 +559,6 @@ class PatJob:
                                         then {PatFlag.FlagPolLimitParticipation} else 0 end) 
 
                                     + (case when COALESCE(b.AOI, {aoi}) < 0 then {PatFlag.FlagLocNA} else 0 end)
-                                    
                                     {rg_flg}  as flag                                
                             from pat_pseudo_policy a 
                                 left join (select * from pat_pseudo_policy where job_id = {self.job_id} and data_type = 2) b 
@@ -788,7 +805,7 @@ class PatJob:
                 df_wts = pd.read_sql_query(f"""select RG, HPRTable from psold_weight order by rg""", conn).set_index('RG')
                 df_wts['PremiumWeight'] = self.psold_blending
                 
-                if not self.hpr_blending: 
+                if not self.use_hpr_blending: 
                     df_wts.drop(columns=['HPRTable'])
                 else:
                     df_hpr = pd.read_sql_query(f"""select Limit, Weight from psold_hpr_weight order by Limit""", conn)
