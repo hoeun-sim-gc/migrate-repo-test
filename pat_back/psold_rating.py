@@ -21,7 +21,6 @@ class PsoldRating:
         self.trend_factor = float(params['trend_factor']) if 'trend_factor' in params else (
             1.05 if self.curve_id == 2020 else 1.035)
         
-        
         ##
         self.__psold_curves = df_psold.set_index(['EG', 'RG']).sort_index()
         self.__aoi_split = aoi_split
@@ -63,11 +62,11 @@ class PsoldRating:
 
         return (w * -np.expm1(-x[..., np.newaxis] @ (1/mu[np.newaxis, :]))) @ mu
 
-    def calculate_las(self, DT: pd.DataFrame, df_wts: pd.DataFrame = None, df_hpr: pd.DataFrame = None, 
+    def calculate_las(self, DT: pd.DataFrame, def_rtg:int = None, df_wts: pd.DataFrame = None, df_hpr: pd.DataFrame = None, 
             curr_adj = 1.0, ded_type='Retains_Limit', addt_cvg=2,
             avg_acc_date=datetime(2022, 1, 1)) -> pd.DataFrame:
         """
-            DT: ['PolicyID', 'Limit', 'Retention', 'Participation', 'PolPrem', 'TIV', 'RatingGroup', 'Stack']
+            DT: ['PolicyID', 'Limit', 'Retention', 'TIV', 'RatingGroup', 'Stack']
                 When return add two columns: PolLAS, DedLAS
             df_wts: ['RG', 'PremiumWeight']. If use HPR we need additional column 'HPRTable'
             df_hpr: ['Limit', 'Weight']
@@ -79,10 +78,12 @@ class PsoldRating:
             df_hpr.sort_values('Limit',inplace = True)
 
         ded = DEDDUCT_TYPE[ded_type]
-        DT = DT.fillna({'Retention': 0, 'Participation': 1, 'TIV': 0})
-        DT['Exh'] = (DT.Limit + (DT.Retention if ded == DEDDUCT_TYPE.Retains_Limit else 0)).fillna(0)
-        DT['Policy'] = DT.Retention + np.maximum(DT.Exh - DT.Retention, 0) * (DT['Stack'].isna() * addt_cvg + 1)
-        DT['EffLmt'] = np.minimum(DT.TIV, DT.Exh) * (addt_cvg + 1)
+        DT = DT.fillna({'Retention': 0, 'TIV': 0})
+        if def_rtg: DT.fillna({'RatingGroup': def_rtg}, inplace = True)
+        DT['Exh'] = (DT.Limit + (DT.Retention if ded == DEDDUCT_TYPE.Retains_Limit else 0))
+        acp1 = addt_cvg + 1
+        DT['Policy'] = DT.Retention + np.maximum(DT.Exh - DT.Retention, 0) * np.where(DT['Stack'].isna(), acp1, 1)
+        DT['EffLmt'] = np.minimum(DT.TIV, DT.Exh) * acp1
         DT.drop(columns=['Exh'], inplace = True)
        
         DT['AOIr'] = np.searchsorted(self.__aoi_split[1:-1], DT.TIV / adjf, side='left')

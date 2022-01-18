@@ -10,12 +10,13 @@ from pandas.core.frame import DataFrame
 import pyodbc
 from bcpandas import SqlCreds, to_sql
 
-from pat_back.fls_rating import FlsRating
 
 from .settings import AppSettings
 from .pat_flag import PAT_FLAG, PERIL_SUBGROUP, VALIDATE_RULE, COVERAGE_TYPE, DEDDUCT_TYPE, RATING_TYPE
 
 from .psold_rating import PsoldRating
+from pat_back.fls_rating import FlsRating
+from pat_back.mb_rating import MbRating
 
 class PatJob:
     """Class to represent a PAT analysis"""
@@ -60,16 +61,12 @@ class PatJob:
             self.user_email = self.para['user_email'] if 'user_email' in self.para else None
 
             # single blending
-            self.default_rtg = None
-            if self.rating_type != RATING_TYPE.PSOLD:
-                self.default_rtg = self.curve_id
-            elif "blending" in self.para['psold']:
-                b = np.array(self.para['psold']['blending'])
-                if np.all( b <= 0):
-                    del self.para['psold']['blending']
-                elif np.sum ( b > 0) == 1:
-                    self.default_rtg = np.argmax( b > 0) + 1
-                    del self.para['psold']['blending']     
+            if self.rating_type == RATING_TYPE.PSOLD:
+                if "blending" in self.para['psold']:
+                    b = np.array(self.para['psold']['blending'])
+                    if np.all( b <= 0):
+                        del self.para['psold']['blending']
+                                    
         except:
             self.job_id = 0
             logging.warning('Read job parameter error!')
@@ -522,23 +519,19 @@ class PatJob:
             rg_col = ''
             rg_flg = ''
             if self.rating_type != RATING_TYPE.PSOLD:
-                rg_col = f"""COALESCE(b.RatingGroup, {self.default_rtg})"""
+                rg_col = "b.RatingGroup"
             else:
                 rg_tab = """left join psold_mapping c 
                     on COALESCE(b.occupancy_scheme, a.occupancy_scheme) = c.OCCSCHEME 
                     and COALESCE(b.occupancy_code, a.occupancy_code) =  c.OCCTYPE
                     """
-                if self.default_rtg:
-                    rg_col = f"""case when COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_rtg}) < {min_psold_rg}
-                            or COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_rtg}) > {max_psold_rg} then {self.default_rtg}
-                            else COALESCE(b.RatingGroup, c.PSOLD_RG, {self.default_rtg}) end"""
-                else:
-                    rg_col = f"""case when COALESCE(b.RatingGroup, c.PSOLD_RG) is null 
+                rg_col = f"""case when COALESCE(b.RatingGroup, c.PSOLD_RG) is null 
                             or COALESCE(b.RatingGroup, c.PSOLD_RG) < {min_psold_rg} 
                             or COALESCE(b.RatingGroup, c.PSOLD_RG) > {max_psold_rg} then null
                             else COALESCE(b.RatingGroup, c.PSOLD_RG) end"""
-                    if 'blending' not in self.para['psold']:
-                        rg_flg = f"""+ (case when COALESCE(b.RatingGroup, c.PSOLD_RG) is null 
+                
+                if "blending" not in self.para['psold']:
+                    rg_flg = f"""+ (case when COALESCE(b.RatingGroup, c.PSOLD_RG) is null 
                                 or COALESCE(b.RatingGroup, c.PSOLD_RG) < {min_psold_rg} 
                                 or COALESCE(b.RatingGroup, c.PSOLD_RG) > {max_psold_rg} 
                                 then {PAT_FLAG.FlagLocRG} else 0 end)"""
@@ -849,20 +842,24 @@ class PatJob:
                     and COVG = {self.coverage_type} 
                     and SUBGRP = {PERIL_SUBGROUP[self.para['psold']['peril_subline']]}
                 """, conn).drop(columns=['ID', 'CurveType', 'COVG', 'SUBGRP'])
+            if df_psold is None: return
 
             if 'blending' in self.para['psold']:
-                df_wts = pd.read_sql_query(f"""select RG, HPRTable from psold_weight order by rg""", conn)
-                df_wts['PremiumWeight'] = np.array(self.para['psold']['blending'])
+                def_rtg = None
+                b = np.array(self.para['psold']['blending'])
+                if np.sum ( b > 0) == 1:
+                    def_rtg = np.argmax( b > 0) + 1
+                else: 
+                    df_wts = pd.read_sql_query(f"""select RG, HPRTable from psold_weight order by rg""", conn)
+                    df_wts['PremiumWeight'] = b
 
-                if 'hpr_blending' in self.para['psold'] and self.para['psold']['hpr_blending']:
-                    df_hpr = pd.read_sql_query(f"""select Limit, Weight from psold_hpr_weight order by Limit""", conn)
-                else:
-                    df_wts.drop(columns=['HPRTable'])
-
-        if df_psold is None: return
+                    if 'hpr_blending' in self.para['psold'] and self.para['psold']['hpr_blending']:
+                        df_hpr = pd.read_sql_query(f"""select Limit, Weight from psold_hpr_weight order by Limit""", conn)
+                    else:
+                        df_wts.drop(columns=['HPRTable'])
 
         psold = PsoldRating(self.curve_id, df_psold, aoi_split, **self.para['psold'])
-        return psold.calculate_las(DT, df_wts, df_hpr,
+        return psold.calculate_las(DT, def_rtg, df_wts, df_hpr,
                     ded_type=self.ded_type.name,
                     avg_acc_date=self.avg_acc_date,
                     addt_cvg=self.addt_cvg)
@@ -871,19 +868,31 @@ class PatJob:
         df_fls = None
         with pyodbc.connect(self.job_conn) as conn:
             df_fls = pd.read_sql_query(f"""select ID, mu, w, tau, theta, beta, cap, uTgammaMean, limMean
-                from fls_curves where ID = {self.curve_id}""", conn).set_index('ID')
-        
-        if df_fls is None: return
-        elif len(df_fls) <=0: df_fls.loc[self.curve_id] = self.para['fls']
+                from fls_curves order by ID""", conn).set_index('ID')
+            if df_fls is None: return
 
         para = self.para['fls'] if 'fls' in self.para else {}
+        if para and self.curve_id == 57:
+            df_fls.loc[self.curve_id] = df_fls.loc[self.curve_id].to_dict() | para
+
         fls = FlsRating(self.curve_id, df_fls, **para)
-        return fls.calculate_las(DT, ded_type=self.ded_type.name, addt_cvg=self.addt_cvg)
+        return fls.calculate_las(DT, 
+            ded_type = self.ded_type.name, 
+            addt_cvg = self.addt_cvg)
 
     def __allocation_mb(self, DT):
-        # with pyodbc.connect(self.job_conn) as conn:
-        #     df_mb = pd.read_sql_query(f"""select ID, c, b, g, cap
-        #         from fls_curves where ID ={self.curve_id}""", conn)
-        # para = self.para['mb'] if 'mb' in self.para else {}
-        # self.para['mb'][set_mb_data(df_mb)
-        pass
+        df_mb = None
+        with pyodbc.connect(self.job_conn) as conn:
+            df_mb = pd.read_sql_query(f"""select ID, b, g, cap from mb_curves 
+                order by ID""", conn).set_index('ID')
+            if df_mb is None: return
+
+        para = self.para['mb'] if 'mb' in self.para else {}
+        if para and self.curve_id == 58:
+            df_mb.loc[self.curve_id] = df_mb.loc[self.curve_id].to_dict() | para
+
+        mb = MbRating(self.curve_id, df_mb, **para)
+        return mb.calculate_las(DT, 
+            ded_type = self.ded_type.name, 
+            addt_cvg = self.addt_cvg, 
+            custom_type = int(para['custom_type']) if 'custom_type' in para else 1)

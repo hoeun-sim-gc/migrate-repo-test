@@ -219,7 +219,8 @@ export default function JobPage(props) {
       beta:0.0,
       cap:0.0
     })
-  const [saveMb, setSaveMb] = useState({ 
+  const [saveMb, setSaveMb] = useState({
+      custom_type: 1, 
       b:0.0,
       g:0.0
     })
@@ -533,22 +534,32 @@ export default function JobPage(props) {
         console.log("Need PSOLD parameter!");
         return false;
       };
+      if(job.psold.blending){
+         if(job.psold.blending.every(w=> w<=0)) {
+           delete job.psold.blending;
+         }
+      }
       if (job.fls) delete job.fls;
       if (job.mb) delete job.mb;
     }
     else if( job.type_of_rating == 'FLS'){
       if(job.curve_id==57 && !job.fls){
-        console.log("Need FLS parameter!");
-        return false;
-      };
+          console.log("Need FLS parameter!");
+          return false;
+      }
       if (job.psold) delete job.psold;
       if (job.mb) delete job.mb;
     }
     else if( job.type_of_rating=='MB'){
-      if(job.curve_id==58 && !job.mb){
+      if(!job.mb){
         console.log("Need MB parameter!");
         return false;
       }
+      else if(job.curve_id!=58){
+        delete job.mb.b;
+        delete job.mb.g;
+      }
+
       if (job.psold) delete job.psold;
       if (job.fls) delete job.fls;
     }
@@ -1700,8 +1711,32 @@ export default function JobPage(props) {
                   </FormControl> 
               </div>
 
-              <div id='mb_para' hidden={newJob.parameter.type_of_rating !== 'MB' || !newJob.parameter.mb
-                  || newJob.parameter.curve_id !== 58}>
+              <div id='mb_para' hidden={newJob.parameter.type_of_rating !== 'MB'}>
+                <FormControl className={classes.formControl}>
+                  <InputLabel shrink id="mb-placeholder-label">
+                    Custom Type
+                  </InputLabel>
+                  <Select
+                    labelId="mb-placeholder-label"
+                    id="mb-placeholder"
+                    value={newJob.parameter.mb?.custom_type}
+                    defaultValue={1}
+                    onChange={event => {
+                      if (newJob.parameter.mb?.custom_type !== event.target.value) {
+                        if (newJob.parameter.mb?.custom_type !== event.target.value) {
+                          setNewJob({ ...newJob, parameter: { ...newJob.parameter, mb: { ...newJob.parameter.mb, custom_type: parseInt(event.target.value) } } });
+                        }
+
+                      }
+                    }}
+                  >
+                    <MenuItem value={1}>{ }Custom Type #1: </MenuItem>
+                    <MenuItem value={2}>{ }Custom Type #2: </MenuItem>
+                    <MenuItem value={3}>{ }Custom Type #3: </MenuItem>
+                  </Select>
+                </FormControl>
+                <div id='mb_para1' hidden={newJob.parameter.type_of_rating !== 'MB' || !newJob.parameter.mb
+                      || newJob.parameter.curve_id !== 58}>
                   <FormControl className={classes.formControl}>
                     <Box component="form" sx={{'& > :not(style)': { m: 1, width: '20ch' },}}
                       noValidate
@@ -1711,7 +1746,7 @@ export default function JobPage(props) {
                         value={newJob.parameter.mb?.b}
                         inputProps={{maxLength: 13,step: "0.01"}}
                         onChange={event => {
-                          if (newJob.parameter.mb?.trend_factor !== event.target.value) {
+                          if (newJob.parameter.mb?.b !== event.target.value) {
                             setNewJob({ ...newJob, parameter: { ...newJob.parameter, mb: { ...newJob.parameter.mb, b: parseFloat(event.target.value) } } });
                           }
                         }}
@@ -1727,13 +1762,14 @@ export default function JobPage(props) {
                         value={newJob.parameter.mb?.g}
                         inputProps={{maxLength: 13,step: "1"}}
                         onChange={event => {
-                          if (newJob.parameter.mb?.trend_factor !== event.target.value) {
+                          if (newJob.parameter.mb?.g !== event.target.value) {
                             setNewJob({ ...newJob, parameter: { ...newJob.parameter, mb: { ...newJob.parameter.mb, g: parseFloat(event.target.value) } } });
                           }
                         }}
                       />
                     </Box>
                   </FormControl> 
+                </div>
               </div>
 
             </AccordionDetails>

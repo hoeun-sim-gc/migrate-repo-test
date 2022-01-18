@@ -35,14 +35,6 @@ class FlsRating:
             self.__fls_curves.loc[mask,['uTgammaMean','limMean']] = df[['uTgammaMean','limMean']]
     
     def __fls_las(self, x, mu, w, tau, theta, beta, cap, uTgammaMean):
-        # ta =  mu * - np.expm1(-x / mu)
-        # tb = uTgammaMean * gamma.cdf((x / theta) ** tau, (beta + 1) / tau
-        #                 ) + x * gamma.sf((x / theta) ** tau, beta / tau)
-        # tc = mu  * - np.expm1(-cap / mu)
-        # td = uTgammaMean * gamma.cdf((cap / theta) ** tau, (beta + 1) / tau
-        #                 ) + cap * gamma.sf((cap / theta) ** tau, beta / tau)
-        # return (w * ta + (1 - w) * tb) / (w * tc + (1 - w) * td)
-        
         return (w * (mu * - np.expm1(-x / mu)
             ) + (1 - w) * (uTgammaMean * gamma.cdf((x / theta) ** tau, (beta + 1) / tau
                         ) + x * gamma.sf((x / theta) ** tau, beta / tau))) / (
@@ -52,31 +44,27 @@ class FlsRating:
         
         
     
-    def calculate_las(self, DT: pd.DataFrame, ded_type ='Retains_Limit', addt_cvg = 0) -> pd.DataFrame:
+    def calculate_las(self, DT: pd.DataFrame, ded_type ='Retains_Limit', addt_cvg = None) -> pd.DataFrame:
         """
-            DT: ['PolicyID', 'Limit', 'Retention', 'Participation', 'PolPrem', 'TIV', 'RatingGroup', 'Stack']
+            DT: ['PolicyID', 'Limit', 'Retention', 'TIV', 'RatingGroup', 'Stack']
                 When return add two columns: PolLAS, DedLAS
         """
-        
-        #? the below logic need to be cleaned up
         ded = DEDDUCT_TYPE[ded_type]
-        DT = DT.fillna({'Retention': 0, 'Participation': 1, 'TIV': 0, 'RatingGroup': self.curve_id})
+        DT = DT.fillna({'Retention': 0, 'TIV': 0, 'RatingGroup': self.curve_id})
         DT = DT.merge(self.__fls_curves, how='left', left_on='RatingGroup', right_index = True)
-
-        DT['cap1'] = addt_cvg + 1
-        DT.loc[DT['cap1'] <= 1, ['cap1']] = DT.loc[DT['cap1'] <= 1, 'cap']
-
-        DT['Exh'] = (DT.Limit + (DT.Retention if ded == DEDDUCT_TYPE.Retains_Limit else 0)).fillna(0)
-        DT['Policy'] = DT.Retention + np.maximum(DT.Exh - DT.Retention, 0) * (DT['Stack'].isna() * (DT['cap1']-1) + 1)
-        DT['EffLmt'] = np.minimum(DT.TIV, DT.Exh) * DT['cap1']
         
-        x = np.minimum(np.minimum(DT.Policy, DT.EffLmt) / DT.TIV, DT.cap).fillna(0)
+        DT['acp1'] = addt_cvg + 1 if addt_cvg else DT['cap']
+        DT['Exh'] = (DT.Limit + (DT.Retention if ded == DEDDUCT_TYPE.Retains_Limit else 0))
+        DT['Policy'] = DT.Retention + np.maximum(DT.Exh - DT.Retention, 0) * np.where(DT['Stack'].isna(), DT['acp1'], 1)
+        DT['EffLmt'] = np.minimum(DT.TIV, DT.Exh) * DT['acp1']
+              
+        x = np.minimum(np.minimum(DT.Policy, DT.EffLmt) / DT.TIV, DT.cap)
         DT['PolLAS'] = self.__fls_las(x, DT['mu'], DT['w'], DT['tau'], DT['theta'], 
-            DT['beta'], DT['cap'], DT['uTgammaMean'])*DT['TIV'].fillna(0)
+            DT['beta'], DT['cap'], DT['uTgammaMean'])*DT['TIV']
 
-        x = np.minimum(np.minimum(DT.Retention, DT.EffLmt) / DT.TIV, DT.cap).fillna(0)
+        x = np.minimum(np.minimum(DT.Retention, DT.EffLmt) / DT.TIV, DT.cap)
         DT['DedLAS'] = self.__fls_las(x, DT['mu'], DT['w'], DT['tau'], DT['theta'], 
-            DT['beta'], DT['cap'], DT['uTgammaMean'])*DT['TIV'].fillna(0)
+            DT['beta'], DT['cap'], DT['uTgammaMean'])*DT['TIV']
 
         DT.drop(columns=['Exh'], inplace = True)
         DT.drop(columns = self.__fls_curves.columns, inplace = True)
