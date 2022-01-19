@@ -12,6 +12,7 @@ import paginationFactory from 'react-bootstrap-table2-paginator';
 import ToolkitProvider, { Search } from 'react-bootstrap-table2-toolkit';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-bootstrap-table-next/dist/react-bootstrap-table2.min.css';
+import cellEditFactory from 'react-bootstrap-table2-editor';
 
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -241,6 +242,15 @@ export default function HomePage(props) {
       }
     });    
   };
+
+  const handleRenameJob = (job_id, name)=>{
+    let request = '/api/rename/' + job_id+"/"+name;
+    fetch(request,{method: "PUT"}).then(response => {
+      if (response.ok) {
+        setLoadingJobList(true);
+      }
+    });    
+  };
   
   const handleRunJob = (id)=>{
     let request = '/api/run/' + id;
@@ -330,6 +340,7 @@ export default function HomePage(props) {
     return  {
       mode: sel,
       clickToSelect: true,
+      clickToEdit: true,
       style: { backgroundColor: theme.palette.action.selected, fontWeight: 'bold' },
       onSelect: (row, isSelect) => {
         if (isSelect) {
@@ -436,6 +447,9 @@ export default function HomePage(props) {
                     </Grid>
                     <BootstrapTable classes={classes.table}
                       ref={tableRef} 
+                      cellEdit={ cellEditFactory({ mode: 'dbclick', afterSaveCell :(oldValue, newValue, row, column)=>{
+                        handleRenameJob(row.job_id, newValue);
+                      } }) }
                       {...props.baseProps}
                       rowClasses={classes.table_row}
                       selectRow={get_select_row()}

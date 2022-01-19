@@ -2,15 +2,18 @@ import json
 import logging
 from datetime import datetime
 from io import BytesIO
+import uuid
 import zipfile
 import numpy as np
 import pandas as pd
 import pyodbc
 from bcpandas import SqlCreds, to_sql
 
+from pat_back.pat_job import PatJob
+
 from .pat_worker import PatWorker
 from .settings import AppSettings
-from .pat_flag import PatFlag
+from .pat_flag import PAT_FLAG
 
 class PatHelper:
     """Class to manage PAT jobs"""
@@ -44,6 +47,28 @@ class PatHelper:
         return 0
     
     @classmethod
+    def submit_run(cls, job_para, data):
+        if (not job_para) or (data is None):
+            return "Parameter missing"
+        if len(data) > 1000000:
+            return "Job too big"
+
+        for c in ['PolicyID', 'Limit', 'Retention', 'PolPrem', 'TIV', 'Stack', 'RatingGroup']:
+            if c not in data:
+                return 'Input data format error'
+        
+        if 'LossRatio' not in data and 'loss_alae_ratio' in job_para:
+            data['LossRatio'] = float(job_para['loss_alae_ratio'])        
+
+        job = PatJob(param=job_para)
+        if job.job_id > 0:
+            df = job.allocate_premium(data)
+            if df is not None and len(df) > 0:
+                return df
+
+        return 'Error'
+    
+    @classmethod
     def __register_job(cls, job_para):
         job_guid = job_para['job_guid']
         with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
@@ -52,7 +77,7 @@ class PatHelper:
                                 begin 
                                 insert into pat_job values (next value for pat_analysis_id_seq, '{job_guid}', 
                                     '{(job_para['job_name'] if 'job_name' in job_para else 'No Name')}',
-                                    '{dt}', '{dt}', 'received',0,
+                                    '{dt}', null,null, 'received',0,
                                     '{(job_para['user_name'] if 'user_name' in job_para else 'No Name')}',
                                     '{(job_para['user_email'] if 'user_email' in job_para else '')}',
                                     '{json.dumps(job_para).replace("'", "''")}')
@@ -105,7 +130,7 @@ class PatHelper:
     @classmethod
     def get_job_list(cls, user:str=None):
         with pyodbc.connect(cls.job_conn) as conn:
-            u_str= f"where lower(user_email) = '{user}'" if user else ""
+            u_str= f"where user_email is null or lower(user_email) = '{user}'" if user else ""
             df = pd.read_sql_query(f"""select job_id job_id, job_guid, job_name, 
                     receive_time, start_time, finish_time, status, user_name, user_email
                 from pat_job
@@ -150,7 +175,7 @@ class PatHelper:
             cur.execute(f"""select flag, count(*) from pat_pseudo_policy where job_id = {job_id} and data_type = 0 and flag!=0 group by flag""")
             rows = cur.fetchall()
             for row in rows:
-                summary.append({'item': f"* {PatFlag.describe(row[0])}", 'cnt': row[1]})
+                summary.append({'item': f"* {PAT_FLAG.describe(row[0])}", 'cnt': row[1]})
 
         return summary
 
@@ -169,13 +194,13 @@ class PatHelper:
                         OriginalPolicyID as Original_Policy_ID,
                         a.PseudoPolicyID, 
                         PseudoLayerID as Pseudo_Layer_ID,
-                        PolLAS as PolicyLAS,
-                        DedLAS as DeductibleLAS
+                        PolLAS as PolicyLimitLAS,
+                        DedLAS as PolicyAttachLAS
                     from pat_premium a
                         left join pat_pseudo_policy b on a.job_id = b.job_id and a.PseudoPolicyID = b.PseudoPolicyID
                             and b.job_id in {jlst} and b.data_type = 0
                     where a.job_id in {jlst}
-                    order by a.job_id, b.LocationIDStack, b.OriginalPolicyID, b.ACCGRPID""", conn)
+                    order by a.job_id, b.LocationIDStack, b.OriginalPolicyID, Retention""", conn)
 
             if len(job_lst) <= 1:
                 df =df.drop(columns=['job_id'])
@@ -201,7 +226,7 @@ class PatHelper:
                 order by PseudoPolicyID""",conn)
             if len(df1) > 0:
                 df = df1[['flag']].drop_duplicates(ignore_index=True)
-                df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
+                df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
                 df1 = df1.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
             df2 = pd.read_sql_query(f"""select * from pat_facultative 
@@ -209,7 +234,7 @@ class PatHelper:
                 order by PseudoPolicyID""",conn)
             if len(df2) > 0:
                 df = df2[['flag']].drop_duplicates(ignore_index=True)
-                df["Notes"] = df.apply(lambda x: PatFlag.describe(x[0]), axis=1)
+                df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
                 df2 = df2.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
         return (df1, df2)
@@ -250,6 +275,31 @@ class PatHelper:
                     parameters = '{json.dumps(para).replace("'", "''")}'
                     where job_id = {job_id};""")
             cur.commit()
+
+    @classmethod
+    def rename_job(cls, job_id, new_name):
+        job =cls.get_job(job_id)
+        if job:
+            para = json.loads(job['parameters'])
+            if para:
+                para['job_name'] = new_name
+                with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+                    cur.execute(f"""update pat_job set job_name = '{new_name}',
+                            parameters = '{json.dumps(para).replace("'", "''")}'
+                            where job_id = {job_id};""")
+                    cur.commit()
+
+        # with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+        #     cur.execute(f"""update pat_job set job_name = '{new_name}'
+        #             where job_id = {job_id};""")
+        #     cur.commit()
+
+    @classmethod
+    def public_job(cls, job_id):
+        with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+            cur.execute(f"""update pat_job set user_name = 'developer',
+                user_email = null where job_id = {job_id};""")
+            cur.commit()        
 
     @classmethod
     def cancel_jobs(cls, lst):

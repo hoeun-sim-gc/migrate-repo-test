@@ -1,5 +1,5 @@
+from datetime import datetime
 import numpy as np
-import pandas as pd
 from enum import IntFlag
 
 flag_descrs = {
@@ -18,7 +18,7 @@ flag_descrs = {
     }
     #'NoteFacOverexposed1' : "Fac exposure exceeds policy exposure",
 
-class PatFlag(IntFlag):
+class PAT_FLAG(IntFlag):
     FlagPolLocDupe = 0x00000001
     FlagPolNA = 0x00000002
     FlagPolLimitParticipation = 0x00000004
@@ -46,8 +46,39 @@ class PatFlag(IntFlag):
         if np.any(mask):
             df.loc[mask,['flag']] |= self.value
 
-class ValidRule(IntFlag):
+class VALIDATE_RULE(IntFlag):
     ValidAoi = 0x00000001   # If multiple AOIs, use the highest
     ValidFac100 = 0x00000002   # Cap FAC to 100%
 
     ValidContinue = 0x40000000   # Continue with unhandled error (item removed)
+
+class COVERAGE_TYPE(IntFlag):
+    Building = 1,
+    Contents = 2,
+    BI = 4,
+
+    Building_Contents = 3, 
+    Building_Contents_BI = 7,
+    Building_Only = 1,
+    Contents_Only = 2 
+
+
+class PERIL_SUBGROUP(IntFlag):
+    Fire = 1,
+    Wind = 2, 
+    Special_Causes = 3,
+    All_Perils = 4
+
+class DEDDUCT_TYPE(IntFlag):
+    Retains_Limit = 1,
+    Erodes_Limit = 2
+
+class RATING_TYPE(IntFlag):
+    PSOLD = 1,
+    FLS = 2
+    MB = 3
+
+class PSOLD_PERSP(IntFlag):
+    Gross = 1,
+    Net = 2
+

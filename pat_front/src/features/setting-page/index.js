@@ -8,7 +8,6 @@ import "./index.css";
 export default function Settings(props) {
   const [checked, setChecked] = React.useState(props.theme==='dark');
 
-  const [newServer, setNewServer]=useState('');
   const [newPsize, setNewPsize]=useState(20);
 
   React.useEffect(() => {
@@ -37,20 +36,6 @@ export default function Settings(props) {
     setChecked(!checked);
   };
 
-  function handleSubmit(event) {
-    event.preventDefault();
-
-    if(newServer.length > 0) {
-      let lst= [];
-      let js= localStorage.getItem('Server_List')
-      if (js) lst = JSON.parse(js);
-      lst.push(newServer.toUpperCase())
-
-      lst = [...new Set(lst)].sort();
-      localStorage.setItem("Server_List", JSON.stringify(lst));
-    }
-  }
-
   return (
     <div className="Settings">
       <FormGroup>
@@ -59,27 +44,6 @@ export default function Settings(props) {
           label="Browse in dark mode"
         />
       </FormGroup>
-      <Form onSubmit={handleSubmit}>
-        <div className="row align-items-end" >
-          <div className="col">
-            <FormGroup>
-              <label className="float-left">Add Server:</label>
-              <FormControl
-                  value={newServer}
-                  placeholder="Enter Server Name"
-                  onChange={e => setNewServer(e.target.value)} />
-            </FormGroup>
-          </div>
-          <div className="col">
-            <FormGroup>
-              <Button id='add_server' type="submit">
-                Add
-              </Button>
-            </FormGroup>
-          </div>
-          <div className="col" />
-        </div>
-      </Form>
       <Form>
         <div className="row align-items-end" >
           <div className="col">
