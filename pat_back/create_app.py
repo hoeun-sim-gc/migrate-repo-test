@@ -5,14 +5,24 @@ import logging
 import json
 from logging.config import fileConfig
 
+import pandas as pd
+
 from fastapi import FastAPI,Request, staticfiles
 from fastapi.responses import RedirectResponse,StreamingResponse
+
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from .pat_worker import PatWorker
 from .pat_helper import PatHelper
 from .sql_helper import SqlHelper
 
-app = FastAPI()
+middleware = [
+    Middleware(GZipMiddleware, minimum_size = 1000)
+]
+
+app = FastAPI(middleware=middleware)
 
 site_path = path.join(path.dirname(__file__),'react_build')
 app.mount("/site", staticfiles.StaticFiles(directory=site_path, html = True), name="site")
@@ -78,7 +88,6 @@ async def submit_job(request: Request) -> str:
     js = json.loads(form['para']) 
     data = None
     try:
-        fn = form['data'].filename
         data = await form["data"].read()
     except:
         pass    
@@ -88,6 +97,26 @@ async def submit_job(request: Request) -> str:
         if job_id and job_id > 0:
             wakeup_worker()
             return f'Analysis submitted: {job_id}'
+
+    return "Submission failed!"
+
+@app.post('/api/jobrun')
+async def submit_jobrun(request: Request):
+    try:
+        form  = await request.form()
+        js = json.loads(await form['para'].read())
+        s = str(await form["data"].read(),'utf-8')
+        data = pd.read_csv(io.StringIO(s))
+
+        if js and data is not None:
+            ret = PatHelper.submit_run(js,data)
+            if isinstance(ret,pd.DataFrame):
+                df = ret.fillna(0)
+                if df is not None and len(df) > 0:
+                   return send_zip_file(f"pat_res.zip", (f'pat_res.csv', df))
+            return ret 
+    except Exception as e:
+        logging.warning(f"Run job error: \n{e}")
 
     return "Submission failed!"
 

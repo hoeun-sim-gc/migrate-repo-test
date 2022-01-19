@@ -1,4 +1,5 @@
 import json
+from operator import truediv
 import uuid
 import logging
 from datetime import datetime
@@ -27,51 +28,63 @@ class PatJob:
             User Id={AppSettings.PAT_JOB_USR};Password={AppSettings.PAT_JOB_PWD};
             MultipleActiveResultSets=true;'''
 
-    def __init__(self, job_id):
+    def __init__(self, job_id:int = 0, param:dict ={}):
         """Class to represent a PAT analysis"""
 
         self.job_id = 0
         self.data_extracted = False
 
         try:
-            with pyodbc.connect(self.job_conn) as conn:
-                df = pd.read_sql(
-                    f"select data_extracted, parameters from pat_job where job_id = {job_id} and status='wait_to_start'", conn)
-                if len(df) == 1:
-                    self.job_id = job_id
-                    self.para = json.loads(df.parameters[0])
-                    self.data_extracted = df.data_extracted[0] != 0
+            if job_id > 0 :
+                with pyodbc.connect(self.job_conn) as conn:
+                    df = pd.read_sql(
+                        f"select data_extracted, parameters from pat_job where job_id = {job_id} and status='wait_to_start'", conn)
+                    if len(df) == 1:
+                        self.job_id = job_id
+                        self.param = json.loads(df.parameters[0])
+                        self.data_extracted = df.data_extracted[0] != 0
+            elif param:
+                self.job_id = 1
+                self.param = param
+                self.param['job_guid'] = str(uuid.uuid4())
+                if 'valid_rules' not in self.param: self.param['valid_rules'] = -1 
+                self.data_extracted = True
+
+            if not self.job_id:
+                return
 
             self.logger = logging.getLogger(f"{self.job_id}")
             self.__update_status("started")
             self.logger.info(f"""Start to process job:{self.job_id}""")
 
-            self.rating_type = RATING_TYPE[self.para['type_of_rating']]
-            self.curve_id = int(self.para['curve_id'])
-            self.coverage_type = COVERAGE_TYPE[self.para['coverage_type']]
-            self.addt_cvg = float(self.para['additional_coverage'])
-            self.ded_type = DEDDUCT_TYPE[self.para['deductible_treatment']]
-            self.loss_ratio = float(self.para['loss_alae_ratio'])
+            self.rating_type = RATING_TYPE[self.param['type_of_rating']]
+            self.curve_id = int(self.param['curve_id'])
+            self.coverage_type = COVERAGE_TYPE[self.param['coverage_type']]
+            self.addt_cvg = float(self.param['additional_coverage'])
+            self.ded_type = DEDDUCT_TYPE[self.param['deductible_treatment']]
+            self.loss_ratio = float(self.param['loss_alae_ratio'])
             self.avg_acc_date= datetime.strptime(
-                self.para['average_accident_date'], '%m/%d/%Y') if 'average_accident_date' in self.para else datetime.today
+                self.param['average_accident_date'], '%m/%d/%Y') if 'average_accident_date' in self.param else datetime.today
             self.valid_rules = VALIDATE_RULE(
-                self.para['valid_rules']) if 'valid_rules' in self.para else VALIDATE_RULE(0)
+                self.param['valid_rules']) if 'valid_rules' in self.param else VALIDATE_RULE(0)
 
-            self.user_name = self.para['user_name'] if 'user_name' in self.para else None
-            self.user_email = self.para['user_email'] if 'user_email' in self.para else None
+            self.user_name = self.param['user_name'] if 'user_name' in self.param else None
+            self.user_email = self.param['user_email'] if 'user_email' in self.param else None
 
             # single blending
             if self.rating_type == RATING_TYPE.PSOLD:
-                if "blending" in self.para['psold']:
-                    b = np.array(self.para['psold']['blending'])
+                if "blending" in self.param['psold']:
+                    b = np.array(self.param['psold']['blending'])
                     if np.all( b <= 0):
-                        del self.para['psold']['blending']
+                        del self.param['psold']['blending']
                                     
         except:
             self.job_id = 0
             logging.warning('Read job parameter error!')
 
     def __update_status(self, st):
+        if self.job_id < 100: return
+
         tm = ''
         if st == 'started':
             tm += f", start_time = '{datetime.utcnow().isoformat()}'"
@@ -97,9 +110,9 @@ class PatJob:
         if not self.data_extracted:
             self.__update_status("extracting_data")
 
-            if "ref_analysis" in self.para and self.para['ref_analysis'] > 0:
+            if "ref_analysis" in self.param and self.param['ref_analysis'] > 0:
                 self.data_extracted = self.__extract_ref_data(
-                    self.para['ref_analysis'])
+                    self.param['ref_analysis'])
 
             if not self.data_extracted:
                 self.data_extracted = self.__extract_edm_rdm()
@@ -151,7 +164,7 @@ class PatJob:
         self.__update_status("allocating")
         self.logger.info(
             f"Allocate premium with {self.rating_type.name}...")
-        df_pat = self.__allocate_premium(df_facnet)
+        df_pat = self.allocate_premium(df_facnet)
         self.logger.info(
             f"Allocate premium with {self.rating_type.name}...OK")
         if stop_cb and self.__check_stop(stop_cb):
@@ -161,7 +174,10 @@ class PatJob:
         self.__update_status("upload_results")
         if df_pat is not None and len(df_pat) > 0:
             self.logger.info("Save results to database...")
+            df_pat= df_pat[['PseudoPolicyID', 'PseudoLayerID', 'Limit', 'Retention', 'Participation', 'Premium', 'PolLAS', 
+                'DedLAS']].sort_values(['PseudoPolicyID', 'PseudoLayerID', 'Retention'])
             df_pat.fillna(value=0, inplace=True)
+
             df_pat['job_id'] = self.job_id
             creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB,
                              AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
@@ -201,7 +217,7 @@ class PatJob:
             return True
 
     def __extract_edm_rdm(self):
-        conn_str = f'''DRIVER={{SQL Server}};Server={self.para["server"]};Database={self.para["edm"]};
+        conn_str = f'''DRIVER={{SQL Server}};Server={self.param["server"]};Database={self.param["edm"]};
             Trusted_Connection=True;MultipleActiveResultSets=true;'''
         with pyodbc.connect(conn_str) as conn:
             self.logger.debug("Verify input data base info...")
@@ -235,29 +251,29 @@ class PatJob:
     def __verify_edm_rdm(self, conn):
         # Check that PerilID is valid
         if len(pd.read_sql_query(f"""select top 1 1
-                from [{self.para['edm']}]..policy a
-                    join [{self.para['edm']}]..portacct b on a.accgrpid = b.accgrpid
-                where b.portinfoid = {self.para['portinfoid']} and policytype = {self.para['perilid']}""", conn)) <= 0:
+                from [{self.param['edm']}]..policy a
+                    join [{self.param['edm']}]..portacct b on a.accgrpid = b.accgrpid
+                where b.portinfoid = {self.param['portinfoid']} and policytype = {self.param['perilid']}""", conn)) <= 0:
             return 'PerilID is not valid!'
 
         # Check that portfolio ID is valid
         if len(pd.read_sql_query(f"""select top 1 1
-                from [{self.para['edm']}]..loccvg 
-                    join [{self.para['edm']}]..property on loccvg.locid = property.locid 
-                    join [{self.para['edm']}]..portacct on property.accgrpid = portacct.accgrpid 
-                where loccvg.peril = {self.para['perilid']} and portacct.portinfoid = {self.para['portinfoid']}""", conn)) <= 0:
+                from [{self.param['edm']}]..loccvg 
+                    join [{self.param['edm']}]..property on loccvg.locid = property.locid 
+                    join [{self.param['edm']}]..portacct on property.accgrpid = portacct.accgrpid 
+                where loccvg.peril = {self.param['perilid']} and portacct.portinfoid = {self.param['portinfoid']}""", conn)) <= 0:
             return 'portfolio ID is not valid!'
 
         # Check that analysis ID is valid
-        if 'rdm' in self.para and self.para['rdm'] and 'analysisid' in self.para and self.para['analysisid']:
+        if 'rdm' in self.param and self.param['rdm'] and 'analysisid' in self.param and self.param['analysisid']:
             if len(pd.read_sql_query(f"""select top 1 1
-            FROM [{self.para['edm']}]..loccvg 
-                join [{self.para['edm']}]..property on loccvg.locid = property.locid 
-                join [{self.para['edm']}]..portacct on property.accgrpid = portacct.accgrpid 
-                join [{self.para['edm']}]..policy on property.accgrpid = policy.accgrpid 
-                join [{self.para['rdm']}]..rdm_policy on policy.policyid = rdm_policy.id 
-            where portacct.portinfoid = {self.para['portinfoid']} and loccvg.peril = {self.para['perilid']}
-            and rdm_policy.ANLSID = {self.para['analysisid']}""", conn)) <= 0:
+            FROM [{self.param['edm']}]..loccvg 
+                join [{self.param['edm']}]..property on loccvg.locid = property.locid 
+                join [{self.param['edm']}]..portacct on property.accgrpid = portacct.accgrpid 
+                join [{self.param['edm']}]..policy on property.accgrpid = policy.accgrpid 
+                join [{self.param['rdm']}]..rdm_policy on policy.policyid = rdm_policy.id 
+            where portacct.portinfoid = {self.param['portinfoid']} and loccvg.peril = {self.param['perilid']}
+            and rdm_policy.ANLSID = {self.param['analysisid']}""", conn)) <= 0:
                 print('portfolio ID is not valid!')
 
         return 'ok'
@@ -275,7 +291,7 @@ class PatJob:
                 from portacct as pa 
                     join property as p on pa.accgrpid = p.accgrpid
                     join loccvg on p.locid = loccvg.locid
-                where pa.portinfoid = {self.para['portinfoid']} and loccvg.peril = {self.para['perilid']}
+                where pa.portinfoid = {self.param['portinfoid']} and loccvg.peril = {self.param['perilid']}
                 group by p.accgrpid, p.locid""")
             cur.commit()
 
@@ -308,12 +324,12 @@ class PatJob:
                             from #location_standard_{suffix} 
                             group by accgrpid
                         ) accttiv on p.accgrpid = accttiv.accgrpid
-                    where p.policytype = {self.para['perilid']}
-                        and pa.portinfoid = {self.para['portinfoid']}""")
+                    where p.policytype = {self.param['perilid']}
+                        and pa.portinfoid = {self.param['portinfoid']}""")
             cur.commit()
 
             # location policy
-            if 'rdm' in self.para and self.para['rdm'] and 'analysisid' in self.para and self.para['analysisid']:
+            if 'rdm' in self.param and self.param['rdm'] and 'analysisid' in self.param and self.param['analysisid']:
                 # with spider
                 # policy_loc_conditions
                 cur.execute(f"""select p.accgrpid, p.policyid, lc.locid, pc.conditiontype
@@ -363,10 +379,10 @@ class PatJob:
                         --sum(case when perspcode = 'SS' then perspvalue else 0  end) as surplusshareloss,
                         --sum(case when perspcode = 'FA' then perspvalue else 0  end) as facloss,
                         --sum(case when perspcode = 'RL' then perspvalue else 0  end) as netprecatloss
-                    from {self.para['rdm']}..rdm_policy a 
-                        join {self.para['rdm']}..rdm_eventareadetails b on a.eventid = b.eventid 
+                    from {self.param['rdm']}..rdm_policy a 
+                        join {self.param['rdm']}..rdm_eventareadetails b on a.eventid = b.eventid 
                         join #policy_standard_{suffix} as p on a.id = p.policyid
-                    where anlsid = {self.para['analysisid']}
+                    where anlsid = {self.param['analysisid']}
                     group by a.id, res1value
                     having sum(case when perspcode = 'GU' then perspvalue else 0 end) * 
                         {self.addt_cvg + 1} > max(p.undcovamt) )
@@ -530,7 +546,7 @@ class PatJob:
                             or COALESCE(b.RatingGroup, c.PSOLD_RG) > {max_psold_rg} then null
                             else COALESCE(b.RatingGroup, c.PSOLD_RG) end"""
                 
-                if "blending" not in self.para['psold']:
+                if "blending" not in self.param['psold']:
                     rg_flg = f"""+ (case when COALESCE(b.RatingGroup, c.PSOLD_RG) is null 
                                 or COALESCE(b.RatingGroup, c.PSOLD_RG) < {min_psold_rg} 
                                 or COALESCE(b.RatingGroup, c.PSOLD_RG) > {max_psold_rg} 
@@ -812,7 +828,7 @@ class PatJob:
 
             return df_facnet
 
-    def __allocate_premium(self, DT) -> DataFrame:
+    def allocate_premium(self, DT) -> DataFrame:
         if self.rating_type == RATING_TYPE.PSOLD:
             DT = self.__alocate_psold(DT)
         elif self.rating_type == RATING_TYPE.FLS:
@@ -827,38 +843,36 @@ class PatJob:
             DT = DT.merge(sumLAS, on='PolicyID')
             DT['Premium'] *= DT['PolPrem'] / DT['sumLAS']
 
-            DT.sort_values(['PseudoPolicyID', 'PseudoLayerID', 'Retention'], inplace=True)
-
-            return DT[['PseudoPolicyID', 'PseudoLayerID', 'Limit', 'Retention', 'Participation', 'Premium', 'PolLAS', 'DedLAS']]
+            return DT
 
     def __alocate_psold(self, DT):
-        df_wts, df_hpr = None, None
+        df_wts, df_hpr, def_rtg = None, None, None
         with pyodbc.connect(self.job_conn) as conn:
             aoi_split = pd.read_sql_query(
                 f"""select * from psold_aoi order by AOI""", conn).AOI.to_numpy()
             df_psold = pd.read_sql_query(f"""select * from psold_curves  
                 where ID = '{self.curve_id}' 
-                    and CurveType ='{self.para['psold']['curve_persp']}' 
+                    and CurveType ='{self.param['psold']['curve_persp']}' 
                     and COVG = {self.coverage_type} 
-                    and SUBGRP = {PERIL_SUBGROUP[self.para['psold']['peril_subline']]}
+                    and SUBGRP = {PERIL_SUBGROUP[self.param['psold']['peril_subline']]}
                 """, conn).drop(columns=['ID', 'CurveType', 'COVG', 'SUBGRP'])
             if df_psold is None: return
 
-            if 'blending' in self.para['psold']:
+            if 'blending' in self.param['psold']:
                 def_rtg = None
-                b = np.array(self.para['psold']['blending'])
+                b = np.array(self.param['psold']['blending'])
                 if np.sum ( b > 0) == 1:
                     def_rtg = np.argmax( b > 0) + 1
                 else: 
                     df_wts = pd.read_sql_query(f"""select RG, HPRTable from psold_weight order by rg""", conn)
                     df_wts['PremiumWeight'] = b
 
-                    if 'hpr_blending' in self.para['psold'] and self.para['psold']['hpr_blending']:
+                    if 'hpr_blending' in self.param['psold'] and self.param['psold']['hpr_blending']:
                         df_hpr = pd.read_sql_query(f"""select Limit, Weight from psold_hpr_weight order by Limit""", conn)
                     else:
                         df_wts.drop(columns=['HPRTable'])
 
-        psold = PsoldRating(self.curve_id, df_psold, aoi_split, **self.para['psold'])
+        psold = PsoldRating(self.curve_id, df_psold, aoi_split, **self.param['psold'])
         return psold.calculate_las(DT, def_rtg, df_wts, df_hpr,
                     ded_type=self.ded_type.name,
                     avg_acc_date=self.avg_acc_date,
@@ -871,7 +885,7 @@ class PatJob:
                 from fls_curves order by ID""", conn).set_index('ID')
             if df_fls is None: return
 
-        para = self.para['fls'] if 'fls' in self.para else {}
+        para = self.param['fls'] if 'fls' in self.param else {}
         if para and self.curve_id == 57:
             df_fls.loc[self.curve_id] = df_fls.loc[self.curve_id].to_dict() | para
 
@@ -887,7 +901,7 @@ class PatJob:
                 order by ID""", conn).set_index('ID')
             if df_mb is None: return
 
-        para = self.para['mb'] if 'mb' in self.para else {}
+        para = self.param['mb'] if 'mb' in self.param else {}
         if para and self.curve_id == 58:
             df_mb.loc[self.curve_id] = df_mb.loc[self.curve_id].to_dict() | para
 

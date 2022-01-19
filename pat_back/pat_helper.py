@@ -2,11 +2,14 @@ import json
 import logging
 from datetime import datetime
 from io import BytesIO
+import uuid
 import zipfile
 import numpy as np
 import pandas as pd
 import pyodbc
 from bcpandas import SqlCreds, to_sql
+
+from pat_back.pat_job import PatJob
 
 from .pat_worker import PatWorker
 from .settings import AppSettings
@@ -42,6 +45,28 @@ class PatHelper:
             return job_id
         
         return 0
+    
+    @classmethod
+    def submit_run(cls, job_para, data):
+        if (not job_para) or (data is None):
+            return "Parameter missing"
+        if len(data) > 1000000:
+            return "Job too big"
+
+        for c in ['PolicyID', 'Limit', 'Retention', 'PolPrem', 'TIV', 'Stack', 'RatingGroup']:
+            if c not in data:
+                return 'Input data format error'
+        
+        if 'LossRatio' not in data and 'loss_alae_ratio' in job_para:
+            data['LossRatio'] = float(job_para['loss_alae_ratio'])        
+
+        job = PatJob(param=job_para)
+        if job.job_id > 0:
+            df = job.allocate_premium(data)
+            if df is not None and len(df) > 0:
+                return df
+
+        return 'Error'
     
     @classmethod
     def __register_job(cls, job_para):

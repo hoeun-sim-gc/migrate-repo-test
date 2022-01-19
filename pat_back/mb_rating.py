@@ -12,7 +12,7 @@ from .pat_flag import COVERAGE_TYPE, DEDDUCT_TYPE, PERIL_SUBGROUP, PSOLD_PERSP, 
 class MbRating:
     def __init__(self, curve_id, df_mb: pd.DataFrame, **params):
         """Class to represent a rating model based on FLS.
-           df_mb: ['c', 'b', 'g', 'cap'], 'ID' as index
+           df_mb: ['b', 'g', 'cap'], 'ID' as index
         """
         self.curve_id = curve_id
         self.__mb_curves = df_mb
