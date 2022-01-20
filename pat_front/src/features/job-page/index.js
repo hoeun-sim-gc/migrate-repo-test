@@ -119,7 +119,7 @@ export default function JobPage(props) {
   const [user,] = useContext(UserContext);
 
   // current active job that showing the odometer; The parameter passes to the newjob 
-  const [currentJob, setCurrentJob] = useState({ job_id: job_id ? job_id : 0, status: '', finished: 0 })
+  const [currentJob, setCurrentJob] = useState({ job_id: user ? user.curr_job : 0, status: '', finished: 0 })
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
   const [refJob, setRefJob] = useState(null)
 
@@ -964,7 +964,7 @@ export default function JobPage(props) {
                   else alert("Job parameter error!")
                 }
               }}
-            >Add
+            >Add to List
             </Button>
           </Tooltip>
           <input type='file' id='file' ref={inputFile} style={{ display: 'none' }} onChange={(e) => {
@@ -999,7 +999,7 @@ export default function JobPage(props) {
               onClick={() => {
                 setConfirm("submit jobs");
               }}
-            >Submit
+            >Submit All
             </Button>
           </Tooltip>
         </div>

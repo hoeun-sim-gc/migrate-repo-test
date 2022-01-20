@@ -16,7 +16,7 @@ import ListItemIcon from '@material-ui/core/ListItemIcon';
 import ListItemText from '@material-ui/core/ListItemText';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faHome, faQuestionCircle, faTachometerAlt,faCog } from '@fortawesome/free-solid-svg-icons';
+import { faHome, faQuestionCircle,faCog,faShapes, faCubes } from '@fortawesome/free-solid-svg-icons';
 
 const drawerWidth = 200;
 const useStyles = makeStyles((theme) => ({
@@ -96,7 +96,7 @@ function WbDrawer() {
       <List>
         <Link to='/job' className={classes.menuLink}>
           <ListItem button>
-            <ListItemIcon><FontAwesomeIcon icon={faTachometerAlt} className='fa-lg' /></ListItemIcon>
+            <ListItemIcon><FontAwesomeIcon icon={faCubes} className='fa-lg' /></ListItemIcon>
             <ListItemText primary='Analyses' />
           </ListItem>
         </Link>

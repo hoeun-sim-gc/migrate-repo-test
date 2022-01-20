@@ -70,7 +70,7 @@ export default function HomePage(props) {
 
   const tableRef = useRef(null);
 
-  const [user,] = useContext(UserContext);
+  const [user,setUser] = useContext(UserContext);
 
   const [multiSel, setMultiSel]=useState(false);
   const [confirm, setConfirm] = React.useState('');
@@ -139,11 +139,16 @@ export default function HomePage(props) {
         if(currentJob && currentJob.job_id>0)
         {
           var sel = data.find(j=>j.job_id===currentJob.job_id);
-          if(sel)  setCurrentJob(sel);
+          if(sel)  
+          {
+            setCurrentJob(sel);
+            setUser({...user,curr_job: sel.job_id});
+          }
         }
         if(data.length>0 &&(!currentJob || currentJob.job_id <=0 ))
         {
-          setCurrentJob(data[0]);  
+          setCurrentJob(data[0]); 
+          setUser({...user, curr_job: data[0].job_id});
           tableRef.current.selectionContext.selected.push(data[0].job_id);
         }
       })
@@ -224,8 +229,6 @@ export default function HomePage(props) {
       });
     // eslint-disable-next-line
   }, [downloadingResults]);
-
-  const handleNewJob = useCallback((job_id) => history.push('/job' + (job_id?'/'+job_id:'') ), [history]);
   
   const handleStopJob = ()=>{
     var lst= tableRef.current.selectionContext.selected;
@@ -345,6 +348,7 @@ export default function HomePage(props) {
       onSelect: (row, isSelect) => {
         if (isSelect) {
           setCurrentJob(row);
+          setUser({...user, curr_job:row.job_id})
         }
       }
     };
@@ -400,13 +404,6 @@ export default function HomePage(props) {
               >EDM
             </Button>
           </Tooltip> */}
-          <Divider orientation="vertical" flexItem />
-          <Tooltip title="Go to details/Set up new analyses"  >
-            <Button style={{outline: 'none', height:'36px'}}
-                onClick={(e) => { handleNewJob(currentJob?.job_id); }}
-              >Details...
-            </Button>
-          </Tooltip>
           <Dialog
             open={confirm}
             onClose={() => { setConfirm(''); }}
