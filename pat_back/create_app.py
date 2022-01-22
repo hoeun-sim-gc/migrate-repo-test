@@ -7,7 +7,7 @@ from logging.config import fileConfig
 
 import pandas as pd
 
-from fastapi import FastAPI,Request, staticfiles
+from fastapi import FastAPI,Request, staticfiles, HTTPException
 from fastapi.responses import RedirectResponse,StreamingResponse
 
 from starlette.applications import Starlette
@@ -64,6 +64,19 @@ def send_zip_file(name, *df_lst) -> StreamingResponse:
     except Exception as e:
         logging.warning(f"Download data file: \n{e}")
 
+#very slow even with the GZIP middelware
+def send_csv_file(name, df) -> StreamingResponse:
+    try:
+        if df is not None:
+            buffer = io.BytesIO()
+            df.to_csv(buffer, header=True, index=False)
+            buffer.seek(0)
+            return StreamingResponse(buffer, media_type='text/csv',headers={'Content-Disposition': 
+                        f'attachment;filename={name}',
+                        'Access-Control-Expose-Headers': 'Content-Disposition'})
+    except Exception as e:
+        logging.warning(f"Download data file: \n{e}")
+
 @app.get('/api/result/{job_lst}')
 def results(job_lst:str) -> StreamingResponse:
     lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
@@ -72,7 +85,7 @@ def results(job_lst:str) -> StreamingResponse:
     if len(lst)>0:
         df = PatHelper.get_results(lst)
         if df is not None:
-            return send_zip_file(f"pat_res_{lst[0]}.zip", (f'pat_res_{lst[0]}.csv', df))
+            return send_zip_file(f"pat_res_{lst[0]}.zip", (f"pat_res_{lst[0]}.csv", df))
 
 @app.get('/api/valid/{job_id}')
 def get_validate_data(job_id:int, flagged:bool=True) -> StreamingResponse:
@@ -104,7 +117,11 @@ async def submit_job(request: Request) -> str:
 async def submit_jobrun(request: Request):
     try:
         form  = await request.form()
-        js = json.loads(await form['para'].read())
+        if isinstance(form['para'], str):
+            js= json.loads(form['para'])
+        else:
+            js = json.loads(await form['para'].read())
+
         s = str(await form["data"].read(),'utf-8')
         data = pd.read_csv(io.StringIO(s))
 
@@ -113,12 +130,16 @@ async def submit_jobrun(request: Request):
             if isinstance(ret,pd.DataFrame):
                 df = ret.fillna(0)
                 if df is not None and len(df) > 0:
-                   return send_zip_file(f"pat_res.zip", (f'pat_res.csv', df))
-            return ret 
+                    # return send_csv_file(f"pat_res.csv", df)
+                    return send_zip_file(f"pat_res.zip", ('pat_res.csv',df))
+            
+            raise HTTPException(
+            status_code=400, detail=f"Error encountered!")
     except Exception as e:
         logging.warning(f"Run job error: \n{e}")
-
-    return "Submission failed!"
+        raise HTTPException(
+            status_code=400, detail=f"Error encountered!"
+        )
 
 @app.route('/api/wakeup', methods=['POST'])
 def wakeup_worker():

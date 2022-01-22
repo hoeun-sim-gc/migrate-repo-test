@@ -81,6 +81,7 @@ export default function HomePage(props) {
   const [currentJob, setCurrentJob] = useState(null);
   const [loadingJobPara, setLoadingJobPara] = useState(false);
   const [currentPara, setCurrentPara] = useState({parameter:'', summary:[]});
+  const [updatingCurrent, setUpdatingCurrent] = useState(false);
 
   const [downloadingResults, setDownloadingResults] = useState(false);
   const [downloadingData, setDownloadingData] = useState(false);
@@ -90,7 +91,7 @@ export default function HomePage(props) {
     setLoadingJobList(true);
     setMultiSel(localStorage.getItem('job_multi_sel')==='true');
 
-    const interval = setInterval(() => setLoadingJobList(true), 60000);
+    const interval = setInterval(()=>setUpdatingCurrent(true), 10000);
     return () => {
       clearInterval(interval);
     };
@@ -142,12 +143,14 @@ export default function HomePage(props) {
           if(sel)  
           {
             setCurrentJob(sel);
+            setLoadingJobPara(true);
             setUser({...user,curr_job: sel.job_id});
           }
         }
         if(data.length>0 &&(!currentJob || currentJob.job_id <=0 ))
         {
           setCurrentJob(data[0]); 
+          setLoadingJobPara(true);
           setUser({...user, curr_job: data[0].job_id});
           tableRef.current.selectionContext.selected.push(data[0].job_id);
         }
@@ -161,10 +164,53 @@ export default function HomePage(props) {
     // eslint-disable-next-line
   }, [loadingJobList]);
 
+  // React.useEffect(() => {
+  //   setCurrentPara({parameter:'', summary:[]});
+  //   setLoadingJobPara(true);
+  // }, [currentJob]);
+
+
+  //Update runing job status
   React.useEffect(() => {
-    setCurrentPara({parameter:'', summary:[]});
-    setLoadingJobPara(true);
-  }, [currentJob]);
+    if (!updatingCurrent) return;
+    if (!currentJob || currentJob.status=== 'finished' || currentJob.status=== 'error' ) {
+      setUpdatingCurrent(false);
+      return;
+    }
+
+    const request = '/api/job/' + currentJob.job_id
+    fetch(request).then(response => {
+      if (response.ok) {
+        return response.json();
+      }
+      throw new TypeError("Oops, we haven't got data!");
+    })
+      .then(data => {
+        var lst =JSON.parse(JSON.stringify(jobList));
+        if(lst){
+          var sel = lst.find(j=>j.job_id===currentJob.job_id);
+          if(sel) 
+          {
+            sel.status = data.status;
+            sel.start_time = convertTime(data.start_time);
+            if(data.status === 'finished'){
+              sel.finish_time = convertTime(data.finish_time);
+              sel.duration = calcDuration(data.start_time, data.finish_time) 
+            }
+            setJobList(lst);
+          }
+        }
+        setCurrentPara({parameter:JSON.stringify(JSON.parse(data['parameters']),null, '    '),
+          summary:data['summary']});
+      })
+      .catch(error => {
+        console.log(error);
+      })
+      .then(() => {
+        setUpdatingCurrent(false);
+      });
+    // eslint-disable-next-line
+  }, [updatingCurrent]);
 
   //job para and summary
   React.useEffect(() => {
@@ -192,7 +238,7 @@ export default function HomePage(props) {
         setLoadingJobPara(false);
       });
     // eslint-disable-next-line
-  }, [loadingJobPara, currentJob]);
+  }, [loadingJobPara]);
 
   //results
   React.useEffect(() => {
@@ -348,6 +394,7 @@ export default function HomePage(props) {
       onSelect: (row, isSelect) => {
         if (isSelect) {
           setCurrentJob(row);
+          setLoadingJobPara(true);
           setUser({...user, curr_job:row.job_id})
         }
       }

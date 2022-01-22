@@ -1,12 +1,8 @@
 {
+    "data_source_type" : "User_Upload",
     "valid_rules": 1073741826,
-    "loss_alae_ratio": 1,
-    "additional_coverage": 2,
-    "deductible_treatment": "Retains_Limit",
-    "coverage_type": "Building_Contents_BI",
     "type_of_rating": "PSOLD",
     "curve_id": 2016,
-    "average_accident_date": "1/1/2022",
     "psold": {
         "curve_persp": "Gross",
         "peril_subline": "All_Perils",
@@ -14,6 +10,11 @@
         "blending": [1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
         "hpr_blending": false
     },
+    "loss_alae_ratio": 1,
+    "additional_coverage": 2,
+    "deductible_treatment": "Retains_Limit",
+    "coverage_type": "Building_Contents_BI",
+    "average_accident_date": "1/1/2022",
     "user_name": "Chengyou Xiao",
     "user_email": "chengyou.xiao@guycarp.com"
 }

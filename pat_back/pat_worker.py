@@ -1,3 +1,4 @@
+import logging
 import threading
 import uuid
 from time import sleep
@@ -52,6 +53,8 @@ class PatWorker(threading.Thread):
                             self._stop_event.clear()
 
                 job_id = self.__checkout_job()
+        except Exception as e:
+            logging.warn(f"Error captured: {e}" )
         finally:
             self.workers.remove(self) 
     

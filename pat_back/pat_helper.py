@@ -64,6 +64,9 @@ class PatHelper:
         if job.job_id > 0:
             df = job.allocate_premium(data)
             if df is not None and len(df) > 0:
+                df.rename(columns={'Premium':'Allocated_Premium', 
+                        'PolLAS' : 'PolicyLimitLAS',
+                        'DedLAS' : 'PolicyAttachLAS'}, inplace= True)
                 return df
 
         return 'Error'

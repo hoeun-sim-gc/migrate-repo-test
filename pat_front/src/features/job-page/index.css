@@ -6,13 +6,13 @@
     }
     
     .job_left_col {
-      flex: 2;
+      flex: 3;
       margin: 10px;
     }
     
     .job_right_col {
       margin: 10px;
-      flex: 3;
+      flex: 4;
       overflow: auto;
     }
   
@@ -25,17 +25,21 @@
     .job_top_row {
       flex-grow: 0;
       margin: 10px;
-      flex:2;
+      flex:1;
      }
     
     .job_bottom_row {
       margin: 10px;
       padding: 10px;
       flex-grow: 0;
-      flex:3;
-      border: 1px solid grey;
-      overflow: auto;
+      flex:4;
     }
+
+    .step_box {
+      margin: 10px;
+      padding: 10px;
+    }
+
 }
   
   
