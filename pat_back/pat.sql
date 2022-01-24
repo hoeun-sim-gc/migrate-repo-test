@@ -106,6 +106,7 @@ create table pat_pseudo_policy(
     BI float,
     AOI float,
     RatingGroup int,
+    LossRatio float,
     flag int
 );
 create index idx_pat_pseudo_policy on pat_pseudo_policy (job_id asc);

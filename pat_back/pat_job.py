@@ -208,7 +208,7 @@ class PatJob:
                         PseudoPolicyID, ACCGRPID, OriginalPolicyID, PolRetainedLimit, PolLimit, 
                         PolParticipation, PolRetention, PolPremium, LocationIDStack, 
                         occupancy_scheme, occupancy_code, Building, Contents, BI, AOI, 
-                        null RatingGroup,
+                        null RatingGroup, LossRatio, 
                         0 as flag
                     from pat_pseudo_policy 
                     where job_id = {ref_job} and data_type = 1""")
@@ -583,6 +583,7 @@ class PatJob:
                                 COALESCE(b.BI, a.BI) as BI,
                                 COALESCE(b.AOI, {aoi}) as AOI,
                                 {rg_col} as RatingGroup,
+                                COALESCE(b.LossRatio, a.LossRatio) as LossRatio,
                                 
                                 (case when COALESCE(b.PolLimit, a.PolLimit) is null 
                                             or COALESCE(b.PolRetention, a.PolRetention) is null 
@@ -612,6 +613,7 @@ class PatJob:
                                 {rg_tab}
                             where a.job_id = {self.job_id} and a.data_type = 1;""")
             cur.commit()
+            if cur.rowcount<=0: return
 
             # Apply rule
             if self.valid_rules & VALIDATE_RULE.ValidAoi:
@@ -679,6 +681,7 @@ class PatJob:
                                     on a.PseudoPolicyID = b.PseudoPolicyID and a.FacKey = b.FacKey
                             where a.job_id = {self.job_id} and a.data_type = 1;""")
             cur.commit()
+            if cur.rowcount<=0: return
 
            # Orphan Fac Records
             cur.execute(f"""update a set a.flag = a.flag | {PAT_FLAG.FlagFacOrphan}
@@ -752,6 +755,7 @@ class PatJob:
                     drop table #pol1;
                     drop table #pol2;""")
         cur.commit()
+        if cur.rowcount<=0: return
 
         cur.execute(f"""select a.PseudoPolicyID, PolRetention,PolTopLine, FacCeded,
                     FacLimit / PolParticipation as FacGupLimit,
@@ -826,7 +830,7 @@ class PatJob:
                     a.LayerHigh - a.LayerLow as Limit, a.LayerLow as Retention, 
                     b.PolPremium as PolPrem, 
                     Participation * (case when Ceded <= 0 then 1 when Ceded > 1 then 0 else 1-Ceded end) as Participation,
-                    b.AOI as TIV, b.LocationIDStack as Stack, b.RatingGroup
+                    b.AOI as TIV, b.LocationIDStack as Stack, b.RatingGroup, b.LossRatio
                 from #dfLayers a
                     join pat_pseudo_policy b on a.PseudoPolicyID = b.PseudoPolicyID 
                         and b.job_id ={self.job_id} and b.data_type = 0 
@@ -844,8 +848,9 @@ class PatJob:
         elif self.rating_type == RATING_TYPE.MB:
             DT = self.__allocation_mb(DT)
         
+        DT.fillna({'LossRatio':self.loss_ratio},inplace=True)
         if 'PolLAS' in DT and 'DedLAS' in DT:
-            DT['Premium'] = (DT.PolLAS-DT.DedLAS) * self.loss_ratio
+            DT['Premium'] = (DT.PolLAS-DT.DedLAS) * DT.LossRatio
             sumLAS = DT.groupby('PolicyID').agg(
                 {'Premium': 'sum'}).rename(columns={'Premium': 'sumLAS'})
             DT = DT.merge(sumLAS, on='PolicyID')
@@ -893,7 +898,7 @@ class PatJob:
                 from fls_curves order by ID""", conn).set_index('ID')
             if df_fls is None: return
 
-        if self.fls and self.curve_id == FlsRating.user_define:
+        if self.fls and self.curve_id == FlsRating.user_defined:
             if self.curve_id in df_fls.index:
                 df_fls.loc[self.curve_id] = df_fls.loc[self.curve_id].to_dict() | self.fls
             else:
@@ -911,7 +916,7 @@ class PatJob:
                 order by ID""", conn).set_index('ID')
             if df_mb is None: return
 
-        if self.mb and self.curve_id == MbRating.user_define:
+        if self.mb and self.curve_id == MbRating.user_defined:
             df_mb.loc[self.curve_id] = df_mb.loc[self.curve_id].to_dict() | self.mb
 
         mb = MbRating(self.curve_id, df_mb)

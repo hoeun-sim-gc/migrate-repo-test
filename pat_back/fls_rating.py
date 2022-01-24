@@ -10,7 +10,7 @@ import pandas as pd
 from .pat_flag import COVERAGE_TYPE, DEDDUCT_TYPE, PERIL_SUBGROUP, PSOLD_PERSP, RATING_TYPE
 
 class FlsRating:
-    user_define = 57 
+    user_defined = 57 
     def __init__(self, curve_id, df_fls: pd.DataFrame):
         """Class to represent a rating model based on FLS.
            df_fls: ['mu', 'w', 'tau', 'theta','beta', 'cap','uTgammaMean', 'limMean'], 'ID' as index

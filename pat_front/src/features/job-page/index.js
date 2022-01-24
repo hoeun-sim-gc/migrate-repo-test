@@ -664,7 +664,7 @@ export default function JobPage(props) {
     form_data.append("data", newJob.data_file);
     form_data.append('para', JSON.stringify(js));
 
-    fetch('/api/jobrun', {
+    fetch('/api/job?jobrun=true', {
       method: "POST",
       body: form_data
     }).then(response => {
