@@ -485,7 +485,9 @@ export default function HomePage(props) {
                   <div justify='flex-end'>
                     <Grid container justify='flex-end'>
                       <Grid item md={6} container justify='flex-end' alignItems='center' >
-                        <FormControlLabel control={<Checkbox checked={multiSel} onChange={handleSelChange} />} label="Multi-Selection" />
+                        <FormControlLabel control={<Checkbox checked={multiSel}
+                          style={{ color: theme.palette.text.primary, background: theme.palette.background.default}}
+                         onChange={handleSelChange} />} label="Multi-Selection" />
                         <SearchBar  {...props.searchProps} style={{ height: '26px', width:'180px' }} />
                       </Grid>
                     </Grid>

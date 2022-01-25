@@ -31,6 +31,7 @@ import {
 } from '@mui/material';
 
 
+
 import { PulseLoader } from "react-spinners";
 
 import { UserContext } from "../../app/user-context";
@@ -39,9 +40,8 @@ import "./index.css";
 import ValidRules from "./valid-flag";
 
 import { v4 as uuidv4 } from 'uuid';
-import { psold_rg, blending_columns } from './blend';
+import { psold_rg, blending_columns, blending_types } from './blend';
 import { psold_curves, fls_curves, mb_curves } from './curves';
-import { set } from 'date-fns';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -151,12 +151,13 @@ export default function JobPage(props) {
 
         type_of_rating: "PSOLD",
         curve_id: 2016,
-        average_accident_date: "1/1/2022",
         psold: {
           curve_persp: 'Gross',
           peril_subline: "All_Perils",
           trend_factor: 1.035,
-          blending: psold_rg.map(w => w.weight),
+          average_accident_date: "1/1/2022",
+          blending_type: 'no_blending',
+          blending_weights: psold_rg.map(w => w.weight),
           hpr_blending: false
         },
         // fls: {
@@ -213,7 +214,8 @@ export default function JobPage(props) {
       curve_persp: 'Gross',
       peril_subline: "All_Perils",
       trend_factor: 1.035,
-      blending: psold_rg.map(w => w.weight),
+      blending_type: 'no_blending',
+      blending_weights: psold_rg.map(w => w.weight),
       hpr_blending: false
     })
   const [saveFls, setSaveFls] = useState({
@@ -240,13 +242,7 @@ export default function JobPage(props) {
         weight: c.weight
       }
     });
-    if (lst && lst.length > 0 && newJob && newJob.parameter && newJob.parameter.psold
-      && newJob.parameter.psold.blending) {
-      for (var i = 0; i < lst.length; i++) {
-        lst[i].weight = newJob.parameter.psold.blending[i];
-      }
-      setPsoldBlending(lst)
-    }
+    setPsoldBlending(lst)
   }, []);
 
   //server list , reference job
@@ -297,14 +293,14 @@ export default function JobPage(props) {
           job = prepareDataChange(job, dt);
 
           handleNewRateType(job.type_of_rating);
-          if (job.type_of_rating == 'PSOLD') {
+          if (job.type_of_rating === 'PSOLD') {
             var lst1 = []
-            if (job.psold && job.psold.blending) {
-              for (var i = 0; i < psoldBlending.length; i++) {
+            if (job.psold && job.psold.blending_type !== 'no_blending') {
+              for (var i = 0; i < psold_rg.length; i++) {
                 lst1[i] = {
-                  id: psoldBlending[i].id,
-                  name: psoldBlending[i].name,
-                  weight: job.psold.blending[i]
+                  id: psold_rg[i].id,
+                  name: psold_rg[i].name,
+                  weight: job.psold.blending_weights[i]
                 };
               }
             }
@@ -384,7 +380,7 @@ export default function JobPage(props) {
       });
 
       setParaString(JSON.stringify(sorted, (k, v) => {
-        if (k == 'blending') return v.join();
+        if (k === 'blending_weights') return v.join();
         else return v;
       }, 4));
     }
@@ -572,33 +568,34 @@ export default function JobPage(props) {
       return false;
     }
 
-    if (job.type_of_rating == 'PSOLD') {
+    if (job.type_of_rating === 'PSOLD') {
       if (!job.psold) {
         console.log("Need PSOLD parameter!");
         return false;
       };
-      if (job.psold.blending) {
-        if (job.psold.blending.every(w => w <= 0)) {
-          delete job.psold.blending;
-        }
+      if ( job.psold.blending_type === 'no_blending' || 
+          (job.psold.blending_weights && job.psold.blending_weights.every(w => w <= 0))) {
+          job.psold.blending_type = 'no_blending';
+          delete job.psold.hpr_blending;
+          delete job.psold.blending_weights;
       }
       if (job.fls) delete job.fls;
       if (job.mb) delete job.mb;
     }
-    else if (job.type_of_rating == 'FLS') {
-      if (job.curve_id == 57 && !job.fls) {
+    else if (job.type_of_rating === 'FLS') {
+      if (job.curve_id === 57 && !job.fls) {
         console.log("Need FLS parameter!");
         return false;
       }
       if (job.psold) delete job.psold;
       if (job.mb) delete job.mb;
     }
-    else if (job.type_of_rating == 'MB') {
+    else if (job.type_of_rating === 'MB') {
       if (!job.mb) {
         console.log("Need MB parameter!");
         return false;
       }
-      else if (job.curve_id != 58) {
+      else if (job.curve_id !== 58) {
         delete job.mb.b;
         delete job.mb.g;
       }
@@ -731,7 +728,7 @@ export default function JobPage(props) {
 
     setNewJob({ ...job, parameter: para })
     setParaString(JSON.stringify(para, (k, v) => {
-      if (k == 'blending') return v.join();
+      if (k === 'blending_weights') return v.join();
       else return v;
     }, 4));
   };
@@ -1317,8 +1314,8 @@ export default function JobPage(props) {
 
                         job['curve_id'] = event.target.value;
 
-                        if (job['type_of_rating'] === 'FLS' && event.target.value == 57) job['fls'] = { ...saveFls };
-                        else if (job['type_of_rating'] === 'MB' && event.target.value == 58)
+                        if (job['type_of_rating'] === 'FLS' && event.target.value === 57) job['fls'] = { ...saveFls };
+                        else if (job['type_of_rating'] === 'MB' && event.target.value === 58)
                           job['mb'] = { ...job.mb, b: saveMb ? saveMb.b : 0, g: saveMb ? saveMb.g : 0 };
                         handleUpdateJob({ ...newJob, parameter: { ...job } });
                       }
@@ -1397,12 +1394,58 @@ export default function JobPage(props) {
                       />
                     </Box>
                   </FormControl>
+                  <FormControl className={classes.formControl} style={{ color: theme.palette.text.primary, background: theme.palette.background.default}}>
+                    <LocalizationProvider style={{ color: theme.palette.text.primary, background: theme.palette.background.default}} dateAdapter={AdapterDateFns}>
+                      <DatePicker style={{ color: theme.palette.text.primary, background: theme.palette.background.default}}
+                        label="Average Accident Date"
+                        value={newJob.parameter.psold?.average_accident_date}
+                        format="MM/DD/YYYY"
+                        onChange={(newValue) => {
+                          handleUpdateJob({ ...newJob, parameter: { ...newJob.parameter, psold:{...newJob.parameter.psold, average_accident_date: newValue.toLocaleDateString('en-US') }}});
+                        }}
+                        renderInput={(params) => <TextField {...params} />}
+                      />
+                    </LocalizationProvider>
+                  </FormControl>
                 </div>
                 <Typography variant='h6' className={classes.c_label} color="textSecondary" gutterBottom>
-                  Blending Weights for Missing or Invalid Occupancy Types
+                  PSOLD Blending
                 </Typography>
                 <div>
-                  <FormControl className={classes.formControl}>
+                <FormControl component="fieldset">
+              </FormControl>
+              <FormControl className={classes.formControl} style={{width: '35vh' }} >
+                  <InputLabel shrink id="coverage-placeholder-label">
+                    Coverage Type
+                  </InputLabel>
+                  <Select
+                    labelId="blend-t-placeholder-label"
+                    id="blend-t-placeholder"
+                    value={newJob.parameter.psold?.blending_type}
+                    defaultValue={'no_blending'}
+                    onChange={event => {
+                      if (newJob.parameter.psold && newJob.parameter.psold.blending_type !== event.target.value) {
+                        handleUpdateJob({ ...newJob, parameter: { ...newJob.parameter, psold: { ...newJob.parameter.psold, blending_type: event.target.value } } });
+                      }
+                    }}
+                  >
+                    {blending_types.map((n) => {
+                      return <MenuItem value={n.id}>{ }{n.name}</MenuItem>
+                    })}
+                  </Select>
+                </FormControl>
+                <FormControl className={classes.formControl} style={{ marginLeft: '30px', marginTop: '20px'}} 
+                  hidden={!newJob.parameter.psold || newJob.parameter.psold.blending_type === 'no_blending'} >
+                    <FormControlLabel control={
+                      <Checkbox  style={{ color: theme.palette.text.primary, background: theme.palette.background.default}}
+                        checked={newJob && newJob.parameter && newJob.parameter.psold?.hpr_blending}
+                        onChange={event => {
+                          handleUpdateJob({ ...newJob, parameter: { ...newJob.parameter, psold: { ...newJob.parameter.psold, hpr_blending: event.target.checked } } });
+                        }}
+                      />} label={"Use HPR blending"}
+                    />
+                  </FormControl>
+                  <FormControl className={classes.formControl} hidden={!newJob.parameter.psold || newJob.parameter.psold.blending_type === 'no_blending'}>
                     <ToolkitProvider
                       keyField="id"
                       data={psoldBlending}
@@ -1416,7 +1459,7 @@ export default function JobPage(props) {
                               cellEdit={cellEditFactory({
                                 mode: 'click', blurToSave: true, afterSaveCell: (oldValue, newValue, row, column) => {
                                   var job = newJob.parameter;
-                                  job['psold']['blending'] = psoldBlending.map(w => w.weight)
+                                  job['psold']['blending_weights'] = psoldBlending.map(w => w.weight)
                                   handleUpdateJob({ ...newJob, parameter: { ...job } });
                                 }
                               })}
@@ -1435,17 +1478,7 @@ export default function JobPage(props) {
                         )
                       }
                     </ToolkitProvider>
-                  </FormControl>
-                  <FormControl className={classes.formControl} style={{ marginTop: '-65px' }}>
-                    <FormControlLabel control={
-                      <Checkbox style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
-                        checked={newJob && newJob.parameter && newJob.parameter.psold?.hpr_blending}
-                        onChange={event => {
-                          handleUpdateJob({ ...newJob, parameter: { ...newJob.parameter, psold: { ...newJob.parameter.psold, hpr_blending: event.target.checked } } });
-                        }}
-                      />} label={"Use HPR blending"}
-                    />
-                  </FormControl>
+                  </FormControl>                  
                 </div>
               </div>
 
@@ -1708,20 +1741,6 @@ export default function JobPage(props) {
                         return <MenuItem value={n}>{ }{n}</MenuItem>
                       })}
                   </Select>
-                </FormControl>
-
-                <FormControl className={classes.formControl}>
-                  <LocalizationProvider dateAdapter={AdapterDateFns}>
-                    <DatePicker
-                      label="Average Accident Date"
-                      value={newJob.parameter.average_accident_date}
-                      format="MM/DD/YYYY"
-                      onChange={(newValue) => {
-                        handleUpdateJob({ ...newJob, parameter: { ...newJob.parameter, average_accident_date: newValue.toLocaleDateString('en-US') } });
-                      }}
-                      renderInput={(params) => <TextField {...params} />}
-                    />
-                  </LocalizationProvider>
                 </FormControl>
               </div>
             </div>

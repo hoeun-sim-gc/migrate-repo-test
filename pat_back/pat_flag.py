@@ -86,4 +86,8 @@ class RATING_TYPE(IntFlag):
 class PSOLD_PERSP(IntFlag):
     Gross = 1,
     Net = 2
-
+    
+class PSOLD_BLENDING(IntFlag):
+    no_blending = 1,
+    missing_invalid = 2,
+    all_blending = 3

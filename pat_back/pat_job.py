@@ -13,7 +13,7 @@ from bcpandas import SqlCreds, to_sql
 
 
 from .settings import AppSettings
-from .pat_flag import PAT_FLAG, DATA_SOURCE_TYPE, PERIL_SUBGROUP, VALIDATE_RULE, COVERAGE_TYPE, DEDDUCT_TYPE, RATING_TYPE
+from .pat_flag import PAT_FLAG, DATA_SOURCE_TYPE, PERIL_SUBGROUP, PSOLD_BLENDING, VALIDATE_RULE, COVERAGE_TYPE, DEDDUCT_TYPE, RATING_TYPE
 
 from .psold_rating import PsoldRating
 from pat_back.fls_rating import FlsRating
@@ -71,20 +71,17 @@ class PatJob:
             self.addt_cvg = float(self.param['additional_coverage'])
             self.ded_type = DEDDUCT_TYPE[self.param['deductible_treatment']]
             self.loss_ratio = float(self.param['loss_alae_ratio'])
-            self.avg_acc_date= datetime.strptime(
-                self.param['average_accident_date'], '%m/%d/%Y') if 'average_accident_date' in self.param else datetime.today
             self.valid_rules = VALIDATE_RULE(
                 self.param['valid_rules']) if 'valid_rules' in self.param else VALIDATE_RULE(0)
 
             self.user_name = self.param['user_name'] if 'user_name' in self.param else None
             self.user_email = self.param['user_email'] if 'user_email' in self.param else None
 
-            # single blending
-            if self.rating_type == RATING_TYPE.PSOLD:
-                if "blending" in self.psold:
-                    b = np.array(self.psold['blending'])
-                    if np.all( b <= 0):
-                        del self.psold['blending']
+            # no blending weights
+            if self.rating_type == RATING_TYPE.PSOLD and PSOLD_BLENDING[self.psold['blending_type']] != PSOLD_BLENDING.no_blending:
+                b = np.array(self.psold['blending_weights'])
+                if np.all( b <= 0):
+                    self.psold['blending_type'] = PSOLD_BLENDING.no_blending.name
                                     
         except:
             self.job_id = 0
@@ -554,7 +551,7 @@ class PatJob:
                             or COALESCE(b.RatingGroup, c.PSOLD_RG) > {max_psold_rg} then null
                             else COALESCE(b.RatingGroup, c.PSOLD_RG) end"""
                 
-                if "blending" not in self.psold:
+                if PSOLD_BLENDING[self.psold['blending_type']] == PSOLD_BLENDING.no_blending:
                     rg_flg = f"""+ (case when COALESCE(b.RatingGroup, c.PSOLD_RG) is null 
                                 or COALESCE(b.RatingGroup, c.PSOLD_RG) < {min_psold_rg} 
                                 or COALESCE(b.RatingGroup, c.PSOLD_RG) > {max_psold_rg} 
@@ -860,6 +857,7 @@ class PatJob:
 
     def __alocate_psold(self, DT):
         df_wts, df_hpr, def_rtg = None, None, None
+        blend = PSOLD_BLENDING[self.psold['blending_type']]
         with pyodbc.connect(self.job_conn) as conn:
             aoi_split = pd.read_sql_query(
                 f"""select * from psold_aoi order by AOI""", conn).AOI.to_numpy()
@@ -871,24 +869,29 @@ class PatJob:
                 """, conn).drop(columns=['ID', 'CurveType', 'COVG', 'SUBGRP'])
             if df_psold is None: return
 
-            if 'blending' in self.psold:
+            if blend != PSOLD_BLENDING.no_blending:
                 def_rtg = None
-                b = np.array(self.psold['blending'])
+                b = np.array(self.psold['blending_weights'])
                 if np.sum ( b > 0) == 1:
                     def_rtg = np.argmax( b > 0) + 1
                 else: 
                     df_wts = pd.read_sql_query(f"""select RG, HPRTable from psold_weight order by rg""", conn)
                     df_wts['PremiumWeight'] = b
 
-                    if 'hpr_blending' in self.psold and self.psold['hpr_blending']:
+                    if self.psold['hpr_blending']:
                         df_hpr = pd.read_sql_query(f"""select Limit, Weight from psold_hpr_weight order by Limit""", conn)
                     else:
                         df_wts.drop(columns=['HPRTable'])
+                
+                if blend == PSOLD_BLENDING.all_blending:
+                    DT['RatingGroup'] = np.nan
 
         psold = PsoldRating(self.curve_id, df_psold, aoi_split, **self.psold)
+        avg_acc = datetime.strptime(self.param['psold']['average_accident_date'], '%m/%d/%Y') if 'average_accident_date' in self.param['psold'] else datetime.today()
         return psold.calculate_las(DT, def_rtg, df_wts, df_hpr,
-                    ded_type=self.ded_type.name,
-                    avg_acc_date=self.avg_acc_date,
+                    blend_type = blend,
+                    ded_type = self.ded_type.name,
+                    avg_acc_date = avg_acc,
                     addt_cvg=self.addt_cvg)
     
     def __allocation_fls(self, DT):

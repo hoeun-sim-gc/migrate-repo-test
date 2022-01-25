@@ -1,13 +1,11 @@
-from cmath import tau
 from datetime import datetime
-from random import betavariate
 from typing import List
 from scipy.special import gammaln
 from scipy.stats import gamma
 import numpy as np
 import pandas as pd
 
-from .pat_flag import COVERAGE_TYPE, DEDDUCT_TYPE, PERIL_SUBGROUP, PSOLD_PERSP, RATING_TYPE
+from .pat_flag import DEDDUCT_TYPE, PSOLD_BLENDING
 
 
 class PsoldRating:
@@ -20,7 +18,7 @@ class PsoldRating:
         self.trend_from = datetime(2015, 12, 31) if self.curve_id == 2016 else datetime(2020, 12, 31)
         self.trend_factor = float(params['trend_factor']) if 'trend_factor' in params else (
             1.05 if self.curve_id == 2020 else 1.035)
-        
+       
         ##
         self.__psold_curves = df_psold.set_index(['EG', 'RG']).sort_index()
         self.__aoi_split = aoi_split
@@ -63,6 +61,7 @@ class PsoldRating:
         return (w * -np.expm1(-x[..., np.newaxis] @ (1/mu[np.newaxis, :]))) @ mu
 
     def calculate_las(self, DT: pd.DataFrame, def_rtg:int = None, df_wts: pd.DataFrame = None, df_hpr: pd.DataFrame = None, 
+            blend_type = PSOLD_BLENDING.missing_invalid,
             curr_adj = 1.0, ded_type='Retains_Limit', addt_cvg=2,
             avg_acc_date=datetime(2022, 1, 1)) -> pd.DataFrame:
         """
