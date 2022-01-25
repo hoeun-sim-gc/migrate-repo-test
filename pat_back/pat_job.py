@@ -179,7 +179,7 @@ class PatJob:
         self.__update_status("upload_results")
         if df_pat is not None and len(df_pat) > 0:
             self.logger.info("Save results to database...")
-            df_pat= df_pat[['PseudoPolicyID', 'PseudoLayerID', 'Limit', 'Retention', 'Participation', 'Premium', 'PolLAS', 
+            df_pat= df_pat[['PseudoPolicyID', 'PseudoLayerID', 'Limit', 'Retention', 'Participation', 'RatingGroup', 'Premium', 'PolLAS', 
                 'DedLAS']].sort_values(['PseudoPolicyID', 'PseudoLayerID', 'Retention'])
             df_pat.fillna(value=0, inplace=True)
 

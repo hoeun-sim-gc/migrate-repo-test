@@ -332,7 +332,7 @@ class PatHelper:
                         Premium as Allocated_Premium, 
                         Participation, 
                         Building,Contents, BI, AOI, 
-                        RatingGroup as Rating_Group, 
+                        a.RatingGroup as Rating_Group, 
                         ACCGRPID, 
                         LocationIDStack as Original_Location_ID, 
                         OriginalPolicyID as Original_Policy_ID,

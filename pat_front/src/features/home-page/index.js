@@ -379,8 +379,8 @@ export default function HomePage(props) {
     var it = confirm
     setConfirm('');
     if (isOK) {
-      if(it === "stop the selected jobs" ) handleStopJob()
-      else if(it === "start (rerun) the selected job"  && currentJob) handleRunJob(currentJob.job_id);
+      if(it === "stop/reset the selected jobs" ) handleStopJob()
+      else if(it === "run the selected jobs"  && currentJob) handleRunJob(currentJob.job_id);
     }
   };
 
@@ -424,16 +424,16 @@ export default function HomePage(props) {
             </Button>
           </Tooltip>
           <Divider orientation="vertical" flexItem />
-          <Tooltip title="Cancel selected analyses"  >
+          <Tooltip title="Cancel/Reset selected analyses"  >
             <Button style={{outline: 'none', height:'36px'}}
-                onClick={(e) => { setConfirm("stop the selected jobs"); }}
-              >Cancel
+                onClick={(e) => { setConfirm("stop/reset the selected jobs"); }}
+              >Reset(Stop)
             </Button>
           </Tooltip>
           <Tooltip title="Run selected analysis"  >
             <Button style={{outline: 'none', height:'36px'}}
-                onClick={(e) => { setConfirm("start (rerun) the selected job"); }}
-              >Start
+                onClick={(e) => { setConfirm("run the selected jobs"); }}
+              >Run
             </Button>
           </Tooltip>
           <Divider orientation="vertical" flexItem />
