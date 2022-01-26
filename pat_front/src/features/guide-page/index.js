@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTheme } from '@material-ui/core/styles';
+import SplitPane from "react-split-pane";
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-bootstrap-table-next/dist/react-bootstrap-table2.min.css';
@@ -12,10 +13,10 @@ export default function GuidePage(props) {
   const theme = useTheme();
 
   return (
-    <div class="pat_container">
-      <div class="pat_left_col pat_container1">
-        <div class="pat_top_row">
-          <h1>Welcome to Premium Allocation Tool</h1>
+    <div>
+      <SplitPane split="vertical" minSize={'10%'} defaultSize={'40%'} maxSize={'80%'} style={{position:'static'}} >
+        <div class="pane_cont">
+        <h1>Welcome to Premium Allocation Tool</h1>
           <br />
 
           <h3>Business Background and Objectives</h3>
@@ -38,8 +39,7 @@ export default function GuidePage(props) {
           <p>
             In addition, eventually we would like this tool to completely replace the existing Excel-based property exposure model. This would save even more hours per year of analytical work, and could eliminate some of the possibilities for errors in this process.
           </p>
-        </div>
-        <div class="pat_bottom_row">
+
           <h3>Table of Contents</h3>
           <ul>
             <li><a href="javascript:;">Objective</a></li>
@@ -50,8 +50,7 @@ export default function GuidePage(props) {
             <li>Export the allocated premium, or push back to EDM</li>
           </ul>
         </div>
-      </div>
-      <div class="pat_right_col">
+        <div class="pane_cont">
         <h3>OBJECTIVE</h3>
         <p>
           The general goals for this application would be:
@@ -76,7 +75,8 @@ export default function GuidePage(props) {
           <li>Create CDFs for use for various per risk reinsurance layers for use in Metarisk.
           </li>
         </ol>
-      </div>
+        </div>
+      </SplitPane>
     </div>
   );
 };

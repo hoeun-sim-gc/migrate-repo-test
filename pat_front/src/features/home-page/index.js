@@ -1,10 +1,10 @@
 import React, { useState, useContext, useCallback, useRef } from 'react';
-import {useHistory} from 'react-router-dom';
+import { useHistory } from 'react-router-dom';
 
 import Tooltip from '@mui/material/Tooltip';
 
 import { makeStyles, useTheme } from '@material-ui/core/styles';
-import {Divider, Grid, Button} from '@material-ui/core';
+import { Divider, Grid, Button } from '@material-ui/core';
 
 import { PulseLoader } from "react-spinners";
 import BootstrapTable from 'react-bootstrap-table-next';
@@ -22,9 +22,11 @@ import DialogTitle from '@mui/material/DialogTitle';
 
 import WbMenu from '../../app/menu';
 
+import SplitPane from "react-split-pane";
+
 import { UserContext } from "../../app/user-context";
 import columns from './header';
-import { convertTime, calcDuration} from '../../app/theme'
+import { convertTime, calcDuration } from '../../app/theme'
 
 import './index.css';
 import { Checkbox } from '@mui/material';
@@ -64,15 +66,15 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export default function HomePage(props) {
-  const history = useHistory(); 
+  const history = useHistory();
   const classes = useStyles();
   const theme = useTheme();
 
   const tableRef = useRef(null);
 
-  const [user,setUser] = useContext(UserContext);
+  const [user, setUser] = useContext(UserContext);
 
-  const [multiSel, setMultiSel]=useState(false);
+  const [multiSel, setMultiSel] = useState(false);
   const [confirm, setConfirm] = React.useState('');
 
   const [loadingJobList, setLoadingJobList] = useState(false);
@@ -80,7 +82,7 @@ export default function HomePage(props) {
 
   const [currentJob, setCurrentJob] = useState(null);
   const [loadingJobPara, setLoadingJobPara] = useState(false);
-  const [currentPara, setCurrentPara] = useState({parameter:'', summary:[]});
+  const [currentPara, setCurrentPara] = useState({ parameter: '', summary: [] });
   const [updatingCurrent, setUpdatingCurrent] = useState(false);
 
   const [downloadingResults, setDownloadingResults] = useState(false);
@@ -89,9 +91,9 @@ export default function HomePage(props) {
 
   React.useEffect(() => {
     setLoadingJobList(true);
-    setMultiSel(localStorage.getItem('job_multi_sel')==='true');
+    setMultiSel(localStorage.getItem('job_multi_sel') === 'true');
 
-    const interval = setInterval(()=>setUpdatingCurrent(true), 10000);
+    const interval = setInterval(() => setUpdatingCurrent(true), 10000);
     return () => {
       clearInterval(interval);
     };
@@ -100,8 +102,8 @@ export default function HomePage(props) {
   //job list
   React.useEffect(() => {
     if (!loadingJobList) return;
-    
-    const request = '/api/job' + (user.email!="admin.pat@guycarp.com"? '?user='+user.email.toLowerCase():'');
+
+    const request = '/api/job' + (user.email != "admin.pat@guycarp.com" ? '?user=' + user.email.toLowerCase() : '');
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -114,44 +116,41 @@ export default function HomePage(props) {
           job.receive_time = convertTime(job.receive_time);
           job.start_time = convertTime(job.start_time);
           job.finish_time = convertTime(job.finish_time);
-          job.duration = calcDuration(job.start_time, job.finish_time) 
+          job.duration = calcDuration(job.start_time, job.finish_time)
         });
         data.sort((a, b) => {
-          var diff = (Date.parse(b.finish_time)- Date.parse(a.finish_time));
+          var diff = (Date.parse(b.finish_time) - Date.parse(a.finish_time));
           if (!isNaN(diff)) {
-            if(diff > 0 ) return 1;
-            else if(diff<0 ) return -1;
+            if (diff > 0) return 1;
+            else if (diff < 0) return -1;
           }
-          diff = (Date.parse(b.start_time)- Date.parse(a.start_time));
+          diff = (Date.parse(b.start_time) - Date.parse(a.start_time));
           if (!isNaN(diff)) {
-            if(diff>0 ) return 1;
-            else if(diff<0 ) return -1;
+            if (diff > 0) return 1;
+            else if (diff < 0) return -1;
           }
-          diff = (Date.parse(b.receive_time)- Date.parse(a.receive_time));
+          diff = (Date.parse(b.receive_time) - Date.parse(a.receive_time));
           if (!isNaN(diff)) {
-            if(diff>0 ) return 1;
-            else if(diff<0 ) return -1;
+            if (diff > 0) return 1;
+            else if (diff < 0) return -1;
           }
 
           return 0;
         });
         setJobList(data);
 
-        if(currentJob && currentJob.job_id>0)
-        {
-          var sel = data.find(j=>j.job_id===currentJob.job_id);
-          if(sel)  
-          {
+        if (currentJob && currentJob.job_id > 0) {
+          var sel = data.find(j => j.job_id === currentJob.job_id);
+          if (sel) {
             setCurrentJob(sel);
             setLoadingJobPara(true);
-            setUser({...user,curr_job: sel.job_id});
+            setUser({ ...user, curr_job: sel.job_id });
           }
         }
-        if(data.length>0 &&(!currentJob || currentJob.job_id <=0 ))
-        {
-          setCurrentJob(data[0]); 
+        if (data.length > 0 && (!currentJob || currentJob.job_id <= 0)) {
+          setCurrentJob(data[0]);
           setLoadingJobPara(true);
-          setUser({...user, curr_job: data[0].job_id});
+          setUser({ ...user, curr_job: data[0].job_id });
           tableRef.current.selectionContext.selected.push(data[0].job_id);
         }
       })
@@ -173,7 +172,7 @@ export default function HomePage(props) {
   //Update runing job status
   React.useEffect(() => {
     if (!updatingCurrent) return;
-    if (!currentJob || currentJob.status=== 'finished' || currentJob.status=== 'error' ) {
+    if (!currentJob || currentJob.status === 'finished' || currentJob.status === 'error') {
       setUpdatingCurrent(false);
       return;
     }
@@ -186,22 +185,23 @@ export default function HomePage(props) {
       throw new TypeError("Oops, we haven't got data!");
     })
       .then(data => {
-        var lst =JSON.parse(JSON.stringify(jobList));
-        if(lst){
-          var sel = lst.find(j=>j.job_id===currentJob.job_id);
-          if(sel) 
-          {
+        var lst = JSON.parse(JSON.stringify(jobList));
+        if (lst) {
+          var sel = lst.find(j => j.job_id === currentJob.job_id);
+          if (sel) {
             sel.status = data.status;
             sel.start_time = convertTime(data.start_time);
-            if(data.status === 'finished'){
+            if (data.status === 'finished') {
               sel.finish_time = convertTime(data.finish_time);
-              sel.duration = calcDuration(data.start_time, data.finish_time) 
+              sel.duration = calcDuration(data.start_time, data.finish_time)
             }
             setJobList(lst);
           }
         }
-        setCurrentPara({parameter:JSON.stringify(JSON.parse(data['parameters']),null, '    '),
-          summary:data['summary']});
+        setCurrentPara({
+          parameter: JSON.stringify(JSON.parse(data['parameters']), null, '    '),
+          summary: data['summary']
+        });
       })
       .catch(error => {
         console.log(error);
@@ -228,8 +228,10 @@ export default function HomePage(props) {
       throw new TypeError("Oops, we haven't got data!");
     })
       .then(data => {
-        setCurrentPara({parameter:JSON.stringify(JSON.parse(data['parameters']),null, '    '),
-          summary:data['summary']});
+        setCurrentPara({
+          parameter: JSON.stringify(JSON.parse(data['parameters']), null, '    '),
+          summary: data['summary']
+        });
       })
       .catch(error => {
         console.log(error);
@@ -243,9 +245,9 @@ export default function HomePage(props) {
   //results
   React.useEffect(() => {
     if (!downloadingResults) return;
-    
-    var lst= tableRef.current.selectionContext.selected;
-    if(lst.length<=0) {
+
+    var lst = tableRef.current.selectionContext.selected;
+    if (lst.length <= 0) {
       setDownloadingResults(false);
       alert("No analysis is selected!");
       return;
@@ -275,39 +277,39 @@ export default function HomePage(props) {
       });
     // eslint-disable-next-line
   }, [downloadingResults]);
-  
-  const handleStopJob = ()=>{
-    var lst= tableRef.current.selectionContext.selected;
-    if(lst.length<=0) {
+
+  const handleStopJob = () => {
+    var lst = tableRef.current.selectionContext.selected;
+    if (lst.length <= 0) {
       setDownloadingResults(false);
       alert("No analysis is selected!");
       return;
     }
 
     let request = '/api/stop/' + lst.join('_');
-    fetch(request,{method: "POST"}).then(response => {
+    fetch(request, { method: "POST" }).then(response => {
       if (response.ok) {
         setLoadingJobList(true);
       }
-    });    
+    });
   };
 
-  const handleRenameJob = (job_id, name)=>{
-    let request = '/api/rename/' + job_id+"/"+name;
-    fetch(request,{method: "PUT"}).then(response => {
+  const handleRenameJob = (job_id, name) => {
+    let request = '/api/rename/' + job_id + "/" + name;
+    fetch(request, { method: "PUT" }).then(response => {
       if (response.ok) {
         setLoadingJobList(true);
       }
-    });    
+    });
   };
-  
-  const handleRunJob = (id)=>{
+
+  const handleRunJob = (id) => {
     let request = '/api/run/' + id;
-    fetch(request, {method: "POST"}).then(response => {
+    fetch(request, { method: "POST" }).then(response => {
       if (response.ok) {
         setLoadingJobList(true);
       }
-    }); 
+    });
   };
 
   //data file
@@ -319,7 +321,7 @@ export default function HomePage(props) {
       return;
     }
 
-    let request = '/api/valid/' + currentJob.job_id + '?flagged='+ flaggedOnly;
+    let request = '/api/valid/' + currentJob.job_id + '?flagged=' + flaggedOnly;
     fetch(request).then(response => {
       if (response.ok) {
         return response.blob();
@@ -344,31 +346,30 @@ export default function HomePage(props) {
     // eslint-disable-next-line
   }, [downloadingData]);
 
-  const get_options = ()=>{
+  const get_options = () => {
     let ps = 20;
-    try
-    {
+    try {
       var s = localStorage.getItem('job_page_size');
       ps = parseInt(s);
     }
     catch
     {
-      ps=20;
+      ps = 20;
     }
 
-    if (!ps || ps <= 0) ps=20;
+    if (!ps || ps <= 0) ps = 20;
 
     return {
       // pageStartIndex: 0,
-      sizePerPage: ps, 
+      sizePerPage: ps,
       hideSizePerPage: true,
       hidePageListOnlyOnePage: true,
-      sizePerPageList: [5,10,15,20,25,30,40,50],
+      sizePerPageList: [5, 10, 15, 20, 25, 30, 40, 50],
       alwaysShowAllBtns: true,
       showTotal: true
     };
   };
-  
+
   const handleSelChange = (event) => {
     setMultiSel(event.target.checked);
     localStorage.setItem('job_multi_sel', event.target.checked);
@@ -379,14 +380,14 @@ export default function HomePage(props) {
     var it = confirm
     setConfirm('');
     if (isOK) {
-      if(it === "stop/reset the selected jobs" ) handleStopJob()
-      else if(it === "run the selected jobs"  && currentJob) handleRunJob(currentJob.job_id);
+      if (it === "stop/reset the selected jobs") handleStopJob()
+      else if (it === "run the selected jobs" && currentJob) handleRunJob(currentJob.job_id);
     }
   };
 
-  const get_select_row = ()=>{
-    var sel = multiSel?'checkbox':'radio';
-    return  {
+  const get_select_row = () => {
+    var sel = multiSel ? 'checkbox' : 'radio';
+    return {
       mode: sel,
       clickToSelect: true,
       clickToEdit: true,
@@ -395,7 +396,7 @@ export default function HomePage(props) {
         if (isSelect) {
           setCurrentJob(row);
           setLoadingJobPara(true);
-          setUser({...user, curr_job:row.job_id})
+          setUser({ ...user, curr_job: row.job_id })
         }
       }
     };
@@ -405,143 +406,155 @@ export default function HomePage(props) {
 
   return (
     <div class="pat_container">
-      <div class="job_col">
-        {(loadingJobList || loadingJobPara || downloadingResults || downloadingData) &&
-          <div className={classes.spinner}>
-            <PulseLoader
-              size={30}
-              color={"#2BAD60"}
-              loading={loadingJobList || loadingJobPara || downloadingResults || downloadingData}
-            />
-          </div>
-        }
-        
-        <div class='row' style={{marginLeft: '2px'}}>
-          <Tooltip title="Refresh job list"  >
-            <Button style={{outline: 'none', height:'36px'}}
-                onClick={(e) => { setLoadingJobList(true); }}
-              >Refresh
-            </Button>
-          </Tooltip>
-          <Divider orientation="vertical" flexItem />
-          <Tooltip title="Cancel/Reset selected analyses"  >
-            <Button style={{outline: 'none', height:'36px'}}
-                onClick={(e) => { setConfirm("stop/reset the selected jobs"); }}
-              >Reset(Stop)
-            </Button>
-          </Tooltip>
-          <Tooltip title="Run selected analysis"  >
-            <Button style={{outline: 'none', height:'36px'}}
-                onClick={(e) => { setConfirm("run the selected jobs"); }}
-              >Run
-            </Button>
-          </Tooltip>
-          <Divider orientation="vertical" flexItem />
-          <Tooltip title="Download data">
-             <WbMenu header="Download" items={[
-                { text: 'All Data', onClick: () => { setFlaggedOnly(false);  setDownloadingData(true) } },
-                { text: 'Validation Data', onClick: () => { setFlaggedOnly(true);  setDownloadingData(true)} },
-                { text: 'Results', onClick: () => { setDownloadingResults(true); } },
-              ]} />
-          </Tooltip>
-          {/* <Divider orientation="vertical" flexItem />
+      <SplitPane split="vertical" minSize={'10%'} defaultSize={'70%'} maxSize={'95%'} style={{ position: 'static' }} >
+        <div class="pane_cont">
+          <div class="job_col">
+            {(loadingJobList || loadingJobPara || downloadingResults || downloadingData) &&
+              <div className={classes.spinner}>
+                <PulseLoader
+                  size={30}
+                  color={"#2BAD60"}
+                  loading={loadingJobList || loadingJobPara || downloadingResults || downloadingData}
+                />
+              </div>
+            }
+
+            <div class='row' style={{ marginLeft: '2px' }}>
+              <Tooltip title="Refresh job list"  >
+                <Button style={{ outline: 'none', height: '36px' }}
+                  onClick={(e) => { setLoadingJobList(true); }}
+                >Refresh
+                </Button>
+              </Tooltip>
+              <Divider orientation="vertical" flexItem />
+              <Tooltip title="Cancel/Reset selected analyses"  >
+                <Button style={{ outline: 'none', height: '36px' }}
+                  onClick={(e) => { setConfirm("stop/reset the selected jobs"); }}
+                >Reset(Stop)
+                </Button>
+              </Tooltip>
+              <Tooltip title="Run selected analysis"  >
+                <Button style={{ outline: 'none', height: '36px' }}
+                  onClick={(e) => { setConfirm("run the selected jobs"); }}
+                >Run
+                </Button>
+              </Tooltip>
+              <Divider orientation="vertical" flexItem />
+              <Tooltip title="Download data">
+                <WbMenu header="Download" items={[
+                  { text: 'All Data', onClick: () => { setFlaggedOnly(false); setDownloadingData(true) } },
+                  { text: 'Validation Data', onClick: () => { setFlaggedOnly(true); setDownloadingData(true) } },
+                  { text: 'Results', onClick: () => { setDownloadingResults(true); } },
+                ]} />
+              </Tooltip>
+              {/* <Divider orientation="vertical" flexItem />
           <Tooltip title="Populate allocated premium back to EDM">
             <Button style={{outline: 'none', height:'36px'}}
                 onClick={(e) => { alert("This option hasn't been implemented yet!"); }}
               >EDM
             </Button>
           </Tooltip> */}
-          <Dialog
-            open={confirm}
-            onClose={() => { setConfirm(''); }}
-            aria-labelledby="alert-dialog-title"
-            aria-describedby="alert-dialog-description"
-          >
-            <DialogTitle id="alert-dialog-title">
-              {"Warning"}
-            </DialogTitle>
-            <DialogContent>
-              <DialogContentText id="alert-dialog-description">
-                Do you really want to {confirm}?
-              </DialogContentText>
-            </DialogContent>
-            <DialogActions>
-              <Button style={{ color: 'black' }} onClick={() => { handleConfirm(true) }} autoFocus>Yes</Button>
-              <Button style={{ color: 'black' }} onClick={() => { handleConfirm(false) }} > Cancel </Button>
-            </DialogActions>
-          </Dialog>
-        </div>
-        <Grid container className={classes.root} spacing={2}>
-          <Grid item md={12} style={{ marginTop: '-40px'}}>
-            <ToolkitProvider
-              keyField="job_id"
-              data={jobList}
-              columns={columns}
-              bootstrap4
-              search
-            >
-              {
-                props => (
-                  <div justify='flex-end'>
-                    <Grid container justify='flex-end'>
-                      <Grid item md={6} container justify='flex-end' alignItems='center' >
-                        <FormControlLabel control={<Checkbox checked={multiSel}
-                          style={{ color: theme.palette.text.primary, background: theme.palette.background.default}}
-                         onChange={handleSelChange} />} label="Multi-Selection" />
-                        <SearchBar  {...props.searchProps} style={{ height: '26px', width:'180px' }} />
-                      </Grid>
-                    </Grid>
-                    <BootstrapTable classes={classes.table}
-                      ref={tableRef} 
-                      cellEdit={ cellEditFactory({ mode: 'dbclick', afterSaveCell :(oldValue, newValue, row, column)=>{
-                        handleRenameJob(row.job_id, newValue);
-                      } }) }
-                      {...props.baseProps}
-                      rowClasses={classes.table_row}
-                      selectRow={get_select_row()}
-                      pagination={paginationFactory(get_options())}
-                      striped
-                      hover
-                      condensed
-                    />
-                  </div>
-                )
-              }
-            </ToolkitProvider>
-          </Grid>
+              <Dialog
+                open={confirm}
+                onClose={() => { setConfirm(''); }}
+                aria-labelledby="alert-dialog-title"
+                aria-describedby="alert-dialog-description"
+              >
+                <DialogTitle id="alert-dialog-title">
+                  {"Warning"}
+                </DialogTitle>
+                <DialogContent>
+                  <DialogContentText id="alert-dialog-description">
+                    Do you really want to {confirm}?
+                  </DialogContentText>
+                </DialogContent>
+                <DialogActions>
+                  <Button style={{ color: 'black' }} onClick={() => { handleConfirm(true) }} autoFocus>Yes</Button>
+                  <Button style={{ color: 'black' }} onClick={() => { handleConfirm(false) }} > Cancel </Button>
+                </DialogActions>
+              </Dialog>
+            </div>
+            <Grid container className={classes.root} spacing={2}>
+              <Grid item md={12} style={{ marginTop: '-40px' }}>
+                <ToolkitProvider
+                  keyField="job_id"
+                  data={jobList}
+                  columns={columns}
+                  bootstrap4
+                  search
+                >
+                  {
+                    props => (
+                      <div justify='flex-end'>
+                        <Grid container justify='flex-end'>
+                          <Grid item md={6} container justify='flex-end' alignItems='center' >
+                            <FormControlLabel control={<Checkbox checked={multiSel}
+                              style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
+                              onChange={handleSelChange} />} label="Multi-Selection" />
+                            <SearchBar  {...props.searchProps} style={{ height: '26px', width: '180px' }} />
+                          </Grid>
+                        </Grid>
+                        <BootstrapTable classes={classes.table}
+                          ref={tableRef}
+                          cellEdit={cellEditFactory({
+                            mode: 'dbclick', afterSaveCell: (oldValue, newValue, row, column) => {
+                              handleRenameJob(row.job_id, newValue);
+                            }
+                          })}
+                          {...props.baseProps}
+                          rowClasses={classes.table_row}
+                          selectRow={get_select_row()}
+                          pagination={paginationFactory(get_options())}
+                          striped
+                          hover
+                          condensed
+                        />
+                      </div>
+                    )
+                  }
+                </ToolkitProvider>
+              </Grid>
 
-        </Grid>
-      </div>
-      <div class="para_col para_container1" style={{ marginTop: '5px'}} >
-        <div class="single_row">
-          <h5>Parameters:</h5>
-          <span>{currentJob?.job_id}</span>
+            </Grid>
+          </div>
         </div>
-      <textarea value={currentPara?.parameter}
-          readOnly={true}
-          class="para_row"
-          style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}>
-        </textarea>
-        <div class="sum_row">
-          <h5>Summary:</h5>
-          <table style={{ width: '100%', border: '1px solid gray' }} >
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentPara?.summary?.map(row => (
-                <tr key={row.item}>
-                  <td>{row.item}</td>
-                  <td>{row.cnt}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div class="pane_cont">
+          <div class="single_row">
+            <h5>Parameters:</h5>
+            <span>{currentJob?.job_id}</span>
+          </div>
+          <SplitPane split="horizontal" minSize={'10%'} defaultSize={'50%'} maxSize={'95%'} style={{ position:"inherit" }} >
+            <div class="pane_cont">
+              <textarea value={currentPara?.parameter}
+                readOnly={true}
+                class="para_row"
+                style={{ color: theme.palette.text.primary, background: theme.palette.background.default, width: '100%'}}>
+              </textarea>
+            </div>
+            <div class="pane_cont">
+              <div class="sum_row">
+                <h5>Summary:</h5>
+                <table style={{ width: '100%', border: '1px solid gray' }} >
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentPara?.summary?.map(row => (
+                      <tr key={row.item}>
+                        <td>{row.item}</td>
+                        <td>{row.cnt}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </SplitPane>
         </div>
-      </div>
+      </SplitPane>
     </div>
   );
 };

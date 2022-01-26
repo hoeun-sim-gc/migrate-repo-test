@@ -40,6 +40,7 @@
     "react-router-dom": "^5.2.0",
     "react-scripts": "3.4.3",
     "react-spinners": "^0.9.0",
+    "react-split-pane": "^0.1.92",
     "remark-gfm": "^3.0.1",
     "remark-math": "^5.1.1",
     "use-clippy": "^1.0.8",
