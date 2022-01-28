@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pyodbc
 from bcpandas import SqlCreds, to_sql
-from sqlalchemy import column, false, true
+from sqlalchemy import column, false, null, true
 
 from pat_back.pat_job import PatJob
 
@@ -443,9 +443,17 @@ class PatHelper:
     @classmethod
     def public_job(cls, job_id):
         with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-            cur.execute(f"""update pat_job set user_name = 'developer',
-                user_email = null where job_id = {job_id};""")
-            cur.commit()        
+            cur.execute(f"""select parameters from pat_job where job_id = {job_id}""")
+            row = cur.fetchone()
+            if row is not None:
+                js = json.loads(row[0])
+                js['user_name'] = 'developer'
+                js['user_email'] = 'developer.pat@guycarp.com'
+
+                cur.execute(f"""update pat_job set user_name = 'developer', user_email = null,
+                    parameters = '{json.dumps(js).replace("'", "''")}' 
+                    where job_id = {job_id};""")
+                cur.commit()        
 
     @classmethod
     def cancel_jobs(cls, lst):
