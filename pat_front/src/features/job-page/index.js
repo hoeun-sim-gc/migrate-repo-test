@@ -949,7 +949,7 @@ export default function JobPage(props) {
                 readOnly={true}
                 style={{
                   fontSize: '14px',
-                  width: '100%', height: '50vh', padding: '10px', color: theme.palette.text.primary,
+                  width: '98%', height: '50vh', margin: '10px', padding: '10px', color: theme.palette.text.primary,
                   background: theme.palette.background.default
                 }}>
               </textarea>

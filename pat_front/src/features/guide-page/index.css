@@ -55,4 +55,29 @@
     margin: 10px;
   }
 
+  .left_col {
+    margin: 10px;
+    height: 80vh;
+    overflow: auto;
+  }
+  
+  .right_col {
+    margin: 10px;
+    height: 80vh;
+    width: 98%;
+    overflow: auto;
+  }
+
+  .img_r, .math_r {
+    -webkit-filter: invert(1);
+    filter: invert(1);
+  }
+
+  .math_i {
+    max-height: 30px;
+  }
+
+  .math_d {
+    text-align: center;
+  }
 }

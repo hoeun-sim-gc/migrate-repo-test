@@ -1,5 +1,4 @@
-import React, { useState, useContext, useCallback, useRef } from 'react';
-import { useHistory } from 'react-router-dom';
+import React, { useState, useContext, useRef } from 'react';
 
 import Tooltip from '@mui/material/Tooltip';
 
@@ -66,7 +65,6 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export default function HomePage(props) {
-  const history = useHistory();
   const classes = useStyles();
   const theme = useTheme();
 
@@ -103,7 +101,7 @@ export default function HomePage(props) {
   React.useEffect(() => {
     if (!loadingJobList) return;
 
-    const request = '/api/job' + (user.email != "admin.pat@guycarp.com" ? '?user=' + user.email.toLowerCase() : '');
+    const request = '/api/job' + (user.email !== "admin.pat@guycarp.com" ? '?user=' + user.email.toLowerCase() : '');
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
