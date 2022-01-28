@@ -25,7 +25,8 @@ import StepButton from '@mui/material/StepButton';
 
 import Autocomplete from "@material-ui/lab/Autocomplete";
 
-import SplitPane from "react-split-pane";
+import { Allotment } from "allotment";
+import "allotment/dist/style.css";
 
 import {
   Checkbox, FormControlLabel,
@@ -875,7 +876,7 @@ export default function JobPage(props) {
           />
         </div>
       }
-      <SplitPane split="vertical" minSize={'10%'} defaultSize={'30%'} maxSize={'80%'} style={{ position: 'static' }} >
+      <Allotment defaultSizes={[30, 70]}>
         <div class="pane_cont">
           <div>
             <Card className={classes.card} variant="outlined">
@@ -1750,7 +1751,7 @@ export default function JobPage(props) {
             </div>
           </div>
         </div>
-      </SplitPane>
+      </Allotment>
     </div>
   );
 };

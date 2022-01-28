@@ -21,7 +21,8 @@ import DialogTitle from '@mui/material/DialogTitle';
 
 import WbMenu from '../../app/menu';
 
-import SplitPane from "react-split-pane";
+import { Allotment } from "allotment";
+import "allotment/dist/style.css";
 
 import { UserContext } from "../../app/user-context";
 import columns from './header';
@@ -404,7 +405,7 @@ export default function HomePage(props) {
 
   return (
     <div class="pat_container">
-      <SplitPane split="vertical" minSize={'10%'} defaultSize={'70%'} maxSize={'95%'} style={{ position: 'static' }} >
+      <Allotment defaultSizes={[70, 30]}>
         <div class="pane_cont">
           <div class="job_col">
             {(loadingJobList || loadingJobPara || downloadingResults || downloadingData) &&
@@ -521,12 +522,12 @@ export default function HomePage(props) {
             <h5>Parameters:</h5>
             <span>{currentJob?.job_id}</span>
           </div>
-          <SplitPane split="horizontal" minSize={'10%'} defaultSize={'50%'} maxSize={'95%'} style={{ position:"inherit" }} >
+          <Allotment vertical defaultSizes={[50, 50]}>
             <div class="pane_cont">
               <textarea value={currentPara?.parameter}
                 readOnly={true}
                 class="para_row"
-                style={{ color: theme.palette.text.primary, background: theme.palette.background.default, width: '100%'}}>
+                style={{ color: theme.palette.text.primary, background: theme.palette.background.default, width: '96%'}}>
               </textarea>
             </div>
             <div class="pane_cont">
@@ -550,9 +551,9 @@ export default function HomePage(props) {
                 </table>
               </div>
             </div>
-          </SplitPane>
+          </Allotment>
         </div>
-      </SplitPane>
+      </Allotment>
     </div>
   );
 };
