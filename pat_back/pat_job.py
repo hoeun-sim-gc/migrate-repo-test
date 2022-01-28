@@ -179,8 +179,9 @@ class PatJob:
         self.__update_status("upload_results")
         if df_pat is not None and len(df_pat) > 0:
             self.logger.info("Save results to database...")
-            df_pat= df_pat[['PseudoPolicyID', 'PseudoLayerID', 'Limit', 'Retention', 'Participation', 'RatingGroup', 'Premium', 'PolLAS', 
-                'DedLAS']].sort_values(['PseudoPolicyID', 'PseudoLayerID', 'Retention'])
+            df_pat= df_pat[['PseudoPolicyID', 'PseudoLayerID', 'Limit', 'Retention', 'Participation', 
+                'RatingGroup', 'LossRatio', 'Premium', 'PolLAS', 'DedLAS']].sort_values([
+                    'PseudoPolicyID', 'PseudoLayerID', 'Retention'])
             df_pat.fillna(value=0, inplace=True)
 
             df_pat['job_id'] = self.job_id
@@ -839,15 +840,15 @@ class PatJob:
 
     def allocate_premium(self, DT) -> DataFrame:
         if self.rating_type == RATING_TYPE.PSOLD:
-            DT = self.__alocate_psold(DT)
+            DT = self.__calculate_las_psold(DT)
         elif self.rating_type == RATING_TYPE.FLS:
-            DT = self.__allocation_fls(DT)
+            DT = self.__calculate_las_fls(DT)
         elif self.rating_type == RATING_TYPE.MB:
-            DT = self.__allocation_mb(DT)
+            DT = self.__calculate_las_mb(DT)
         
-        DT.fillna({'LossRatio':self.loss_ratio},inplace=True)
+        DT.fillna({'LossRatio':self.loss_ratio, 'Participation': 1},inplace=True)
         if 'PolLAS' in DT and 'DedLAS' in DT:
-            DT['Premium'] = (DT.PolLAS-DT.DedLAS) * DT.LossRatio
+            DT['Premium'] = (DT.PolLAS-DT.DedLAS) * DT.LossRatio * DT.Participation
             sumLAS = DT.groupby('PolicyID').agg(
                 {'Premium': 'sum'}).rename(columns={'Premium': 'sumLAS'})
             DT = DT.merge(sumLAS, on='PolicyID')
@@ -855,7 +856,7 @@ class PatJob:
 
             return DT
 
-    def __alocate_psold(self, DT):
+    def __calculate_las_psold(self, DT):
         df_wts, df_hpr, def_rtg = None, None, None
         blend = PSOLD_BLENDING[self.psold['blending_type']]
         with pyodbc.connect(self.job_conn) as conn:
@@ -894,7 +895,7 @@ class PatJob:
                     avg_acc_date = avg_acc,
                     addt_cvg=self.addt_cvg)
     
-    def __allocation_fls(self, DT):
+    def __calculate_las_fls(self, DT):
         df_fls = None
         with pyodbc.connect(self.job_conn) as conn:
             df_fls = pd.read_sql_query(f"""select ID, mu, w, tau, theta, beta, cap, uTgammaMean, limMean
@@ -912,7 +913,7 @@ class PatJob:
             ded_type = self.ded_type.name, 
             addt_cvg = self.addt_cvg)
 
-    def __allocation_mb(self, DT):
+    def __calculate_las_mb(self, DT):
         df_mb = None
         with pyodbc.connect(self.job_conn) as conn:
             df_mb = pd.read_sql_query(f"""select ID, b, g, cap from mb_curves 

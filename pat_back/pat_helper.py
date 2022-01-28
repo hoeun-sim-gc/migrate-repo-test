@@ -64,13 +64,14 @@ class PatHelper:
             return "Job is too big"
 
         fld = {}
-        fld['PolicyID'] = next((f for f in df if f in ['PolicyID', 'OriginalPolicyID']), None)
-        fld['Limit'] = next((f for f in df if f in ['Limit', 'PolLimit']), None)
-        fld['Retention'] = next((f for f in df if f in ['Retention', 'PolRetention']), None)
-        fld['PolPrem'] = next((f for f in df if f in ['PolPrem', 'PolPremium']), None)
+        fld['PolicyID'] = next((f for f in df if f.lower() in ['policyid', 'originalpolicyid']), None)
+        fld['Limit'] = next((f for f in df if f.lower() in ['limit', 'pollimit']), None)
+        fld['Retention'] = next((f for f in df if f.lower() in ['retention', 'polretention']), None)
+        fld['PolPrem'] = next((f for f in df if f.lower() in ['polprem', 'polpremium']), None)
+        fld['Participation'] = next((f for f in df if f.lower() in ['participation', 'participate','polparticipation']), None)
         if not all(fld.values()): return False       
 
-        f = next((f for f in df if f in ['TIV', 'AOI', 'AOIr']), None)
+        f = next((f for f in df if f.lower() in ['tiv', 'aoi', 'aoir']), None)
         if f:
             if f != 'TIV': fld[f]= 'TIV'
         elif any(c in df for c in ['Building', 'Contents', 'BI']):
@@ -78,12 +79,12 @@ class PatHelper:
         else:
             return "No TIV in data"
         
-        f = next((f for f in df if f in ['Stack', 'LocationIDStack']), None)
+        f = next((f for f in df if f.lower() in ['stack', 'locationidstack']), None)
         if f:
             if f != 'Stack': fld[f]= 'Stack'
         else: df['Stack'] = df.index
 
-        f = next((f for f in df if f in ['RatingGroup','rtG']), None)  
+        f = next((f for f in df if f.lower() in ['ratinggroup','rtg']), None)  
         if f:
             if f != 'RatingGroup': fld[f] = 'RatingGroup'
         else: df['RatingGroup'] = np.nan
@@ -91,7 +92,7 @@ class PatHelper:
         if 'LossRatio' not in df:
             df['LossRatio'] = float(job_para['loss_alae_ratio'] if 'loss_alae_ratio' in job_para else 1)        
         
-        fld = dict((x,y) for x,y in fld.items() if x!=y)
+        fld = dict((x,y) for y,x in fld.items() if x!=y)
         if fld: df.rename(columns=fld, inplace=True) 
         job = PatJob(param=job_para)
         if job.job_id > 0:
@@ -208,26 +209,26 @@ class PatHelper:
     @classmethod
     def __save_policy_data(cls, job_id, df): 
         fld = {}
-        fld['OriginalPolicyID'] = next((f for f in df if f in ['OriginalPolicyID', 'PolicyID']), None)
-        fld['PolLimit'] = next((f for f in df if f in ['PolLimit','Limit']), None)
-        fld['PolRetention'] = next((f for f in df if f in ['PolRetention','Retention']), None)
-        fld['PolPremium'] = next((f for f in df if f in ['PolPremium','PolPrem']), None)
-        fld['Building'] = next((f for f in df if f in ['Building','TIV','AOI']), None) 
+        fld['OriginalPolicyID'] = next((f for f in df if f.lower() in ['originalpolicyid', 'policyid']), None)
+        fld['PolLimit'] = next((f for f in df if f.lower() in ['pollimit','limit']), None)
+        fld['PolRetention'] = next((f for f in df if f.lower() in ['polretention','retention']), None)
+        fld['PolPremium'] = next((f for f in df if f.lower() in ['polpremium','polprem']), None)
+        fld['Building'] = next((f for f in df if f.lower() in ['building','tiv','aoi']), None) 
         if not all(fld.values()): return False     
         
         df.rename(columns=dict((y,x) for x,y in fld.items() if x!=y), inplace=True) 
         
-        f = next((f for f in df if f in ['LocationIDStack', 'Stack']), None)
+        f = next((f for f in df if f.lower() in ['locationidstack', 'stack']), None)
         if f:
             if f != 'LocationIDStack': df.rename(columns = {f:'LocationIDStack'}, inplace='True')
         else: df['LocationIDStack'] = df.index
 
-        f = next((f for f in df if f in ['RatingGroup','rtG']), None)  
+        f = next((f for f in df if f.lower() in ['ratinggroup','rtg']), None)  
         if f:
             if f != 'RatingGroup': df.rename(columns = {f:'RatingGroup'}, inplace='True')
         else: df['RatingGroup'] = np.nan
 
-        f = next((f for f in df if f in ['PolParticipation','Participate','Participation']), None)
+        f = next((f for f in df if f.lower() in ['polparticipation','participate','participation']), None)
         if f:
             if f != 'PolParticipation': df.rename(columns = {f:'PolParticipation'}, inplace='True')
         else: df['PolParticipation'] = 1
@@ -333,6 +334,7 @@ class PatHelper:
                         Participation, 
                         Building,Contents, BI, AOI, 
                         a.RatingGroup as Rating_Group, 
+                        a.LossRatio as Loss_Ratio, 
                         ACCGRPID, 
                         LocationIDStack as Original_Location_ID, 
                         OriginalPolicyID as Original_Policy_ID,

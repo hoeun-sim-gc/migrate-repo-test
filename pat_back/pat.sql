@@ -131,6 +131,7 @@ create table pat_premium(
     Retention float,
     Participation float, 
     RatingGroup int,
+    LossRatio float,
     Premium float, 
     PolLAS float,
     DedLAS float
