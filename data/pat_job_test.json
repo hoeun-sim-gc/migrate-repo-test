@@ -1,29 +1,27 @@
 {
     "job_name": "Demo_Blending",
     "job_guid": "676f8a59-1061-42ad-8f27-061b7716c63d",
-    "ref_analysis": 100000067,
-    "server": "FRKCAT-RMS4SQL1",
-    "edm": "Chubb_CLNA_BUILD_20210701_EDM_v181",
-    "rdm": "Chubb_CLNA_2021_FireGELwPol_RDMv181",
-    "portinfoid": 8,
-    "perilid": 5,
-    "analysisid": 9,
+    "data_source_type" : "Reference_Job",
+    "reference_job": {
+        "job_id": 100000067
+    },
     "data_correction": "",
     "valid_rules": 1073741826,
+    "curve_id": 2016,
+    "psold": {
+        "curve_persp": "Gross",
+        "peril_subline": "All_Perils",
+        "trend_factor": 1.035,
+        "average_accident_date": "1/1/2022",
+        "blending_type": "missing_invalid",
+        "blending_weights": [1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        "hpr_blending": false
+    },
     "loss_alae_ratio": 1,
     "additional_coverage": 2,
     "deductible_treatment": "Retains_Limit",
     "coverage_type": "Building_Contents_BI",
     "type_of_rating": "PSOLD",
-    "curve_id": 2016,
-    "average_accident_date": "1/1/2022",
-    "psold": {
-        "curve_persp": "Gross",
-        "peril_subline": "All_Perils",
-        "trend_factor": 1.035,
-        "blending": [1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-        "hpr_blending": false
-    },
     "user_name": "Chengyou Xiao",
     "user_email": "chengyou.xiao@guycarp.com"
 }

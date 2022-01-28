@@ -1,19 +1,23 @@
+from binascii import Incomplete
+from cgitb import text
 import json
 import logging
 from datetime import datetime
-from io import BytesIO
+from io import BytesIO, StringIO
+from operator import truediv
 import uuid
 import zipfile
 import numpy as np
 import pandas as pd
 import pyodbc
 from bcpandas import SqlCreds, to_sql
+from sqlalchemy import column, false, null, true
 
 from pat_back.pat_job import PatJob
 
 from .pat_worker import PatWorker
 from .settings import AppSettings
-from .pat_flag import PAT_FLAG
+from .pat_flag import DATA_SOURCE_TYPE, PAT_FLAG, RATING_TYPE
 
 class PatHelper:
     """Class to manage PAT jobs"""
@@ -25,22 +29,22 @@ class PatHelper:
 
     @classmethod
     def submit(cls, job_para, data=None):
-        if not job_para or 'job_guid' not in job_para:
-            return 0
+        if (any(c not in job_para.keys() for c in ['job_guid', 'type_of_rating', 'data_source_type'])) \
+            or (job_para['type_of_rating'] not in RATING_TYPE.__members__) \
+            or (job_para['data_source_type'] not in DATA_SOURCE_TYPE.__members__): return 0
 
         logger = logging.getLogger(job_para['job_guid'])
         logger.info(f"""Job received:\n{json.dumps(job_para, sort_keys=True, indent=4)}""")
-    
+
         job_id = cls.__register_job(job_para)
         if job_id > 0:
             logger.info(f"Job registered successfully - {job_id}")
             if data:
-                logger.info("Save correction data...")
-                if(cls.__save_data_correction(job_id, data)<=0):
-                    logger.warning("Save correction data...Failed!")
+                logger.info("Save user uploaded data...")
+                if not cls.__process_user_data(job_id,DATA_SOURCE_TYPE[job_para['data_source_type']], data):
+                    logger.warning("Save user uploaded data...Failed!")
                     return 0
-                else:
-                    logger.info("Save correction data...OK")
+                logger.info("Save user uploaded data...OK")
             
             return job_id
         
@@ -49,21 +53,56 @@ class PatHelper:
     @classmethod
     def submit_run(cls, job_para, data):
         if (not job_para) or (data is None):
-            return "Parameter missing"
-        if len(data) > 1000000:
-            return "Job too big"
+            return "Data missing"
 
-        for c in ['PolicyID', 'Limit', 'Retention', 'PolPrem', 'TIV', 'Stack', 'RatingGroup']:
-            if c not in data:
-                return 'Input data format error'
+        dlist = cls.__extract_user_data(data)
+        if not dlist or 'policy' not in dlist: 
+            return "Data missing"
         
-        if 'LossRatio' not in data and 'loss_alae_ratio' in job_para:
-            data['LossRatio'] = float(job_para['loss_alae_ratio'])        
+        df= dlist['policy']
+        if len(df) > 1000000:
+            return "Job is too big"
 
+        fld = {}
+        fld['PolicyID'] = next((f for f in df if f.lower() in ['policyid', 'originalpolicyid']), None)
+        fld['Limit'] = next((f for f in df if f.lower() in ['limit', 'pollimit']), None)
+        fld['Retention'] = next((f for f in df if f.lower() in ['retention', 'polretention']), None)
+        fld['PolPrem'] = next((f for f in df if f.lower() in ['polprem', 'polpremium']), None)
+        fld['Participation'] = next((f for f in df if f.lower() in ['participation', 'participate','polparticipation']), None)
+        if not all(fld.values()): return False       
+
+        f = next((f for f in df if f.lower() in ['tiv', 'aoi', 'aoir']), None)
+        if f:
+            if f != 'TIV': fld[f]= 'TIV'
+        elif any(c in df for c in ['Building', 'Contents', 'BI']):
+            df['TIV'] = np.sum(df[set(['Building', 'Contents', 'BI']).intersection(set(df.columns))], axis=1)
+        else:
+            return "No TIV in data"
+        
+        f = next((f for f in df if f.lower() in ['stack', 'locationidstack']), None)
+        if f:
+            if f != 'Stack': fld[f]= 'Stack'
+        else: df['Stack'] = df.index
+
+        f = next((f for f in df if f.lower() in ['ratinggroup','rtg']), None)  
+        if f:
+            if f != 'RatingGroup': fld[f] = 'RatingGroup'
+        else: df['RatingGroup'] = np.nan
+
+        if 'LossRatio' not in df:
+            df['LossRatio'] = float(job_para['loss_alae_ratio'] if 'loss_alae_ratio' in job_para else 1)        
+        
+        fld = dict((x,y) for y,x in fld.items() if x!=y)
+        if fld: df.rename(columns=fld, inplace=True) 
         job = PatJob(param=job_para)
         if job.job_id > 0:
-            df = job.allocate_premium(data)
+            df = job.allocate_premium(df)
             if df is not None and len(df) > 0:
+                dl = set(['Policy', 'EffLmt', 'sumLAS']).intersection(set(df.columns))
+                if dl: df.drop(columns = dl, inplace=True)
+                if fld: df.rename(columns=dict((y,x) for x,y in fld.items()) | {'Premium':'Allocated_Premium', 
+                        'PolLAS' : 'PolicyLimitLAS',
+                        'DedLAS' : 'PolicyAttachLAS'}, inplace=True) 
                 return df
 
         return 'Error'
@@ -92,40 +131,146 @@ class PatHelper:
         return 0
 
     @classmethod
-    def __save_data_correction(cls, job_id, data) -> bool:
-        ret= False
-        creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
-        with pyodbc.connect(cls.job_conn) as conn, zipfile.ZipFile(BytesIO(data),'r') as zf:
-            for d, t, kflds, vflds in [('pol_validation.csv', 'pat_pseudo_policy', ['PseudoPolicyID'],
-                                    ['PolRetainedLimit', 'PolLimit', 'PolParticipation', 'PolRetention', 'PolPremium',
-                                        'occupancy_scheme', 'occupancy_code','Building','Contents','BI','AOI','RatingGroup']),
-                                ('fac_validation.csv', 'pat_facultative', ['PseudoPolicyID','FacKey'], 
-                                    ['FacLimit', 'FacAttachment', 'FacCeded'])]:
-                if d in zf.namelist():
-                    df =  pd.read_csv(zf.open(d))
-                    if len(df) > 0 and all(k in df.columns for k in kflds):
-                        mask0 = np.full(len(df),False)
-                        for f0 in vflds:
-                            if f0 in df.columns:
-                                f = f0 +'_revised'
-                                if f in df.columns:
-                                    mask = df[f].notna() & (df[f] != df[f0])
-                                    df.loc[mask, [f0]] = df.loc[mask,f]
-                                    df.loc[~mask, [f0]] = None
-                                    mask0 |= mask
-                                else:
-                                    df[f0] = None
-                            else:
-                                df[f0] = None
+    def __process_user_data(cls, job_id:int, ds_type:DATA_SOURCE_TYPE, data) -> bool:
+        dlist = cls.__extract_user_data(data)
+        if dlist:
+            if ds_type== DATA_SOURCE_TYPE.User_Upload:
+                t = False
+                if 'policy' in dlist: 
+                    if not cls.__save_policy_data(job_id, dlist['policy']): return False
+                    else: t = True 
+                if 'fac' in dlist:  
+                    if not cls.__save_fac_data(job_id, dlist['fac']): return False
+                    else: t = True
+                return t
+            else: return cls.__save_correction_data(job_id, dlist)
 
-                        df = df[mask0]
-                        df['job_id'] = job_id
-                        df['data_type'] = int(2)
-                        df = df[['job_id','data_type',*kflds, *vflds]]
-                        if len(df) > 0:
-                            to_sql(df,t, creds, index=False, if_exists='append')
-                        ret = True      
-        return ret
+    @classmethod
+    def __extract_user_data(cls, data) -> dict:
+        res = {}
+        if data[:4] == b'PK\x03\x04': #zip file
+            with zipfile.ZipFile(BytesIO(data),'r') as zf:
+                if 'xl/workbook.xml' in zf.namelist(): # excel
+                    names= pd.ExcelFile(data).sheet_names
+                    if 'policy' in names: res['policy'] = pd.read_excel(data, 'policy')
+                    if 'fac' in names: res['fac'] = pd.read_excel(data, 'fac')
+                else: #csv zipped zip
+                    names = [str.lower(n) for n in zf.namelist()]
+                    if 'policy.csv' in names: res['policy'] = pd.read_csv(zf.open('policy.csv'))
+                    if 'fac.csv' in names: res['fac'] = pd.read_csv(zf.open('fac.csv'))
+        else: #csv
+            df =  pd.read_csv(StringIO(str(data,'utf-8')))
+            if all(c in df.columns for c in ['PolicyID', 'Limit', 'Retention', 'PolPrem', 'TIV', 'Stack', 'RatingGroup']):
+                res['policy'] = df
+        
+        return res
+
+    @classmethod
+    def __save_correction_data(cls, job_id:int, dlist) -> bool: 
+        creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
+        for k, df in dlist.items():
+            if k=='policy' and len(df) >0:
+                tab = 'pat_pseudo_policy'
+                kflds = ['PseudoPolicyID']
+                vflds = ['PolRetainedLimit', 'PolLimit', 'PolParticipation', 'PolRetention', 'PolPremium',
+                                                'occupancy_scheme', 'occupancy_code',
+                                                'Building','Contents','BI','AOI','RatingGroup']
+            elif k == 'fac' and len(df) > 0:
+                tab = 'pat_facultative'
+                kflds = ['PseudoPolicyID','FacKey']
+                vflds = ['FacLimit', 'FacAttachment', 'FacCeded']
+            else:
+                continue
+
+            if all(c in df.columns for c in (kflds + vflds)):
+                mask0 = np.full(len(df),False)
+                for f0 in vflds:
+                    if f0 in df.columns:
+                        f = f0 +'_revised'
+                        if f in df.columns:
+                            mask = df[f].notna() & (df[f] != df[f0])
+                            df.loc[mask, [f0]] = df.loc[mask,f]
+                            df.loc[~mask, [f0]] = None
+                            mask0 |= mask
+                        else:
+                            df[f0] = None
+                    else:
+                        df[f0] = None
+
+                df = df[mask0]
+                df['job_id'] = job_id
+                df['data_type'] = int(2)
+                df = df[['job_id','data_type',*kflds, *vflds]]
+                if len(df) > 0:
+                    to_sql(df,tab, creds, index=False, if_exists='append')
+            
+            return True
+
+    @classmethod
+    def __save_policy_data(cls, job_id, df): 
+        fld = {}
+        fld['OriginalPolicyID'] = next((f for f in df if f.lower() in ['originalpolicyid', 'policyid']), None)
+        fld['PolLimit'] = next((f for f in df if f.lower() in ['pollimit','limit']), None)
+        fld['PolRetention'] = next((f for f in df if f.lower() in ['polretention','retention']), None)
+        fld['PolPremium'] = next((f for f in df if f.lower() in ['polpremium','polprem']), None)
+        fld['Building'] = next((f for f in df if f.lower() in ['building','tiv','aoi']), None) 
+        if not all(fld.values()): return False     
+        
+        df.rename(columns=dict((y,x) for x,y in fld.items() if x!=y), inplace=True) 
+        
+        f = next((f for f in df if f.lower() in ['locationidstack', 'stack']), None)
+        if f:
+            if f != 'LocationIDStack': df.rename(columns = {f:'LocationIDStack'}, inplace='True')
+        else: df['LocationIDStack'] = df.index
+
+        f = next((f for f in df if f.lower() in ['ratinggroup','rtg']), None)  
+        if f:
+            if f != 'RatingGroup': df.rename(columns = {f:'RatingGroup'}, inplace='True')
+        else: df['RatingGroup'] = np.nan
+
+        f = next((f for f in df if f.lower() in ['polparticipation','participate','participation']), None)
+        if f:
+            if f != 'PolParticipation': df.rename(columns = {f:'PolParticipation'}, inplace='True')
+        else: df['PolParticipation'] = 1
+        if 'PolRetainedLimit' not in df: df['PolRetainedLimit'] = df['PolLimit'] * df['PolParticipation'] 
+
+        if 'LossRatio' not in df: df['LossRatio'] = 1
+        if 'PseudoPolicyID' not in df: df['PseudoPolicyID'] = df.index
+        if 'ACCGRPID' not in df: df['ACCGRPID'] = 0
+        if 'occupancy_scheme' not in df: df['occupancy_scheme'] = ''
+        if 'occupancy_code' not in df: df['occupancy_code'] = '0'
+       
+        if 'Contents' not in df: df['Contents'] = 0.0
+        if 'BI' not in df: df['BI'] = 0.0
+        if 'AOI' not in df: df['AOI'] = df.Building + df.Contents + df.BI
+
+        df = df[['OriginalPolicyID', 'PolLimit', 'PolRetention', 'PolPremium', 
+            'Building', 'Contents', 'BI', 'AOI',  
+            'LocationIDStack', 'RatingGroup', 'PolParticipation', 
+            'LossRatio', 'PseudoPolicyID', 'ACCGRPID', 'PolRetainedLimit', 
+            'occupancy_scheme', 'occupancy_code']]
+
+        df['job_id'] = job_id
+        df['data_type'] = int(1)
+        creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
+        to_sql(df,'pat_pseudo_policy', creds, index=False, if_exists='append')
+
+        return True
+
+    @classmethod
+    def __save_fac_data(cls, job_id, df): 
+        if next((f for f in ['PseudoPolicyID','FacLimit','FacAttachment', 'FacCeded'] if f not in df), None):
+            return False
+
+        if 'FacKey' not in df: df['FacKey'] = df.index
+        df =df[['PseudoPolicyID','FacLimit','FacAttachment', 'FacCeded','FacKey']]
+
+        df['job_id'] = job_id
+        df['data_type'] = int(1)
+        creds = SqlCreds(AppSettings.PAT_JOB_SVR, AppSettings.PAT_JOB_DB, AppSettings.PAT_JOB_USR, AppSettings.PAT_JOB_PWD)
+        to_sql(df,'pat_facultative', creds, index=False, if_exists='append')
+        
+        return True
 
     @classmethod
     def get_job_list(cls, user:str=None):
@@ -188,7 +333,8 @@ class PatHelper:
                         Premium as Allocated_Premium, 
                         Participation, 
                         Building,Contents, BI, AOI, 
-                        RatingGroup as Rating_Group, 
+                        a.RatingGroup as Rating_Group, 
+                        a.LossRatio as Loss_Ratio, 
                         ACCGRPID, 
                         LocationIDStack as Original_Location_ID, 
                         OriginalPolicyID as Original_Policy_ID,
@@ -208,12 +354,12 @@ class PatHelper:
             return df
 
     @classmethod
-    def delete(cls, *job_lst):
-        if len(job_lst) >0 :  
-            lst= [f"{a}" for a in job_lst]
+    def delete(cls, job_lst):
+        if len(job_lst) >0 : 
+            lst= ','.join([f'{a}' for a in job_lst]) 
             with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
                 for t in ['pat_job','pat_pseudo_policy', 'pat_facultative', 'pat_premium']:
-                    cur.execute(f"""delete from [{t}] where job_id in ({','.join(lst)})""")
+                    cur.execute(f"""delete from [{t}] where job_id in ({lst})""")
                     cur.commit()
         
         return cls.get_job_list()
@@ -297,9 +443,17 @@ class PatHelper:
     @classmethod
     def public_job(cls, job_id):
         with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-            cur.execute(f"""update pat_job set user_name = 'developer',
-                user_email = null where job_id = {job_id};""")
-            cur.commit()        
+            cur.execute(f"""select parameters from pat_job where job_id = {job_id}""")
+            row = cur.fetchone()
+            if row is not None:
+                js = json.loads(row[0])
+                js['user_name'] = 'developer'
+                js['user_email'] = 'developer.pat@guycarp.com'
+
+                cur.execute(f"""update pat_job set user_name = 'developer', user_email = null,
+                    parameters = '{json.dumps(js).replace("'", "''")}' 
+                    where job_id = {job_id};""")
+                cur.commit()        
 
     @classmethod
     def cancel_jobs(cls, lst):

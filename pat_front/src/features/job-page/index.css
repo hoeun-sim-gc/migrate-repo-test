@@ -2,40 +2,19 @@
     .job_container {
       display: flex;
       flex-direction: row;
-      height: 85vh;
+      height: 88vh;
     }
     
-    .job_left_col {
-      flex: 2;
-      margin: 10px;
-    }
-    
-    .job_right_col {
-      margin: 10px;
-      flex: 3;
-      overflow: auto;
-    }
-  
-    .job_container1 {
-      display: flex;
-      margin: 0px;
-      flex-direction: column;
-    }
-  
-    .job_top_row {
-      flex-grow: 0;
-      margin: 10px;
-      flex:2;
-     }
-    
-    .job_bottom_row {
+    .step_box {
       margin: 10px;
       padding: 10px;
-      flex-grow: 0;
-      flex:3;
-      border: 1px solid grey;
-      overflow: auto;
     }
+    
+    .pane_cont {
+      /* border: 1px solid grey; */
+      margin: 10px;
+    }
+
 }
   
   

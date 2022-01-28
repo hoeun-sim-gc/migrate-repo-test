@@ -52,6 +52,11 @@ class VALIDATE_RULE(IntFlag):
 
     ValidContinue = 0x40000000   # Continue with unhandled error (item removed)
 
+class DATA_SOURCE_TYPE(IntFlag):
+    Reference_Job = 1,
+    User_Upload = 2,
+    Cat_Data = 3
+
 class COVERAGE_TYPE(IntFlag):
     Building = 1,
     Contents = 2,
@@ -81,4 +86,8 @@ class RATING_TYPE(IntFlag):
 class PSOLD_PERSP(IntFlag):
     Gross = 1,
     Net = 2
-
+    
+class PSOLD_BLENDING(IntFlag):
+    no_blending = 1,
+    missing_invalid = 2,
+    all_blending = 3

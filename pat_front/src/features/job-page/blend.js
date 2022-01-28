@@ -10,7 +10,7 @@ export const blending_columns = [
     text: 'Occupancy Name',
     sort: true,
     style: { overflow: 'hidden' },
-    headerStyle: { width: '120px'},
+    headerStyle: { width: '110px'},
     editable: false
   },{
     dataField: 'weight',
@@ -68,4 +68,10 @@ export const psold_rg = [
   {id:37,name:'Highly Protected Risks - Medium', weight:0},
   {id:38,name:'Highly Protected Risks - Heavy', weight:0},
   {id:39,name:'All (Excl. HPR)', weight:0}
+];
+
+export const blending_types = [
+  {id: 'no_blending', name: 'No Blening'},
+  {id: 'missing_invalid', name: 'Only Apply to Missing/Invalid Rating Groups'},
+  {id: 'all_blending', name: 'Apply to All Rating Groups'}
 ];

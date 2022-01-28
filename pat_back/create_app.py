@@ -7,7 +7,7 @@ from logging.config import fileConfig
 
 import pandas as pd
 
-from fastapi import FastAPI,Request, staticfiles
+from fastapi import FastAPI,Request, staticfiles, HTTPException
 from fastapi.responses import RedirectResponse,StreamingResponse
 
 from starlette.applications import Starlette
@@ -64,6 +64,19 @@ def send_zip_file(name, *df_lst) -> StreamingResponse:
     except Exception as e:
         logging.warning(f"Download data file: \n{e}")
 
+#very slow even with the GZIP middelware
+def send_csv_file(name, df) -> StreamingResponse:
+    try:
+        if df is not None:
+            buffer = io.BytesIO()
+            df.to_csv(buffer, header=True, index=False)
+            buffer.seek(0)
+            return StreamingResponse(buffer, media_type='text/csv',headers={'Content-Disposition': 
+                        f'attachment;filename={name}',
+                        'Access-Control-Expose-Headers': 'Content-Disposition'})
+    except Exception as e:
+        logging.warning(f"Download data file: \n{e}")
+
 @app.get('/api/result/{job_lst}')
 def results(job_lst:str) -> StreamingResponse:
     lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
@@ -72,20 +85,23 @@ def results(job_lst:str) -> StreamingResponse:
     if len(lst)>0:
         df = PatHelper.get_results(lst)
         if df is not None:
-            return send_zip_file(f"pat_res_{lst[0]}.zip", (f'pat_res_{lst[0]}.csv', df))
+            return send_zip_file(f"pat_res_{lst[0]}.zip", (f"pat_res_{lst[0]}.csv", df))
 
 @app.get('/api/valid/{job_id}')
 def get_validate_data(job_id:int, flagged:bool=True) -> StreamingResponse:
     df1, df2 = PatHelper.get_validation_data(job_id, flagged)
     return send_zip_file(f'pat_validation_{job_id}.zip', 
-        ('pol_validation.csv', df1),
-        ('fac_validation.csv', df2)
+        ('policy.csv', df1),
+        ('fac.csv', df2)
     )
 
 @app.post('/api/job')
-async def submit_job(request: Request) -> str:
+async def submit_job(request: Request, jobrun:bool = False) -> str:
     form  = await request.form()
-    js = json.loads(form['para']) 
+    if isinstance(form['para'], str):
+        js= json.loads(form['para'])
+    else:
+        js = json.loads(await form['para'].read())
     data = None
     try:
         data = await form["data"].read()
@@ -93,32 +109,20 @@ async def submit_job(request: Request) -> str:
         pass    
 
     if js:
-        job_id = PatHelper.submit(js,data)
-        if job_id and job_id > 0:
-            wakeup_worker()
-            return f'Analysis submitted: {job_id}'
-
-    return "Submission failed!"
-
-@app.post('/api/jobrun')
-async def submit_jobrun(request: Request):
-    try:
-        form  = await request.form()
-        js = json.loads(await form['para'].read())
-        s = str(await form["data"].read(),'utf-8')
-        data = pd.read_csv(io.StringIO(s))
-
-        if js and data is not None:
+        if jobrun:
             ret = PatHelper.submit_run(js,data)
             if isinstance(ret,pd.DataFrame):
                 df = ret.fillna(0)
                 if df is not None and len(df) > 0:
-                   return send_zip_file(f"pat_res.zip", (f'pat_res.csv', df))
-            return ret 
-    except Exception as e:
-        logging.warning(f"Run job error: \n{e}")
+                    # return send_csv_file(f"pat_res.csv", df)
+                    return send_zip_file(f"pat_res.zip", ('pat_res.csv',df))
+        else:
+            job_id = PatHelper.submit(js,data)
+            if job_id and job_id > 100:
+                wakeup_worker()
+                return f'Analysis submitted: {job_id}'
 
-    return "Submission failed!"
+    raise HTTPException(status_code=400, detail=f"Submit job failed!")
 
 @app.route('/api/wakeup', methods=['POST'])
 def wakeup_worker():
@@ -153,11 +157,15 @@ def public_job(job_id:int) -> str:
     PatHelper.public_job(job_id)
     return "ok"    
 
-@app.delete('/api/job/{job_id}')
-def delete(job_id: int):
-    df= PatHelper.delete(job_id)
-    if df is not None:
-        return df.to_dict('records')
+@app.delete('/api/job/{job_lst}')
+def delete(job_lst:str)->str:
+    lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
+    lst= [a for a in lst if a>0]
+
+    if len(lst)>0:
+        df= PatHelper.delete(lst)
+        if df is not None:
+            return df.to_dict('records')
     
 @app.get('/api/db_list/{sever}')
 def get_db_list(sever:str):
