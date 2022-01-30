@@ -12,6 +12,7 @@ flag_descrs = {
         'FlagLocIDDupe' : "AOI differences on location ID stack value",
         'FlagLocNA' : "NonNumeric or negative field in location table",
         'FlagLocRG' : "Rating Group is not in the range",
+        'FlagLocTiv' : "Location TIV is missing",
         
         'FlagFacOverexposed' : "Fac attachment/exposure exceeds policy exposure",
         'FlagCeded100' : "Amount ceded exceeds 100%"
@@ -28,6 +29,7 @@ class PAT_FLAG(IntFlag):
     FlagLocIDDupe = 0x00000040
     FlagLocNA = 0x00000080
     FlagLocRG = 0x00000100
+    FlagLocTiv = 0x00000200
 
     FlagFacOverexposed = 0x00001000
     FlagCeded100 =  0x00002000

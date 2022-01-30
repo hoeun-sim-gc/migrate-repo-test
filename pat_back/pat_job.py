@@ -611,6 +611,7 @@ class PatJob:
                                             * COALESCE(b.PolParticipation, a.PolParticipation), 1) > 2 
                                         then {PAT_FLAG.FlagPolLimitParticipation} else 0 end) 
 
+                                    + (case when COALESCE(b.Building+b.Contents +b.BI, a.Building+a.Contents +a.BI) <= 0 then {PAT_FLAG.FlagLocTiv} else 0 end)
                                     + (case when COALESCE(b.AOI, {aoi}) < 0 then {PAT_FLAG.FlagLocNA} else 0 end)
                                     {rg_flg}  as flag                                
                             from pat_pseudo_policy a 
