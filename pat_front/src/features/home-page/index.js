@@ -81,7 +81,7 @@ export default function HomePage(props) {
 
   const [currentJob, setCurrentJob] = useState(null);
   const [loadingJobPara, setLoadingJobPara] = useState(false);
-  const [currentPara, setCurrentPara] = useState({ parameter: '', summary: [] });
+  const [currentPara, setCurrentPara] = useState({job_id:'', parameter: '', summary: [] });
   const [updatingCurrent, setUpdatingCurrent] = useState(false);
 
   const [downloadingResults, setDownloadingResults] = useState(false);
@@ -198,6 +198,7 @@ export default function HomePage(props) {
           }
         }
         setCurrentPara({
+          job_id: data['job_id'],
           parameter: JSON.stringify(JSON.parse(data['parameters']), null, '    '),
           summary: data['summary']
         });
@@ -228,6 +229,7 @@ export default function HomePage(props) {
     })
       .then(data => {
         setCurrentPara({
+          job_id : data['job_id'],
           parameter: JSON.stringify(JSON.parse(data['parameters']), null, '    '),
           summary: data['summary']
         });
@@ -286,6 +288,22 @@ export default function HomePage(props) {
     }
 
     let request = '/api/stop/' + lst.join('_');
+    fetch(request, { method: "POST" }).then(response => {
+      if (response.ok) {
+        setLoadingJobList(true);
+      }
+    });
+  };
+  
+  const handleResetJob = () => {
+    var lst = tableRef.current.selectionContext.selected;
+    if (lst.length <= 0) {
+      setDownloadingResults(false);
+      alert("No analysis is selected!");
+      return;
+    }
+
+    let request = '/api/reset/' + lst.join('_');
     fetch(request, { method: "POST" }).then(response => {
       if (response.ok) {
         setLoadingJobList(true);
@@ -379,8 +397,9 @@ export default function HomePage(props) {
     var it = confirm
     setConfirm('');
     if (isOK) {
-      if (it === "stop/reset the selected jobs") handleStopJob()
-      else if (it === "run the selected jobs" && currentJob) handleRunJob(currentJob.job_id);
+      if (it === "reset the selected jobs") handleResetJob()
+      else if (it === "stop the selected jobs") handleStopJob()
+      else if (it === "run the selected job" && currentJob) handleRunJob(currentJob.job_id);
     }
   };
 
@@ -426,15 +445,21 @@ export default function HomePage(props) {
                 </Button>
               </Tooltip>
               <Divider orientation="vertical" flexItem />
-              <Tooltip title="Cancel/Reset selected analyses"  >
+              <Tooltip title="Reset selected job to initial state"  >
                 <Button style={{ outline: 'none', height: '36px' }}
-                  onClick={(e) => { setConfirm("stop/reset the selected jobs"); }}
-                >Reset(Stop)
+                  onClick={(e) => { setConfirm("reset the selected jobs"); }}
+                >Reset
+                </Button>
+              </Tooltip>
+              <Tooltip title="Stop the selected running job"  >
+                <Button style={{ outline: 'none', height: '36px' }}
+                  onClick={(e) => { setConfirm("stop the selected jobs"); }}
+                >Stop
                 </Button>
               </Tooltip>
               <Tooltip title="Run selected analysis"  >
                 <Button style={{ outline: 'none', height: '36px' }}
-                  onClick={(e) => { setConfirm("run the selected jobs"); }}
+                  onClick={(e) => { setConfirm("run the selected job"); }}
                 >Run
                 </Button>
               </Tooltip>
@@ -518,12 +543,10 @@ export default function HomePage(props) {
           </div>
         </div>
         <div class="pane_cont">
-          <div class="single_row">
-            <h5>Parameters:</h5>
-            <span>{currentJob?.job_id}</span>
-          </div>
           <Allotment vertical defaultSizes={[50, 50]}>
             <div class="pane_cont">
+              <h5 style={{marginLeft:'5px'}}>Parameters:</h5>
+              <span style={{marginLeft:'5px'}}>{currentPara?.job_id}</span>
               <textarea value={currentPara?.parameter}
                 readOnly={true}
                 class="para_row"

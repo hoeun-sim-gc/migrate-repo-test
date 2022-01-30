@@ -119,12 +119,12 @@ async def submit_job(request: Request, jobrun:bool = False) -> str:
         else:
             job_id = PatHelper.submit(js,data)
             if job_id and job_id > 100:
-                wakeup_worker()
+                PatWorker.start_worker(job_id)
                 return f'Analysis submitted: {job_id}'
 
     raise HTTPException(status_code=400, detail=f"Submit job failed!")
 
-@app.route('/api/wakeup', methods=['POST'])
+@app.post('/api/wakeup')
 def wakeup_worker():
     PatWorker.start_worker()
     return "ok"
@@ -136,16 +136,31 @@ def stop_job(job_lst:str)->str:
 
     if len(lst)>0:
         PatWorker.stop_jobs(lst)
-        PatHelper.cancel_jobs(lst)
+        # if lst:
+        #     PatHelper.reset_jobs(lst)
         
+    return "ok"
+
+@app.post('/api/reset/{job_lst}')
+def reset_job(job_lst:str)->str:
+    lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
+    lst= [a for a in lst if a>0]
+
+    if len(lst)>0:
+        PatWorker.stop_jobs(lst)
+        PatHelper.reset_jobs(lst,True)
+    
     return "ok"
     
 @app.post('/api/run/{job_id}')
 def run_job(job_id:int)->str:
-    PatWorker.stop_jobs([job_id])
-    PatHelper.reset_jobs([job_id])
-    PatWorker.start_worker(job_id)     
-    return "ok"
+    if not PatWorker.is_runnung(job_id):
+        PatHelper.reset_jobs([job_id])
+        PatWorker.start_worker(job_id) 
+        
+        return "ok"
+    else:
+        return "Job is already ruuning"
 
 @app.put('/api/rename/{job_id}/{new_name}')
 def rename_job(job_id:int, new_name:str) -> str:

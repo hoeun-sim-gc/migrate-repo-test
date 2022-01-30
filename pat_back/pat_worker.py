@@ -47,6 +47,10 @@ class PatWorker(threading.Thread):
                     self.job_id = job_id
                     try:
                         job.run(self.stopped)
+                    except Exception as e:
+                        job.update_status('error')
+                        logging.warn(f"Error captured: {e}" )
+
                     finally:
                         self.job_id = 0
                         if self.stopped():
@@ -93,3 +97,9 @@ class PatWorker(threading.Thread):
             for j in lst:
                 if w.job_id == j:
                     w.stop()
+
+    @classmethod
+    def is_runnung(cls, job_id):
+        for w in cls.workers:
+            if w.job_id == job_id:
+                return True

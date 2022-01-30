@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pyodbc
 from bcpandas import SqlCreds, to_sql
-from sqlalchemy import column, false, true
+from sqlalchemy import column, false, null, true
 
 from pat_back.pat_job import PatJob
 
@@ -386,25 +386,20 @@ class PatHelper:
         return (df1, df2)
     
     @classmethod
-    def reset_jobs(cls, lst):
-        jlst= ','.join([f'{j}' for j in lst])
+    def reset_jobs(cls, lst, to_orig:bool = False):
+        jblst= ','.join([f'{j}' for j in lst])
+        dtlst= '(0, 1)' if to_orig else '(0)'
+        data = 'data_extracted = 0,' if to_orig else ''
+
         with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-            df =pd.read_sql_query(f"select job_id, data_extracted from pat_job where job_id in ({jlst})",conn)
-            if np.any(df.data_extracted==0):
-                jlst1 = ','.join([f'{j}' for j in df[df.data_extracted==0]['job_id']]) 
-                for tab in ['pat_pseudo_policy','pat_facultative']:
-                    cur.execute(f"""delete from {tab} where job_id in ({jlst1}) and data_type != 2;""")
-                    cur.commit()
-            if np.any(df.data_extracted!=0):
-                jlst2 = ','.join([f'{j}' for j in df[df.data_extracted!=0]['job_id']]) 
-                for tab in ['pat_pseudo_policy','pat_facultative']:
-                    cur.execute(f"""delete from {tab} where job_id in ({jlst2}) and data_type =0;""")
-                    cur.commit()
-            
-            cur.execute(f"""delete from pat_premium where job_id in ({jlst})""")
+            for tab in ['pat_pseudo_policy','pat_facultative']:
+                cur.execute(f"""delete from {tab} where job_id in ({jblst}) and data_type in {dtlst};""")
+                cur.commit()
+
+            cur.execute(f"""delete from pat_premium where job_id in ({jblst})""")
             cur.commit()
-            cur.execute(f"""update pat_job set status = 'received', start_time =null, finish_time =null
-                    where job_id in ({jlst});""")
+            cur.execute(f"""update pat_job set status = 'received',{data} start_time = null, finish_time =null
+                    where job_id in ({jblst});""")
             cur.commit()
     
     @classmethod
@@ -443,15 +438,15 @@ class PatHelper:
     @classmethod
     def public_job(cls, job_id):
         with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-            cur.execute(f"""update pat_job set user_name = 'developer',
-                user_email = null where job_id = {job_id};""")
-            cur.commit()        
+            cur.execute(f"""select parameters from pat_job where job_id = {job_id}""")
+            row = cur.fetchone()
+            if row is not None:
+                js = json.loads(row[0])
+                js['user_name'] = 'developer'
+                js['user_email'] = 'developer.pat@guycarp.com'
 
-    @classmethod
-    def cancel_jobs(cls, lst):
-        jlst= ','.join([f'{j}' for j in lst])
-        with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-            cur.execute(f"""update pat_job set status = 'cancelled', start_time = null, finish_time = null
-                    where job_id in ({jlst});""")
-            cur.commit()
+                cur.execute(f"""update pat_job set user_name = 'developer', user_email = null,
+                    parameters = '{json.dumps(js).replace("'", "''")}' 
+                    where job_id = {job_id};""")
+                cur.commit()        
 
