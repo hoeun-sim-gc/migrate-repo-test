@@ -61,5 +61,7 @@ Click the "New Analysis" button on the left side bar then you can go to the "New
 ![layer](../../../public/images/pat_submit.png)
 
 
+$$f(x)  = \frac{1}{\sigma\sqrt{2\pi}}e^{-\frac{1}{2} (\frac{x-\mu}{\sigma})}$$  
+
 
 

@@ -6,45 +6,31 @@ import { Form, FormGroup, FormControl } from "react-bootstrap";
 import "./index.css";
 
 export default function Settings(props) {
-  const [checked, setChecked] = React.useState(props.theme==='dark');
-
-  const [newPsize, setNewPsize]=useState(20);
+  const [isDark, setIsDark] = React.useState(props.theme==='dark');
 
   React.useEffect(() => {
-    let ps = 20;
-    try
-    {
-      var s = localStorage.getItem('job_page_size');
-      ps = parseInt(s);
-    }
-    catch
-    {
-      ps=20;
-    }
-
-    if (ps && ps > 0) setNewPsize(ps)
   }, []);
 
   
   React.useEffect(()=>{
-    const mode= checked?'dark':'light'
+    const mode= isDark?'dark':'light'
     props.ChangeTheme(mode);
     localStorage.setItem("prefer_theme",mode);
-  },[checked, props]);
+  },[isDark, props]);
 
   const toggleChecked = () => {
-    setChecked(!checked);
+    setIsDark(!isDark);
   };
 
   return (
     <div className="Settings">
       <FormGroup>
         <FormControlLabel
-          control={<Switch checked={checked} onChange={toggleChecked} />}
+          control={<Switch isDark={isDark} onChange={toggleChecked} />}
           label="Browse in dark mode"
         />
       </FormGroup>
-      <Form>
+      {/* <Form>
         <div className="row align-items-end" >
           <div className="col">
             <FormGroup>
@@ -63,7 +49,7 @@ export default function Settings(props) {
           <div className="col" />
           <div className="col" />
         </div>
-      </Form>
+      </Form> */}
     </div>
   );
 }

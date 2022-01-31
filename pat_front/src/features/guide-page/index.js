@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useTheme } from '@material-ui/core/styles';
-// import SplitPane from "react-split-pane";
 import Markdown from 'markdown-to-jsx';
 
 import { Allotment } from "allotment";
@@ -12,15 +10,8 @@ import 'react-bootstrap-table-next/dist/react-bootstrap-table2.min.css';
 import "./index.css";
 
 export default function GuidePage(props) {
-  const theme = useTheme();
-
   const [userGuide, setUserGuide] = useState('');
-
-  const th = localStorage.getItem("prefer_theme");
-  const re_img = RegExp(`\\(.*\\/public\\/images\/`, 'g');
-  const re_img1 = RegExp(`".*\\/public\\/images\/`, 'g');
-  const re_F = RegExp(`\\$\\$(.* ?)\\$\\$`, 'g');
-  const re_f = RegExp(`\\$(.* ?)\\$`, 'g');
+  const [mathRev, ] = React.useState(props.theme === 'dark'? 'math_r' : '');
 
   useEffect(() => {
     import("./guide.md")
@@ -28,13 +19,17 @@ export default function GuidePage(props) {
         fetch(res.default)
           .then(res => res.text())
           .then(res => {
-            var rev = th === 'light' ? '' : 'math_r'
+            const re_img = RegExp(`\\(.*/public/images/`, 'g');
+            const re_img1 = RegExp(`".*/public/images/`, 'g');
+            const re_F = RegExp(`\\$\\$(.* ?)\\$\\$`, 'g');
+            const re_f = RegExp(`\\$(.* ?)\\$`, 'g');
+            
             res = res.replace(re_img, '(images/')
               .replace(re_img1, '"images/')
             res = res.replace(re_F,
-              `<div class='math_d'><img src='https://latex.codecogs.com/png.image?$1' class='` + rev + `'/></div>`)
+              `<div class='math_d'><img src='https://latex.codecogs.com/png.image?$1' class='` + mathRev + `'/></div>`)
               .replace(re_f,
-                `<img src='https://latex.codecogs.com/png.image?$1' class='` + rev + ` math_i' />`)
+                `<img src='https://latex.codecogs.com/png.image?$1' class='` + mathRev + ` math_i' />`)
               .replaceAll("&#36;", "$")
 
             setUserGuide(res);
@@ -42,7 +37,7 @@ export default function GuidePage(props) {
           .catch(err => console.log(err));
       })
       .catch(err => console.log(err));
-  }, []);
+  }, [props, mathRev]);
 
   return (
     <div class='pat_container'>

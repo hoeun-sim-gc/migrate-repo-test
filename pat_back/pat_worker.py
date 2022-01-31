@@ -93,10 +93,22 @@ class PatWorker(threading.Thread):
 
     @classmethod
     def stop_jobs(cls, lst):
-        for w in cls.workers:
-            for j in lst:
+        clst=[]
+        for j in lst:
+            for w in cls.workers:
                 if w.job_id == j:
                     w.stop()
+        else:
+            clst.append(j)
+        
+        if clst:
+            jlst= ",".join([f"{a}" for a in clst]) 
+            job_conn = f'''DRIVER={{SQL Server}};Server={AppSettings.PAT_JOB_SVR};Database={AppSettings.PAT_JOB_DB};
+                User Id={AppSettings.PAT_JOB_USR};Password={AppSettings.PAT_JOB_PWD};
+                MultipleActiveResultSets=true;'''
+            with pyodbc.connect(job_conn) as conn, conn.cursor() as cur:
+                cur.execute(f"""update pat_job set status = 'cancelled' where job_id in ({jlst})""") 
+                cur.commit()            
 
     @classmethod
     def is_runnung(cls, job_id):
