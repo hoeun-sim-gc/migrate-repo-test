@@ -325,11 +325,20 @@ class PatHelper:
         return summary
 
     @classmethod
-    def get_results(cls, job_lst):
+    def delete(cls, job_lst):
+        if len(job_lst) >0 : 
+            lst= ','.join([f'{a}' for a in job_lst]) 
+            with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+                for t in ['pat_job','pat_pseudo_policy', 'pat_facultative', 'pat_premium']:
+                    cur.execute(f"""delete from [{t}] where job_id in ({lst})""")
+                    cur.commit()
+        
+        return cls.get_job_list()
+   
+    @classmethod
+    def get_results(cls, job_id):
         with pyodbc.connect(cls.job_conn) as conn:
-            jlst= f"""({','.join([f'{a}' for a in job_lst])})"""
-            df = pd.read_sql_query(f"""select a.job_id, 
-                        Limit, Retention, 
+            df = pd.read_sql_query(f"""select Limit, Retention, 
                         Premium as Allocated_Premium, 
                         Participation, 
                         Building,Contents, BI, AOI, 
@@ -344,62 +353,96 @@ class PatHelper:
                         DedLAS as PolicyAttachLAS
                     from pat_premium a
                         left join pat_pseudo_policy b on a.job_id = b.job_id and a.PseudoPolicyID = b.PseudoPolicyID
-                            and b.job_id in {jlst} and b.data_type = 0
-                    where a.job_id in {jlst}
-                    order by a.job_id, b.LocationIDStack, b.OriginalPolicyID, Retention""", conn)
-
-            if len(job_lst) <= 1:
-                df =df.drop(columns=['job_id'])
+                            and b.job_id = {job_id} and b.data_type = 0
+                    where a.job_id = {job_id}
+                    order by b.LocationIDStack, b.OriginalPolicyID, Retention""", conn)
 
             return df
 
     @classmethod
-    def delete(cls, job_lst):
-        if len(job_lst) >0 : 
-            lst= ','.join([f'{a}' for a in job_lst]) 
-            with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-                for t in ['pat_job','pat_pseudo_policy', 'pat_facultative', 'pat_premium']:
-                    cur.execute(f"""delete from [{t}] where job_id in ({lst})""")
-                    cur.commit()
-        
-        return cls.get_job_list()
-   
-    @classmethod
-    def get_validation_data(self, job_id, flagged:bool=True):
-        with pyodbc.connect(self.job_conn) as conn:
-            df1 = pd.read_sql_query(f"""select * from pat_pseudo_policy 
-                where job_id = {job_id} and data_type = 0 {('and flag != 0' if flagged else '')}
+    def get_unused(cls, job_id):
+        with pyodbc.connect(cls.job_conn) as conn:
+            df_pol = pd.read_sql_query(f"""select * from pat_pseudo_policy 
+                where job_id = {job_id} and data_type = 0 and flag != 0
                 order by PseudoPolicyID""",conn)
-            if len(df1) > 0:
-                df = df1[['flag']].drop_duplicates(ignore_index=True)
+            if len(df_pol) > 0:
+                df = df_pol[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
-                df1 = df1.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
+                df_pol = df_pol.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
-            df2 = pd.read_sql_query(f"""select * from pat_facultative 
-                where job_id = {job_id} and data_type = 0 {('and flag != 0' if flagged else '')}
+            df_fac = pd.read_sql_query(f"""select * from pat_facultative 
+                where job_id = {job_id} and data_type = 0 and flag != 0
                 order by PseudoPolicyID""",conn)
-            if len(df2) > 0:
-                df = df2[['flag']].drop_duplicates(ignore_index=True)
+            if len(df_fac) > 0:
+                df = df_fac[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
-                df2 = df2.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
+                df_fac = df_fac.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
-        return (df1, df2)
-    
+        return (df_pol, df_fac)
+
     @classmethod
-    def reset_jobs(cls, lst, to_orig:bool = False):
-        jblst= ','.join([f'{j}' for j in lst])
-        dtlst= '(0, 1)' if to_orig else '(0)'
-        data = 'data_extracted = 0,' if to_orig else ''
+    def get_data(cls, job_id):
+        with pyodbc.connect(cls.job_conn) as conn:
+            df_pol = pd.read_sql_query(f"""select * from pat_pseudo_policy 
+                where job_id = {job_id} and data_type = 0
+                order by PseudoPolicyID""",conn)
+            if len(df_pol) > 0:
+                df = df_pol[['flag']].drop_duplicates(ignore_index=True)
+                df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
+                df_pol = df_pol.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
+            df_fac = pd.read_sql_query(f"""select * from pat_facultative 
+                where job_id = {job_id} and data_type = 0
+                order by PseudoPolicyID""",conn)
+            if len(df_fac) > 0:
+                df = df_fac[['flag']].drop_duplicates(ignore_index=True)
+                df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
+                df_fac = df_fac.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
+
+            with conn.cursor() as cur:
+                PatJob.create_tmp_layers(job_id, cur)
+
+            df_facnet = pd.read_sql_query(f"""select a.PseudoPolicyID, a.LayerID as PseudoLayerID,
+                    a.LayerHigh - a.LayerLow as Limit, a.LayerLow as Retention, 
+                    a.Participation * (case when Ceded <= 0 then 1 when Ceded > 1 then 0 else 1-Ceded end) as Participation,
+                    b.PolPremium, b.ACCGRPID, b.OriginalPolicyID, b.PolRetainedLimit, b.PolLimit, b.PolParticipation, b.PolRetention,
+                    b.OriginalPolicyID, LocationIDStack, 
+                    b.occupancy_scheme, b.occupancy_code, b.Building, b.Contents, b.BI,
+                    b.AOI as TIV, b.RatingGroup, b.LossRatio,
+                    c.Participation as F_Participation, c.RatingGroup as F_RatingGroup, c.LossRatio as F_LossRatio, 
+                    c.Premium as Allocated_Premium, c.PolLAS as PolicyLimitLAS, c.DedLAS as PolicyAttachLAS
+                from #dfLayers a
+                    join pat_pseudo_policy b on a.PseudoPolicyID = b.PseudoPolicyID 
+                        and b.job_id = {job_id} and b.data_type = 0 
+                    left join pat_premium c on b.job_id = c.job_id and a.PseudoPolicyID = c.PseudoPolicyID 
+                        and a.LayerID = c.PseudoLayerID and c.job_id = {job_id}
+                order by a.PseudoPolicyID, a.LayerID;
+                drop table #dfLayers;""", conn)
+
+            return df_pol, df_fac, df_facnet
+
+    @classmethod
+    def reset_jobs(cls, job_id, to_orig:bool = False):
         with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
+            dtlst= '(0)'
+            extracted = ''
+            if to_orig:
+                cur.execute(f"""select parameters from pat_job where job_id = {job_id}""")
+                row = cur.fetchone()
+                if row is not None:
+                    js = json.loads(row[0])
+                    if 'data_source_type' in js and DATA_SOURCE_TYPE[js['data_source_type']] != DATA_SOURCE_TYPE.User_Upload:
+                        dtlst=  '(0, 1)'
+                        extracted = 'data_extracted = 0,'
+                    
             for tab in ['pat_pseudo_policy','pat_facultative']:
-                cur.execute(f"""delete from {tab} where job_id in ({jblst}) and data_type in {dtlst};""")
+                cur.execute(f"""delete from {tab} where job_id = {job_id} and data_type in {dtlst};""")
                 cur.commit()
 
-            cur.execute(f"""delete from pat_premium where job_id in ({jblst})""")
+            cur.execute(f"""delete from pat_premium where job_id = {job_id}""")
             cur.commit()
-            cur.execute(f"""update pat_job set status = 'received',{data} start_time = null, finish_time =null
-                    where job_id in ({jblst});""")
+            cur.execute(f"""update pat_job set status = 'received',{extracted} start_time = null, finish_time =null
+                    where job_id = {job_id};""")
             cur.commit()
     
     @classmethod

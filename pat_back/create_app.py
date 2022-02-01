@@ -1,5 +1,6 @@
 import io
 from os import path
+from unicodedata import name
 import zipfile
 import logging
 import json
@@ -54,7 +55,7 @@ def send_zip_file(name, *df_lst) -> StreamingResponse:
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED, False) as zf:
             for nm, df in df_lst:
                 if df is not None:
-                    zf.writestr(nm, df.to_csv(header=True, index=False))
+                    zf.writestr(nm, df.to_csv(header=True, index=False, na_rep='NULL'))
         zip_buffer.seek(0)
 
         return StreamingResponse(zip_buffer, media_type='application/zip',headers={
@@ -77,23 +78,30 @@ def send_csv_file(name, df) -> StreamingResponse:
     except Exception as e:
         logging.warning(f"Download data file: \n{e}")
 
-@app.get('/api/result/{job_lst}')
-def results(job_lst:str) -> StreamingResponse:
-    lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
-    lst= [a for a in lst if a>0]
-
-    if len(lst)>0:
-        df = PatHelper.get_results(lst)
-        if df is not None:
-            return send_zip_file(f"pat_res_{lst[0]}.zip", (f"pat_res_{lst[0]}.csv", df))
-
-@app.get('/api/valid/{job_id}')
-def get_validate_data(job_id:int, flagged:bool=True) -> StreamingResponse:
-    df1, df2 = PatHelper.get_validation_data(job_id, flagged)
-    return send_zip_file(f'pat_validation_{job_id}.zip', 
-        ('policy.csv', df1),
-        ('fac.csv', df2)
-    )
+@app.get('/api/data/{job_id}')
+def data(job_id:int, data_type:str = 'results') -> StreamingResponse:
+    df_lst=[]
+    if data_type=='results':
+        df = PatHelper.get_results(job_id)
+        if df is not None: 
+            df_lst.append((f"pat_results_{job_id}.csv", df))
+    elif data_type=='unused':
+        df_pol, df_fac = PatHelper.get_unused(job_id)
+        if df_pol is not None and len(df_pol) > 0: 
+            df_lst.append((f"pat_unused_policy_{job_id}.csv", df_pol))
+        if df_fac is not None and len(df_fac) > 0: 
+            df_lst.append((f"pat_unused_fac_{job_id}.csv", df_fac))
+    elif data_type=='details':
+        df_pol, df_fac, df_facnet = PatHelper.get_data(job_id)
+        if df_pol is not None and len(df_pol) > 0: 
+            df_lst.append((f"pat_detail_policy_{job_id}.csv", df_pol))
+        if df_fac is not None and len(df_fac) > 0: 
+            df_lst.append((f"pat_detail_fac_{job_id}.csv", df_fac))
+        if df_facnet is not None and len(df_facnet) > 0: 
+            df_lst.append((f"pat_net_of_fac_{job_id}.csv", df_facnet))
+    
+    if df_lst:
+        return send_zip_file(f"pat_data_{job_id}.zip", *df_lst) 
 
 @app.post('/api/job')
 async def submit_job(request: Request, jobrun:bool = False) -> str:
@@ -134,28 +142,21 @@ def stop_job(job_lst:str)->str:
     lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
     lst= [a for a in lst if a>0]
 
-    if len(lst)>0:
-        PatWorker.stop_jobs(lst)
-        # if lst:
-        #     PatHelper.reset_jobs(lst)
-        
+    if len(lst)>0: PatWorker.stop_jobs(lst)
+    
     return "ok"
 
-@app.post('/api/reset/{job_lst}')
-def reset_job(job_lst:str)->str:
-    lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
-    lst= [a for a in lst if a>0]
-
-    if len(lst)>0:
-        PatWorker.stop_jobs(lst)
-        PatHelper.reset_jobs(lst,True)
+@app.post('/api/reset/{job_id}')
+def reset_job(job_id:int)->str:
+    PatWorker.stop_jobs([job_id])
+    PatHelper.reset_jobs(job_id,True)
     
     return "ok"
     
 @app.post('/api/run/{job_id}')
 def run_job(job_id:int)->str:
     if not PatWorker.is_runnung(job_id):
-        PatHelper.reset_jobs([job_id])
+        PatHelper.reset_jobs(job_id)
         PatWorker.start_worker(job_id) 
         
         return "ok"
