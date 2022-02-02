@@ -363,7 +363,7 @@ export default function JobPage(props) {
       var sort = ["job_name",
         "data_source_type", "cat_data", "reference_job",
         "data_correction", "valid_rules",
-        "type_of_rating", "curve_id", "psold", "FLS", "mb",
+        "type_of_rating", "curve_id", "psold", "fls", "mb",
         "user_email", "user_name"
       ];
 
@@ -838,7 +838,12 @@ export default function JobPage(props) {
         job['curve_id'] = 2016;
         job['psold'] = { ...savePsold };
         setPsoldCvgList(['Building_Contents_BI', 'Building_Contents']);
+
         job['coverage_type']='Building_Contents';
+        if ('curve_coverage' in job.psold) {
+          if(job.psold['curve_coverage']=== 'Building_Only') job['coverage_type'] = 'Building_Only';
+          else if(job.psold['curve_coverage']=== 'Contents_Only') job['coverage_type'] = 'Contents_Only';
+        }
       }
       else if (rt_type === "MB") {
         job['mb'] =
@@ -1368,7 +1373,12 @@ export default function JobPage(props) {
                       defaultValue={'Building_Contents_BI'}
                       onChange={event => {
                         if (newJob.parameter.psold?.curve_coverage !== event.target.value) {
-                          handleUpdateJob({ ...newJob, parameter: { ...newJob.parameter, psold: { ...newJob.parameter.psold, curve_coverage: event.target.value } } });
+                          var job = newJob.parameter;
+                          
+                          job['coverage_type'] = event.target.value;
+                          if(job['coverage_type'] === 'Building_Contents_BI') job['coverage_type'] = 'Building_Contents';
+                          job.psold.curve_coverage = event.target.value;
+                          handleUpdateJob({ ...newJob, parameter: { ...job} });
                         }
                       }}
                     >
@@ -1711,14 +1721,20 @@ export default function JobPage(props) {
                       defaultValue={'Building_Contents_BI'}
                       onChange={event => {
                         if (newJob.parameter.coverage_type !== event.target.value) {
-                          if(event.target.value === 'Building_Contents_BI' && newJob.parameter.type_of_rating==='PSOLD'){
-                            alert('Suggest to use "Building_Contents" when rating type is PSOLD!');
+                          var job = newJob.parameter;
+                          if(job.type_of_rating==='PSOLD'){
+                            if(job.psold['curve_coverage']=== 'Building_Only' && event.target.value !== 'Building_Only') 
+                              alert('Suggest to use "Building_Only" for the selected rating curve!');
+                            else if(job.psold['curve_coverage']=== 'Contents_Only' && event.target.value !== 'Contents_Only') 
+                              alert('Suggest to use "Contents_Only" for the selected rating curve!');
+                            else if(event.target.value !== 'Building_Contents') 
+                              alert('Suggest to use "Building_Contents" for the selected rating curve!');
                           }
                           handleUpdateJob({ ...newJob, parameter: { ...newJob.parameter, coverage_type:event.target.value } });
                         }
                       }}
                     >
-                      {['Building_Contents_BI', 'Building_Contents'].map((n) => {
+                      {['Building_Contents_BI', 'Building_Contents', 'Building_Only', 'Contents_Only'].map((n) => {
                         return <MenuItem value={n}>{ }{n}</MenuItem>
                       })}
                     </Select>
