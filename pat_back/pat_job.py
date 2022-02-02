@@ -611,7 +611,6 @@ class PatJob:
                                             * COALESCE(b.PolParticipation, a.PolParticipation), 1) > 2 
                                         then {PAT_FLAG.FlagPolLimitParticipation} else 0 end) 
 
-                                    + (case when COALESCE(b.Building+b.Contents +b.BI, a.Building+a.Contents +a.BI) <= 0 then {PAT_FLAG.FlagLocTiv} else 0 end)
                                     + (case when COALESCE(b.AOI, {aoi}) < 0 then {PAT_FLAG.FlagLocNA} else 0 end)
                                     {rg_flg}  as flag                                
                             from pat_pseudo_policy a 
@@ -872,7 +871,7 @@ class PatJob:
             df_psold = pd.read_sql_query(f"""select * from psold_curves  
                 where ID = '{self.curve_id}' 
                     and CurveType ='{self.psold['curve_persp']}' 
-                    and COVG = {self.coverage_type} 
+                    and COVG = {COVERAGE_TYPE[self.psold['curve_coverage']] } 
                     and SUBGRP = {PERIL_SUBGROUP[self.psold['peril_subline']]}
                 """, conn).drop(columns=['ID', 'CurveType', 'COVG', 'SUBGRP'])
             if df_psold is None: return
