@@ -10,6 +10,7 @@ import pandas as pd
 
 from fastapi import FastAPI,Request, staticfiles, HTTPException
 from fastapi.responses import RedirectResponse,StreamingResponse
+from sqlalchemy import false
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -86,17 +87,21 @@ def data(job_id:int, data_type:str = 'results') -> StreamingResponse:
         if df is not None: 
             df_lst.append((f"pat_results_{job_id}.csv", df))
     elif data_type=='unused':
-        df_pol, df_fac = PatHelper.get_unused(job_id)
+        df_pol, df_fac, df_layers = PatHelper.get_unused(job_id)
         if df_pol is not None and len(df_pol) > 0: 
             df_lst.append((f"pat_unused_policy_{job_id}.csv", df_pol))
         if df_fac is not None and len(df_fac) > 0: 
             df_lst.append((f"pat_unused_fac_{job_id}.csv", df_fac))
+        if df_layers is not None and len(df_layers) > 0: 
+            df_lst.append((f"pat_unused_layers_{job_id}.csv", df_layers))
     elif data_type=='details':
-        df_pol, df_fac, df_facnet = PatHelper.get_data(job_id)
+        df_pol, df_fac, df_layers, df_facnet = PatHelper.get_data(job_id)
         if df_pol is not None and len(df_pol) > 0: 
             df_lst.append((f"pat_detail_policy_{job_id}.csv", df_pol))
         if df_fac is not None and len(df_fac) > 0: 
             df_lst.append((f"pat_detail_fac_{job_id}.csv", df_fac))
+        if df_layers is not None and len(df_layers) > 0: 
+            df_lst.append((f"pat_detail_layers_{job_id}.csv", df_layers))
         if df_facnet is not None and len(df_facnet) > 0: 
             df_lst.append((f"pat_net_of_fac_{job_id}.csv", df_facnet))
     
@@ -147,9 +152,9 @@ def stop_job(job_lst:str)->str:
     return "ok"
 
 @app.post('/api/reset/{job_id}')
-def reset_job(job_id:int)->str:
+def reset_job(job_id:int, keep_data:bool = False)->str:
     PatWorker.stop_jobs([job_id])
-    PatHelper.reset_jobs(job_id,True)
+    PatHelper.reset_jobs(job_id, not keep_data)
     
     return "ok"
     

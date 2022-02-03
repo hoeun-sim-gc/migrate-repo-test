@@ -4,7 +4,7 @@ from enum import IntFlag
 
 flag_descrs = {
         'FlagPolLocDupe' : "Duplicate policy/location records",
-        'FlagPolNA' : "NonNumeric or negative field in policies" ,
+        'FlagPolNA' : "NonNumeric or negative field in policies, or location AOI too small" ,
         'FlagPolLimitParticipation' : "Algebraic inconsistency in policy profile (limit/participation)" ,
         'FlagPolParticipation' : "Participation exceeds 100%" ,
         'FlagFacOrphan' : "Orphan Facultative Record" ,

@@ -140,6 +140,7 @@ class PatJob:
         self.logger.debug("Check data...")
         self.__check_pseudo_policy()
         self.__check_facultative()
+        self.__create_layers()
         self.logger.debug("Check data...OK")
         if stop_cb and self.__check_stop(stop_cb):
             return
@@ -535,11 +536,11 @@ class PatJob:
             min_psold_rg, max_psold_rg = row
 
             aoi = []
-            if self.coverage_type | COVERAGE_TYPE.Building:
+            if self.coverage_type & COVERAGE_TYPE.Building:
                 aoi.append("COALESCE(b.Building, a.Building)")
-            if self.coverage_type | COVERAGE_TYPE.Contents:
+            if self.coverage_type & COVERAGE_TYPE.Contents:
                 aoi.append("COALESCE(b.Contents, a.Contents)")
-            if self.coverage_type | COVERAGE_TYPE.BI:
+            if self.coverage_type & COVERAGE_TYPE.BI:
                 aoi.append("COALESCE(b.BI, a.BI)")
             aoi = " + ".join(aoi)
 
@@ -726,97 +727,95 @@ class PatJob:
                 where job_id = {self.job_id} and data_type = 0;
                 drop table #facover""")
             cur.commit()
-
-            # Fac/Pol exceed 100%
-            self.create_tmp_layers(self.job_id, cur)  # create #dfLayers
-            # Apply rule
-            if self.valid_rules & VALIDATE_RULE.ValidFac100:
-                cur.execute("update #dfLayers set Ceded = 1 where round(Ceded, 4) > 1")
-                cur.commit()
-
-            cur.execute(f"""update a set a.flag = a.flag | {PAT_FLAG.FlagCeded100}
-                        from pat_facultative a 
-                            join (select distinct PseudoPolicyID 
-                                from #dfLayers where round(Ceded, 4) > 1
-                                ) b on a.PseudoPolicyID = b.PseudoPolicyID
-                        where job_id = {self.job_id} and data_type = 0;
-                        drop table #dfLayers""")
+    
+    def __create_layers(self):
+        with pyodbc.connect(self.job_conn) as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""delete from pat_layers where job_id = {self.job_id}""")
             cur.commit()
-    @classmethod
-    def create_tmp_layers(cls,job_id, cur):
-        cur.execute(f"""select distinct PseudoPolicyID into #pol1
-                    from pat_pseudo_policy 
-                    where job_id = {job_id} and data_type = 0 and flag = 0;
-                    select distinct PseudoPolicyID into #pol2 from pat_facultative 
-                    where job_id = {job_id} and data_type = 0 and flag != 0;
-                with good_p as (
-                    select #pol1.PseudoPolicyID 
-                    from #pol1 
-                        left join #pol2 on #pol1.PseudoPolicyID = #pol2.PseudoPolicyID 
-                    where #pol2.PseudoPolicyID is null
-                )
-                select OriginalPolicyID, a.PseudoPolicyID, PolRetainedLimit, PolLimit, 
-                        case when PolParticipation > 1 then 1 else PolParticipation end as PolParticipation, 
-                        PolRetention, PolPremium,
-                        PolLimit + PolRetention as PolTopLine
-                    into #dfPolUse
-                    from pat_pseudo_policy a 
-                        join good_p b on a.PseudoPolicyID = b.PseudoPolicyID 
-                    where a.job_id = {job_id} and a.data_type = 0;
-                    drop table #pol1;
-                    drop table #pol2;""")
-        cur.commit()
-        if cur.rowcount<=0: return
+            cur.execute(f"""select distinct PseudoPolicyID into #pol1
+                        from pat_pseudo_policy 
+                        where job_id = {self.job_id} and data_type = 0 and flag = 0;
+                        select distinct PseudoPolicyID into #pol2 from pat_facultative 
+                        where job_id = {self.job_id} and data_type = 0 and flag != 0;
+                    with good_p as (
+                        select #pol1.PseudoPolicyID 
+                        from #pol1 
+                            left join #pol2 on #pol1.PseudoPolicyID = #pol2.PseudoPolicyID 
+                        where #pol2.PseudoPolicyID is null
+                    )
+                    select OriginalPolicyID, a.PseudoPolicyID, PolRetainedLimit, PolLimit, 
+                            case when PolParticipation > 1 then 1 else PolParticipation end as PolParticipation, 
+                            PolRetention, PolPremium,
+                            PolLimit + PolRetention as PolTopLine
+                        into #dfPolUse
+                        from pat_pseudo_policy a 
+                            join good_p b on a.PseudoPolicyID = b.PseudoPolicyID 
+                        where a.job_id = {self.job_id} and a.data_type = 0;
+                        drop table #pol1;
+                        drop table #pol2;""")
+            cur.commit()
+            if cur.rowcount<=0: return
 
-        cur.execute(f"""select a.PseudoPolicyID, PolRetention,PolTopLine, FacCeded,
-                    FacLimit / PolParticipation as FacGupLimit,
-                    FacAttachment / PolParticipation + PolRetention as FacGupAttachment,
-                    (FacLimit + FacAttachment) / PolParticipation + PolRetention as FacGupTopLine
-                into #dfPolFac
-                from #dfPolUse a 
-                    join pat_facultative b on a.PseudoPolicyID = b.PseudoPolicyID 
-                where b.job_id = {job_id} and b.data_type = 0""")
-        cur.commit()
+            cur.execute(f"""select a.PseudoPolicyID, PolRetention,PolTopLine, FacCeded,
+                        FacLimit / PolParticipation as FacGupLimit,
+                        FacAttachment / PolParticipation + PolRetention as FacGupAttachment,
+                        (FacLimit + FacAttachment) / PolParticipation + PolRetention as FacGupTopLine
+                    into #dfPolFac
+                    from #dfPolUse a 
+                        join pat_facultative b on a.PseudoPolicyID = b.PseudoPolicyID 
+                    where b.job_id = {self.job_id} and b.data_type = 0""")
+            cur.commit()
 
-        cur.execute(f"""with cte1 as 
-                    (select PseudoPolicyID,PolRetention as LayerLow from #dfPolUse
-                    union
-                    select PseudoPolicyID, PolTopLine as LayerLow from #dfPolUse
-                    union
-                    select PseudoPolicyID, FacGupAttachment as LayerLow from #dfPolFac
-                    union
-                    select PseudoPolicyID, FacGupTopLine as LayerLow from #dfPolFac
-                    ),
-                cte2 as 
-                    (select ROW_NUMBER() over (order by PseudoPolicyID, LayerLow) as LayerKey, PseudoPolicyID, LayerLow from cte1),
-                cte3 as
-                    (select a.PseudoPolicyID, a.LayerKey, a.LayerLow, b.LayerLow as LayerHigh
-                        from cte2 a 
-                        join cte2 b on a.PseudoPolicyID = b.PseudoPolicyID and a.LayerKey = b.LayerKey - 1
-                        where b.LayerLow - a.LayerLow > 1),
-                cte4 as
-                    (select a.*, b.PolParticipation as Participation, b.PolPremium, 
-                        case when c.FacCeded is null then 0 else c.FacCeded end as Ceded
-                    from cte3 a
-                        Left Join #dfPolUse b ON a.PseudoPolicyID = b.PseudoPolicyID
-                        Left Join #dfPolFac c ON a.PseudoPolicyID = c.PseudoPolicyID 
-                            and a.LayerLow >= c.FacGupAttachment and a.LayerHigh <= FacGupTopLine
-                )
-                select PseudoPolicyID,LayerLow,LayerHigh,Participation,max(PolPremium) as PolPremium,
-                    sum(case when Ceded is null then 0 else Ceded end) as Ceded,
-                    row_number() OVER (PARTITION BY PseudoPolicyID ORDER BY LayerLow) as LayerID
-                    into #dfLayers
-                from cte4
-                group by PseudoPolicyID, LayerLow,LayerHigh,Participation;
-                drop table #dfPolUse;
-                drop table #dfPolFac;""")
-        cur.commit()
+            # Apply rule
+            ceded = "sum(case when Ceded is null or Ceded < 0 then 0 else Ceded end)"
+            if self.valid_rules & VALIDATE_RULE.ValidFac100:
+                ceded = f"case when {ceded} > 1 - 1e-6 then 1 else {ceded} end"
+            else:
+                ceded = f"case when {ceded} > 1 - 1e-6 and {ceded} < 1 + 1e-6 then 1 else {ceded} end"
+
+            cur.execute(f"""with cte1 as 
+                        (select PseudoPolicyID,PolRetention as LayerLow from #dfPolUse
+                        union
+                        select PseudoPolicyID, PolTopLine as LayerLow from #dfPolUse
+                        union
+                        select PseudoPolicyID, FacGupAttachment as LayerLow from #dfPolFac
+                        union
+                        select PseudoPolicyID, FacGupTopLine as LayerLow from #dfPolFac
+                        ),
+                    cte2 as 
+                        (select ROW_NUMBER() over (order by PseudoPolicyID, LayerLow) as LayerKey, PseudoPolicyID, LayerLow from cte1),
+                    cte3 as
+                        (select a.PseudoPolicyID, a.LayerKey, a.LayerLow, b.LayerLow as LayerHigh
+                            from cte2 a 
+                            join cte2 b on a.PseudoPolicyID = b.PseudoPolicyID and a.LayerKey = b.LayerKey - 1
+                            where b.LayerLow - a.LayerLow > 1),
+                    cte4 as
+                        (select a.*, b.PolParticipation as Participation, 
+                            case when c.FacCeded is null or c.FacCeded < 0 then 0 else c.FacCeded end as Ceded
+                        from cte3 a
+                            Left Join #dfPolUse b ON a.PseudoPolicyID = b.PseudoPolicyID
+                            Left Join #dfPolFac c ON a.PseudoPolicyID = c.PseudoPolicyID 
+                                and a.LayerLow >= c.FacGupAttachment and a.LayerHigh <= FacGupTopLine
+                    )
+                    insert into pat_layers
+                    select {self.job_id} as job_id, PseudoPolicyID,
+                        row_number() OVER (PARTITION BY PseudoPolicyID ORDER BY LayerLow) as LayerID,
+                        LayerLow,LayerHigh, 
+                        {ceded} as Ceded,
+                        (case when {ceded} > 1 then {PAT_FLAG.FlagCeded100} else 0 end) as flag                         
+                    from cte4
+                    group by PseudoPolicyID, LayerLow, LayerHigh;
+                    drop table #dfPolUse;
+                    drop table #dfPolFac;""")
+            cur.commit()
 
     def __need_correction(self):
         with pyodbc.connect(self.job_conn) as conn:
-            for t in ['pat_pseudo_policy', 'pat_facultative']:
+            for t in ['pat_pseudo_policy', 'pat_facultative', 'pat_layer']:
+                dt = 'and data_type = 0' if t != 'pat_layer' else ''
                 df = pd.read_sql_query(f"""select count(*) as n from [{t}] where job_id = {self.job_id} 
-                        and data_type = 0 and flag != 0""", conn)
+                        {dt} and flag != 0""", conn)
                 if df is not None and len(df) > 0 and df.n[0] > 0:
                     return True
 
@@ -824,23 +823,16 @@ class PatJob:
 
     def __net_of_fac(self):
         with pyodbc.connect(self.job_conn) as conn:
-            with conn.cursor() as cur:
-                self.create_tmp_layers(self.job_id, cur)           
-                # delete those can be regarded as 1
-                cur.execute("delete from #dfLayers where Ceded - 1 > -1e-6")
-                cur.commit()
-
             df_facnet = pd.read_sql_query(f"""select b.OriginalPolicyID as PolicyID, a.PseudoPolicyID, a.LayerID as PseudoLayerID,
                     a.LayerHigh - a.LayerLow as Limit, a.LayerLow as Retention, 
                     b.PolPremium as PolPrem, 
-                    Participation * (case when Ceded <= 0 then 1 when Ceded >= 1 then 0 else 1-Ceded end) as Participation,
+                    b.polParticipation * (1 - a.Ceded) as Participation,
                     b.AOI as TIV, b.LocationIDStack as Stack, b.RatingGroup, b.LossRatio
-                from #dfLayers a
+                from pat_layers a
                     join pat_pseudo_policy b on a.PseudoPolicyID = b.PseudoPolicyID 
                         and b.job_id ={self.job_id} and b.data_type = 0 
-                where Participation * (case when Ceded <= 0 then 1 when Ceded >= 1 then 0 else 1-Ceded end) > 1e-6
-                order by a.PseudoPolicyID, LayerID, LayerLow, LayerHigh;
-                drop table #dfLayers;""", conn)
+                where a.flag = 0 and b.polParticipation > 0 and a.Ceded >= 0 and a.Ceded < 1 and b.AOI > 0
+                order by a.PseudoPolicyID, LayerID""", conn)
 
             return df_facnet
 

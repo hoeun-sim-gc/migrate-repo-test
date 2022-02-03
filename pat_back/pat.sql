@@ -123,6 +123,17 @@ create table pat_facultative(
 );
 create index idx_pat_facultative on pat_facultative (job_id asc);
 
+create table pat_layers(
+    job_id int not null,
+    PseudoPolicyID varchar(50),
+    LayerID int,
+    LayerLow float,
+    LayerHigh float,
+    Ceded float,
+    flag int
+);
+create index idx_pat_layers on pat_layers (job_id asc);
+ 
 create table pat_premium(
     job_id int,
     PseudoPolicyID varchar(50),

@@ -352,9 +352,8 @@ class PatHelper:
                         PolLAS as PolicyLimitLAS,
                         DedLAS as PolicyAttachLAS
                     from pat_premium a
-                        left join pat_pseudo_policy b on a.job_id = b.job_id and a.PseudoPolicyID = b.PseudoPolicyID
-                            and b.job_id = {job_id} and b.data_type = 0
-                    where a.job_id = {job_id}
+                        join pat_pseudo_policy b on a.job_id = b.job_id and a.PseudoPolicyID = b.PseudoPolicyID
+                    where a.job_id = {job_id} and b.data_type = 0
                     order by b.LocationIDStack, b.OriginalPolicyID, Retention""", conn)
 
             return df
@@ -377,8 +376,16 @@ class PatHelper:
                 df = df_fac[['flag']].drop_duplicates(ignore_index=True)
                 df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
                 df_fac = df_fac.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
+            
+            df_layers = pd.read_sql_query(f"""select * from pat_layers 
+                where job_id = {job_id} and flag != 0
+                order by PseudoPolicyID, LayerID""",conn)
+            if len(df_layers) > 0:
+                df = df_layers[['flag']].drop_duplicates(ignore_index=True)
+                df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
+                df_layers = df_layers.merge(df, on ='flag', how='left').drop(columns=['job_id', 'flag'])
 
-        return (df_pol, df_fac)
+        return df_pol, df_fac, df_layers
 
     @classmethod
     def get_data(cls, job_id):
@@ -399,27 +406,32 @@ class PatHelper:
                 df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
                 df_fac = df_fac.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
-            with conn.cursor() as cur:
-                PatJob.create_tmp_layers(job_id, cur)
+            df_layers = pd.read_sql_query(f"""select * from pat_layers 
+                where job_id = {job_id}
+                order by PseudoPolicyID, LayerID""",conn)
+            if len(df_layers) > 0:
+                df = df_layers[['flag']].drop_duplicates(ignore_index=True)
+                df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
+                df_layers = df_layers.merge(df, on ='flag', how='left').drop(columns=['job_id', 'flag'])
 
             df_facnet = pd.read_sql_query(f"""select a.PseudoPolicyID, a.LayerID as PseudoLayerID,
                     a.LayerHigh - a.LayerLow as Limit, a.LayerLow as Retention, 
-                    a.Participation * (case when Ceded <= 0 then 1 when Ceded > 1 then 0 else 1-Ceded end) as Participation,
+                    b.polParticipation * (1 - a.Ceded) as Participation,
                     b.PolPremium, b.ACCGRPID, b.OriginalPolicyID, b.PolRetainedLimit, b.PolLimit, b.PolParticipation, b.PolRetention,
                     b.OriginalPolicyID, LocationIDStack, 
                     b.occupancy_scheme, b.occupancy_code, b.Building, b.Contents, b.BI,
                     b.AOI as TIV, b.RatingGroup, b.LossRatio,
                     c.Participation as F_Participation, c.RatingGroup as F_RatingGroup, c.LossRatio as F_LossRatio, 
                     c.Premium as Allocated_Premium, c.PolLAS as PolicyLimitLAS, c.DedLAS as PolicyAttachLAS
-                from #dfLayers a
-                    join pat_pseudo_policy b on a.PseudoPolicyID = b.PseudoPolicyID 
+                from pat_layers a
+                    join pat_pseudo_policy b on a.job_id = b.job_id and a.PseudoPolicyID = b.PseudoPolicyID 
                         and b.job_id = {job_id} and b.data_type = 0 
                     left join pat_premium c on b.job_id = c.job_id and a.PseudoPolicyID = c.PseudoPolicyID 
                         and a.LayerID = c.PseudoLayerID and c.job_id = {job_id}
-                order by a.PseudoPolicyID, a.LayerID;
-                drop table #dfLayers;""", conn)
+                where a.job_id = {job_id}
+                order by a.PseudoPolicyID, a.LayerID""", conn)
 
-            return df_pol, df_fac, df_facnet
+            return df_pol, df_fac, df_layers, df_facnet
 
     @classmethod
     def reset_jobs(cls, job_id, to_orig:bool = False):
@@ -442,21 +454,6 @@ class PatHelper:
             cur.execute(f"""delete from pat_premium where job_id = {job_id}""")
             cur.commit()
             cur.execute(f"""update pat_job set status = 'received',{extracted} start_time = null, finish_time =null
-                    where job_id = {job_id};""")
-            cur.commit()
-    
-    @classmethod
-    def update_job(cls, job_id, para):
-        with pyodbc.connect(cls.job_conn) as conn, conn.cursor() as cur:
-            for tab in ['pat_pseudo_policy','pat_facultative']:
-                cur.execute(f"""delete from {tab} where job_id = {job_id} and data_type = 0;""")
-                cur.commit()
-
-            cur.execute(f"""delete from pat_premium where job_id = {job_id}""")
-            cur.commit()
-            
-            cur.execute(f"""update pat_job set status = 'received', start_time = null, finish_time = null,
-                    parameters = '{json.dumps(para).replace("'", "''")}'
                     where job_id = {job_id};""")
             cur.commit()
 

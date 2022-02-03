@@ -242,14 +242,14 @@ export default function HomePage(props) {
     });
   };
   
-  const handleResetJob = () => {
+  const handleResetJob = (keep) => {
     if (!currentJob) {
       setDownloadingData(false);
       alert("No analysis is selected!");
       return;
     }
 
-    let request = '/api/reset/' + currentJob.job_id;
+    let request = '/api/reset/' + currentJob.job_id + "?keep_data=" + (keep?'true':'false');
     fetch(request, { method: "POST" }).then(response => {
       if (response.ok) {
         setLoadingJobList(true);
@@ -341,7 +341,8 @@ export default function HomePage(props) {
     var it = confirm
     setConfirm('');
     if (isOK) {
-      if (it === "reset the selected job") handleResetJob()
+      if (it === "reset the selected job but keep the input data") handleResetJob(true)
+      else if (it === "reset the selected job to initial submit state") handleResetJob(false)
       else if (it === "stop/cancel the selected job") handleStopJob()
       else if (it === "run the selected job" && currentJob) handleRunJob(currentJob.job_id);
     }
@@ -386,10 +387,10 @@ export default function HomePage(props) {
               </Tooltip>
               <Divider orientation="vertical" flexItem />
               <Tooltip title="Reset selected job to initial state"  >
-                <Button style={{ outline: 'none', height: '36px' }}
-                  onClick={(e) => { setConfirm("reset the selected job"); }}
-                >Reset
-                </Button>
+                <WbMenu header="Reset" items={[
+                  { text: 'Keep Input Data', onClick: () => { setConfirm("reset the selected job but keep the input data"); }},
+                  { text: 'To Original Submit', onClick: () => { setConfirm("reset the selected job to initial submit state"); }},
+                ]} />
               </Tooltip>
               <Tooltip title="Stop/Cancel the selected running job"  >
                 <Button style={{ outline: 'none', height: '36px' }}
