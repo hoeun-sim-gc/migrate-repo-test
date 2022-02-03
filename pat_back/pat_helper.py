@@ -352,9 +352,8 @@ class PatHelper:
                         PolLAS as PolicyLimitLAS,
                         DedLAS as PolicyAttachLAS
                     from pat_premium a
-                        left join pat_pseudo_policy b on a.job_id = b.job_id and a.PseudoPolicyID = b.PseudoPolicyID
-                            and b.job_id = {job_id} and b.data_type = 0
-                    where a.job_id = {job_id}
+                        join pat_pseudo_policy b on a.job_id = b.job_id and a.PseudoPolicyID = b.PseudoPolicyID
+                    where a.job_id = {job_id} and b.data_type = 0
                     order by b.LocationIDStack, b.OriginalPolicyID, Retention""", conn)
 
             return df
@@ -399,25 +398,22 @@ class PatHelper:
                 df["Notes"] = df.apply(lambda x: PAT_FLAG.describe(x[0]), axis=1)
                 df_fac = df_fac.merge(df, on ='flag', how='left').drop(columns=['job_id', 'data_type', 'flag'])
 
-            with conn.cursor() as cur:
-                PatJob.create_tmp_layers(job_id, cur)
-
             df_facnet = pd.read_sql_query(f"""select a.PseudoPolicyID, a.LayerID as PseudoLayerID,
                     a.LayerHigh - a.LayerLow as Limit, a.LayerLow as Retention, 
-                    a.Participation * (case when Ceded <= 0 then 1 when Ceded > 1 then 0 else 1-Ceded end) as Participation,
+                    b.polParticipation * (1 - a.Ceded) as Participation,
                     b.PolPremium, b.ACCGRPID, b.OriginalPolicyID, b.PolRetainedLimit, b.PolLimit, b.PolParticipation, b.PolRetention,
                     b.OriginalPolicyID, LocationIDStack, 
                     b.occupancy_scheme, b.occupancy_code, b.Building, b.Contents, b.BI,
                     b.AOI as TIV, b.RatingGroup, b.LossRatio,
                     c.Participation as F_Participation, c.RatingGroup as F_RatingGroup, c.LossRatio as F_LossRatio, 
                     c.Premium as Allocated_Premium, c.PolLAS as PolicyLimitLAS, c.DedLAS as PolicyAttachLAS
-                from #dfLayers a
-                    join pat_pseudo_policy b on a.PseudoPolicyID = b.PseudoPolicyID 
+                from pat_layers a
+                    join pat_pseudo_policy b on a.job_id = b.job_id and a.PseudoPolicyID = b.PseudoPolicyID 
                         and b.job_id = {job_id} and b.data_type = 0 
                     left join pat_premium c on b.job_id = c.job_id and a.PseudoPolicyID = c.PseudoPolicyID 
                         and a.LayerID = c.PseudoLayerID and c.job_id = {job_id}
-                order by a.PseudoPolicyID, a.LayerID;
-                drop table #dfLayers;""", conn)
+                where a.job_id = {job_id}
+                order by a.PseudoPolicyID, a.LayerID""", conn)
 
             return df_pol, df_fac, df_facnet
 
