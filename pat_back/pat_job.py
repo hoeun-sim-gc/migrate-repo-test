@@ -812,8 +812,8 @@ class PatJob:
 
     def __need_correction(self):
         with pyodbc.connect(self.job_conn) as conn:
-            for t in ['pat_pseudo_policy', 'pat_facultative', 'pat_layer']:
-                dt = 'and data_type = 0' if t != 'pat_layer' else ''
+            for t in ['pat_pseudo_policy', 'pat_facultative', 'pat_layers']:
+                dt = 'and data_type = 0' if t != 'pat_layers' else ''
                 df = pd.read_sql_query(f"""select count(*) as n from [{t}] where job_id = {self.job_id} 
                         {dt} and flag != 0""", conn)
                 if df is not None and len(df) > 0 and df.n[0] > 0:

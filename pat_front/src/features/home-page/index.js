@@ -3,7 +3,11 @@ import React, { useState, useContext } from 'react';
 import Tooltip from '@mui/material/Tooltip';
 
 import { makeStyles, useTheme } from '@material-ui/core/styles';
-import { Divider, Grid, Button } from '@material-ui/core';
+import { Divider, Grid, Button,
+  FormControl,FormControlLabel, FormLabel,RadioGroup, Radio } from '@material-ui/core';
+
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faStepBackward, faFastBackward,faStop, faPlay,faSyncAlt, faDownload } from '@fortawesome/free-solid-svg-icons';
 
 import { PulseLoader } from "react-spinners";
 import BootstrapTable from 'react-bootstrap-table-next';
@@ -70,7 +74,7 @@ export default function HomePage(props) {
   const [user, setUser] = useContext(UserContext);
 
   const [confirm, setConfirm] = React.useState('');
-
+  
   const [loadingJobList, setLoadingJobList] = useState(false);
   const [jobList, setJobList] = useState([]);
 
@@ -80,7 +84,10 @@ export default function HomePage(props) {
   const [updatingCurrent, setUpdatingCurrent] = useState(false);
 
   const [downloadingData, setDownloadingData] = useState(false);
-  const [downloadOpt, setDownloadOpt] = useState('detail');
+  const [downloadOption, setDownloadOption] = React.useState({
+    'isOpen': false,
+    'data_type': 'results'
+  });
 
   React.useEffect(() => {
     setLoadingJobList(true);
@@ -284,7 +291,7 @@ export default function HomePage(props) {
         return;
       }
   
-      let request = '/api/data/' + currentJob.job_id +'?data_type='+ downloadOpt;
+      let request = '/api/data/' + currentJob.job_id +'?data_type='+ downloadOption.data_type;
       fetch(request).then(response => {
         if (response.ok) {
           return response.blob();
@@ -348,6 +355,14 @@ export default function HomePage(props) {
     }
   };
 
+  const handleDownloadOpt = (isOK) => {
+    setDownloadOption({...downloadOption, isOpen:false});
+    if (isOK && currentJob){
+      setDownloadingData(true);
+    }
+  };
+
+
   const select_row = {
       mode: 'radio',
       clickToSelect: true,
@@ -382,35 +397,40 @@ export default function HomePage(props) {
               <Tooltip title="Refresh job list"  >
                 <Button style={{ outline: 'none', height: '36px' }}
                   onClick={(e) => { setLoadingJobList(true); }}
-                >Refresh
+                ><FontAwesomeIcon icon={faSyncAlt} className='fa-lg' />
                 </Button>
               </Tooltip>
               <Divider orientation="vertical" flexItem />
-              <Tooltip title="Reset selected job to initial state"  >
-                <WbMenu header="Reset" items={[
-                  { text: 'Keep Input Data', onClick: () => { setConfirm("reset the selected job but keep the input data"); }},
-                  { text: 'To Original Submit', onClick: () => { setConfirm("reset the selected job to initial submit state"); }},
-                ]} />
+              <Tooltip title="Reset to initial submit"  >
+                <Button style={{ outline: 'none', height: '36px' }}
+                  onClick={(e) => { setConfirm("reset the selected job to initial submit state"); }}
+                ><FontAwesomeIcon icon={faFastBackward} className='fa-lg' />
+                </Button>
+              </Tooltip>
+              <Tooltip title="Reset and keep input data"  >
+                <Button style={{ outline: 'none', height: '36px' }}
+                  onClick={(e) => {setConfirm("reset the selected job but keep the input data");; }}
+                ><FontAwesomeIcon icon={faStepBackward} className='fa-lg' />
+                </Button>
               </Tooltip>
               <Tooltip title="Stop/Cancel the selected running job"  >
                 <Button style={{ outline: 'none', height: '36px' }}
                   onClick={(e) => { setConfirm("stop/cancel the selected job"); }}
-                >Cancel
+                ><FontAwesomeIcon icon={faStop} className='fa-lg' />
                 </Button>
               </Tooltip>
               <Tooltip title="Run selected analysis"  >
                 <Button style={{ outline: 'none', height: '36px' }}
                   onClick={(e) => { setConfirm("run the selected job"); }}
-                >Run
+                ><FontAwesomeIcon icon={faPlay} className='fa-lg' />
                 </Button>
               </Tooltip>
               <Divider orientation="vertical" flexItem />
-              <Tooltip title="Download data">
-                <WbMenu header="Download" items={[
-                  { text: 'All Details', onClick: () => { setDownloadOpt('details'); setDownloadingData(true) } },
-                  { text: 'Unused Data', onClick: () => { setDownloadOpt('unused'); setDownloadingData(true) } },
-                  { text: 'Results Only', onClick: () => { setDownloadOpt('results'); setDownloadingData(true) } }
-                ]} />
+              <Tooltip title="Run selected analysis"  >
+                <Button style={{ outline: 'none', height: '36px' }}
+                  onClick={(e) => { setDownloadOption({...downloadOption, isOpen: true}); }}
+                ><FontAwesomeIcon icon={faDownload} className='fa-lg' />
+                </Button>
               </Tooltip>
               <Dialog
                 open={confirm}
@@ -429,6 +449,37 @@ export default function HomePage(props) {
                 <DialogActions>
                   <Button style={{ color: 'black' }} onClick={() => { handleConfirm(true) }} autoFocus>Yes</Button>
                   <Button style={{ color: 'black' }} onClick={() => { handleConfirm(false) }} > Cancel </Button>
+                </DialogActions>
+              </Dialog>
+              <Dialog
+                open={downloadOption.isOpen}
+                aria-labelledby="alert-dialog-title"
+                aria-describedby="alert-dialog-description"
+              >
+                <DialogTitle id="alert-dialog-title">
+                  {"Download Data Options"}
+                </DialogTitle>
+                <DialogContent>
+                <FormControl>
+                  <RadioGroup
+                    aria-labelledby="demo-radio-buttons-group-label"
+                    defaultValue="results"
+                    name="radio-buttons-group"
+                    value = {downloadOption.data_type}
+                    onChange={(event) => {
+                     setDownloadOption({...downloadOption, data_type:event.target.value});
+                    }}
+                  >
+                    <FormControlLabel value="details" control={<Radio />} label="Details" />
+                    <FormControlLabel value="unused" control={<Radio />} label="Unused Only" />
+                    <FormControlLabel value="results" control={<Radio />} label="Results Only" />
+                  </RadioGroup>
+                </FormControl>
+
+                </DialogContent>
+                <DialogActions>
+                  <Button style={{ color: 'black' }} onClick={() => { handleDownloadOpt(true);}} autoFocus>Download</Button>
+                  <Button style={{ color: 'black' }} onClick={() => { handleDownloadOpt(false);}} > Cancel </Button>
                 </DialogActions>
               </Dialog>
             </div>

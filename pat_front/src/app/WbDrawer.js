@@ -88,7 +88,7 @@ function WbDrawer() {
         <Link to='/home' className={classes.menuLink}>
           <ListItem button>
             <ListItemIcon><FontAwesomeIcon icon={faHome} className='fa-lg' /></ListItemIcon>
-            <ListItemText primary='Home/Analyses' />
+            <ListItemText primary='Home' />
           </ListItem>
         </Link>
       </List>
@@ -106,7 +106,7 @@ function WbDrawer() {
         <Link to='/guide' className={classes.menuLink}>
           <ListItem button>
             <ListItemIcon><FontAwesomeIcon icon={faQuestionCircle} className='fa-lg' /></ListItemIcon>
-            <ListItemText primary="Analysis Guide" />
+            <ListItemText primary="User's Guide" />
           </ListItem>
         </Link>
       </List>
