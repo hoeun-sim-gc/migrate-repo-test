@@ -5,6 +5,7 @@ Premium Allocation Tool into a more reliable service and easier to integrate wit
 * bcp Utility needs to be installed in the hosting server
   <br><br>
 
+
 # Getting Started
 -- First time, 
 * Create a "pat.log" file: 
@@ -16,6 +17,8 @@ Premium Allocation Tool into a more reliable service and easier to integrate wit
   logging.cfg           -and-
   .env
   ```
+
+* Download [GCUI React](https://guycarp.visualstudio.com/GC%20Design%20System/_packaging?_a=feed&feed=gcui%40Local) library and place the .tgz file in `/pat_front`
 
 -- In root folder "premium-allocation-tool":
 ```

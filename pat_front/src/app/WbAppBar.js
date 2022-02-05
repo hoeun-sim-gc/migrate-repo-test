@@ -8,6 +8,9 @@ import Typography from '@material-ui/core/Typography';
 
 import { UserContext } from "./user-context";
 
+import {GcLogo} from '@gcui/react';
+import logo from './gc-logo.png';
+
 
 const useStyles = makeStyles((theme) => ({
   appBar: {
@@ -27,9 +30,10 @@ const useStyles = makeStyles((theme) => ({
   logoImage: {
     marginLeft: 10,
     marginRight: 50,
+    height: 20,
   },
   title: {
-    flexGrow: 1,
+    flexGrow: 1
   },
   menuLink: {
     color: 'inherit', 
@@ -56,7 +60,7 @@ function WbNavbar() {
   return (
   <AppBar position="fixed" color='default' className={classes.appBar}>
     <Toolbar disableGutters >
-      <img alt='' src={require('./gc-logo.png')} height = "20" className={classes.logoImage}/>
+      <img alt="GC Logo" src={logo} className={classes.logoImage}/>
       <Typography variant="h6" noWrap className={classes.title}>
           Premium Allocation Tool
       </Typography>

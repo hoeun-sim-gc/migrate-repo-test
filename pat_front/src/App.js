@@ -15,6 +15,7 @@ import {lightTheme, darkTheme} from './app/theme';
 import { UserContext } from "./app/user-context";
 import WbNavbar from "./app/WbAppBar";
 import WbDrawer from './app/WbDrawer';
+import WbDrawer2 from './app/WbDrawer2';
 import HomePage from './features/home-page';
 import JobPage from './features/job-page';
 import Login from './features/login-page';
@@ -57,13 +58,14 @@ function App () {
   };
 
   const IsLogin = user.name.length> 0 && user.email.length > 0;
+  
   return (
     <ThemeProvider  theme={theme === 'dark' ? darkTheme: lightTheme}>
       <Router>
         <div className={classes.root}>
           <CssBaseline />
           <WbNavbar />
-          <WbDrawer />
+          <WbDrawer2 />
           <main className={classes.content}>
             <div className={classes.toolbar} />
             <Switch>
