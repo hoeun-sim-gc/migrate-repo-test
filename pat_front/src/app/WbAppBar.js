@@ -42,7 +42,8 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 
-function WbNavbar() {
+
+export default function WbNavbar(props) {
   const classes = useStyles();
   const [user,] = useContext(UserContext);
 
@@ -56,7 +57,7 @@ function WbNavbar() {
   return (
   <AppBar position="fixed" color='default' className={classes.appBar}>
     <Toolbar disableGutters >
-      <img alt='' src={require('./gc-logo.png')} height = "20" className={classes.logoImage}/>
+      <img alt='' src={props.theme === 'dark'?require('./gc-logo.png'): require('./gc-logo-new.png')} height = "20" className={classes.logoImage}/>
       <Typography variant="h6" noWrap className={classes.title}>
           Premium Allocation Tool
       </Typography>
@@ -64,7 +65,4 @@ function WbNavbar() {
     </Toolbar>
   </AppBar>
   );
-}
-
-export default WbNavbar;
-
+};

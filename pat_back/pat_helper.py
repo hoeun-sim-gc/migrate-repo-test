@@ -45,9 +45,9 @@ class PatHelper:
                     logger.warning("Save user uploaded data...Failed!")
                     return 0
                 logger.info("Save user uploaded data...OK")
-            
+
             return job_id
-        
+
         return 0
     
     @classmethod

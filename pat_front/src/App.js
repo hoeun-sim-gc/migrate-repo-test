@@ -62,7 +62,7 @@ function App () {
       <Router>
         <div className={classes.root}>
           <CssBaseline />
-          <WbNavbar />
+          <WbNavbar theme={theme} />
           <WbDrawer />
           <main className={classes.content}>
             <div className={classes.toolbar} />

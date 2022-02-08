@@ -26,7 +26,7 @@ export default function Settings(props) {
     <div className="Settings">
       <FormGroup>
         <FormControlLabel
-          control={<Switch isDark={isDark} onChange={toggleChecked} />}
+          control={<Switch checked={isDark} onChange={toggleChecked} />}
           label="Browse in dark mode"
         />
       </FormGroup>
