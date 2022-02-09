@@ -102,7 +102,7 @@ export default function HomePage(props) {
   React.useEffect(() => {
     if (!loadingJobList) return;
 
-    const request = '/api/job' + (user.email !== "admin.pat@guycarp.com" ? '?user=' + user.email.toLowerCase() : '');
+    const request = '/api/job?req_id=' + btoa(user?.email?.toLowerCase());
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -167,7 +167,7 @@ export default function HomePage(props) {
       return;
     }
 
-    const request = '/api/job/' + currentJob.job_id
+    const request = '/api/job/' + currentJob.job_id;
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -208,7 +208,7 @@ export default function HomePage(props) {
     if (!currentJob) return;
 
     setLoadingJobPara(true);
-    const request = '/api/job/' + currentJob.job_id
+    const request = '/api/job/' + currentJob.job_id;
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -426,7 +426,7 @@ export default function HomePage(props) {
                 </Button>
               </Tooltip>
               <Divider orientation="vertical" flexItem />
-              <Tooltip title="Run selected analysis"  >
+              <Tooltip title="Download results or other data"  >
                 <Button style={{ outline: 'none', height: '36px' }}
                   onClick={(e) => { setDownloadOption({...downloadOption, isOpen: true}); }}
                 ><FontAwesomeIcon icon={faDownload} className='fa-lg' />

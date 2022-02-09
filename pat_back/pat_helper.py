@@ -1,6 +1,8 @@
 from binascii import Incomplete
 from cgitb import text
+import hashlib, binascii, os
 import json
+import base64
 import logging
 from datetime import datetime
 from io import BytesIO, StringIO
@@ -401,7 +403,7 @@ class PatHelper:
     @classmethod
     def get_job_list(cls, user:str=None):
         with pyodbc.connect(cls.job_conn) as conn:
-            u_str= f"where user_email is null or lower(user_email) = '{user}'" if user else ""
+            u_str= "" if cls.is_admin(user) else f"where user_email is null or lower(user_email) = '{user}'"
             df = pd.read_sql_query(f"""select job_id job_id, job_guid, job_name, 
                     receive_time, start_time, finish_time, status, user_name, user_email
                 from pat_job
@@ -616,3 +618,27 @@ class PatHelper:
                     where job_id = {job_id};""")
                 cur.commit()        
 
+
+    @classmethod
+    def decode64(cls, inp):
+        try:
+            base64_bytes = inp.encode("ascii")
+            sample_string_bytes = base64.b64decode(base64_bytes)
+            return sample_string_bytes.decode("ascii")
+        except:
+            pass
+
+    @classmethod
+    def is_admin(cls, provided_password):
+        """Verify a stored password against one provided by user"""
+        if not provided_password:
+            return False
+
+        salt = AppSettings.PAT_ADMIN[:64]
+        stored_password = AppSettings.PAT_ADMIN[64:]
+        pwdhash = hashlib.pbkdf2_hmac('sha512', 
+                                    provided_password.encode('utf-8'), 
+                                    salt.encode('ascii'), 
+                                    100000)
+        pwdhash = binascii.hexlify(pwdhash).decode('ascii')
+        return pwdhash == stored_password

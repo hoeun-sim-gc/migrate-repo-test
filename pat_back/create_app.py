@@ -1,3 +1,4 @@
+from importlib.abc import PathEntryFinder
 import io
 from os import path
 from unicodedata import name
@@ -8,7 +9,7 @@ from logging.config import fileConfig
 
 import pandas as pd
 
-from fastapi import FastAPI,Request, staticfiles, HTTPException
+from fastapi import FastAPI,Request, staticfiles, HTTPException, status
 from fastapi.responses import RedirectResponse,StreamingResponse
 from sqlalchemy import false
 
@@ -41,8 +42,8 @@ def hello():
     return 'Hello from PAT!'
 
 @app.get('/api/job')
-def get_job_list(user:str=None):
-    df = PatHelper.get_job_list(user)
+def get_job_list(req_id:str=None):
+    df = PatHelper.get_job_list(PatHelper.decode64(req_id))
     if df is not None and len(df) > 0:
         return df.to_dict('records')
 
@@ -174,12 +175,20 @@ def rename_job(job_id:int, new_name:str) -> str:
     return "ok"
 
 @app.put('/api/public-job/{job_id}')
-def public_job(job_id:int) -> str:
+def public_job(job_id:int,req_id:str=None) -> str:
+    req_id = PatHelper.decode64(req_id)
+    if not PatHelper.is_admin(req_id):
+        raise HTTPException(status_code=401, detail="Permission not allowed")
+        
     PatHelper.public_job(job_id)
     return "ok"    
 
 @app.delete('/api/job/{job_lst}')
-def delete(job_lst:str)->str:
+def delete(job_lst:str, req_id:str=None)->str:
+    req_id = PatHelper.decode64(req_id)
+    if not PatHelper.is_admin(req_id):
+        raise HTTPException(status_code=401, detail="Permission not allowed")
+
     lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
     lst= [a for a in lst if a>0]
 
