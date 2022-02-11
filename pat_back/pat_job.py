@@ -68,9 +68,9 @@ class PatJob:
             self.mb = self.param['mb'] if 'mb' in self.param else None
 
             self.coverage_type = COVERAGE_TYPE[self.param['coverage_type']]
-            self.addt_cvg = float(self.param['additional_coverage'])
+            self.addt_cvg = float(self.param['additional_coverage']) if 'additional_coverage' in self.param else 0
             self.ded_type = DEDDUCT_TYPE[self.param['deductible_treatment']]
-            self.loss_ratio = float(self.param['loss_alae_ratio'])
+            self.loss_ratio = float(self.param['loss_alae_ratio']) if 'loss_alae_ratio' in self.param else 1
             self.valid_rules = VALIDATE_RULE(
                 self.param['valid_rules']) if 'valid_rules' in self.param else VALIDATE_RULE(0)
 
@@ -84,6 +84,7 @@ class PatJob:
                     self.psold['blending_type'] = PSOLD_BLENDING.no_blending.name
                                     
         except:
+            self.update_status("error")
             self.job_id = 0
             logging.warning('Read job parameter error!')
 
