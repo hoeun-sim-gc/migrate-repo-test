@@ -14,13 +14,13 @@ import { ThemeProvider  } from '@material-ui/core/styles';
 
 import { UserContext } from "./app/user-context";
 import WbNavbar from "./app/WbAppBar";
-import WbDrawer from './app/WbDrawer';
 import WbDrawer2 from './app/WbDrawer2';
 import HomePage from './features/home-page';
 import JobPage from './features/job-page';
 import Login from './features/login-page';
 import Settings from './features/setting-page';
 import GuidePage from './features/guide-page';
+import {Options} from "./app/theme";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -53,7 +53,7 @@ function App () {
   }
   const [theme, setTheme] = useState(prefTheme) 
   
-  console.log("USING DAT THEME " + theme);
+  console.log("USING THEME: " + theme);
 
   const NotFound = ()=>{
     return <div className="float-left"><h2>404 Page Not Found!</h2></div>
@@ -61,22 +61,16 @@ function App () {
 
   const IsLogin = user.name.length> 0 && user.email.length > 0;
 
-   const lightTheme = responsiveFontSizes(createTheme({   
-    palette: {
-        type: 'light'
-    } 
-}));
+  const gcTheme = createTheme(Options)
 
- const darkTheme = responsiveFontSizes(createTheme({
-    palette: {
-        type: 'dark'
-    } 
-}));
-  const muiTheme = theme === "dark" ? darkTheme : lightTheme;
+  const optionCopy = Object.assign({}, theme === "dark" ? {palette: {}} : Options);
+  optionCopy["palette"]["type"] = theme
+  //const muiTheme = theme === "dark" ? darkTheme : lightTheme;
+  const muiTheme = createTheme(optionCopy);
   
   return (
     <ThemeProvider theme={muiTheme}>
-      <Router theme={muiTheme}>
+      <Router>
         <div className={classes.root}>
           <CssBaseline />
           <WbNavbar />
@@ -89,12 +83,12 @@ function App () {
                 <Route exact path="/home" element={<HomePage />}>
                
                 </Route>
-                <Route exact path="/job/" element ={IsLogin?<JobPage theme={muiTheme} />:<Login backto='/job'/>}>
+                <Route exact path="/job/" element ={IsLogin?<JobPage theme={theme} />:<Login backto='/job'/>}>
                 </Route>
-                <Route exact path="/guide" element={ <GuidePage theme={muiTheme} />}>
+                <Route exesact path="/guide" element={ <GuidePage theme={theme} />}>
                  
                 </Route>
-                <Route exact path="/setting" element={  <Settings theme={muiTheme} ChangeTheme={setTheme} />}>
+                <Route exact path="/setting" element={  <Settings theme={theme} ChangeTheme={setTheme} />}>
                 
                 </Route>
                 <Route exact path="/login" element={<Login/>}>

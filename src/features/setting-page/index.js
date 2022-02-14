@@ -8,12 +8,8 @@ import "./index.css";
 export default function Settings(props) {
   const [isDark, setIsDark] = React.useState(props.theme==='dark');
 
-  React.useEffect(() => {
-  }, []);
-
-  
   React.useEffect(()=>{
-    const mode= isDark?'dark':'light'
+    const mode= isDark ? 'dark':'light'
     props.ChangeTheme(mode);
     localStorage.setItem("prefer_theme",mode);
   },[isDark, props]);
@@ -26,9 +22,9 @@ export default function Settings(props) {
     <div className="Settings">
       <FormGroup>
         <FormControlLabel
-          control={<Switch isDark={isDark} onChange={toggleChecked} color="primary"/>}
-          label="Browse in dark mode"
-        />
+          control={<Switch onChange={toggleChecked} color="primary" checked={isDark}/>}
+          // label="Browse in dark mode"
+        />Browse in dark mode
       </FormGroup>
     </div>
   );
