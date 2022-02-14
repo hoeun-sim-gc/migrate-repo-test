@@ -1,4 +1,5 @@
 import 'react-app-polyfill/stable';
+import { createTheme, responsiveFontSizes } from '@material-ui/core/styles';
 import React, {useState, useContext} from 'react';
 import {
   HashRouter as Router,
@@ -11,7 +12,6 @@ import { makeStyles} from '@material-ui/core/styles';
 import CssBaseline from '@material-ui/core/CssBaseline';
 import { ThemeProvider  } from '@material-ui/core/styles';
 
-import {lightTheme, darkTheme} from './app/theme';
 import { UserContext } from "./app/user-context";
 import WbNavbar from "./app/WbAppBar";
 import WbDrawer from './app/WbDrawer';
@@ -61,6 +61,17 @@ function App () {
 
   const IsLogin = user.name.length> 0 && user.email.length > 0;
 
+   const lightTheme = responsiveFontSizes(createTheme({   
+    palette: {
+        type: 'light'
+    } 
+}));
+
+ const darkTheme = responsiveFontSizes(createTheme({
+    palette: {
+        type: 'dark'
+    } 
+}));
   const muiTheme = theme === "dark" ? darkTheme : lightTheme;
   
   return (
