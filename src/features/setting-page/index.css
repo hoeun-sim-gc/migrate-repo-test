@@ -1,0 +1,10 @@
+@media all and (min-width: 480px) {
+    .setting {
+      padding: 10px 0;
+    }
+  
+    .Setting form {
+      margin: 0 auto;
+      max-width: 320px;
+    }
+  }

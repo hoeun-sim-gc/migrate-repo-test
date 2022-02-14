@@ -1,0 +1,20 @@
+@media all and (min-width: 480px) {
+    .job_container {
+      height: 85vh;
+    }
+    
+    .step_box {
+      margin: 10px;
+      padding: 10px;
+    }
+    
+    .pane_cont {
+      /* border: 1px solid grey; */
+      margin: 10px;
+    }
+
+}
+  
+  
+  
+  
