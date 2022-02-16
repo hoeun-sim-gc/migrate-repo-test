@@ -2,11 +2,12 @@
   "name": "pat_front",
   "version": "0.1.0",
   "private": true,
+  "homepage": ".",
   "scripts": {
-    "build": "SET NODE_OPTIONS=--openssl-legacy-provider && react-scripts build && xcopy build ..\\pat_back\\react_build /E/H/C/I",
-    "eject": "react-scripts eject",
-    "start": "SET NODE_OPTIONS=--openssl-legacy-provider && react-scripts start",
-    "test": "react-scripts test"
+    "start": "react-scripts start",
+    "build": "del /Q/F/S ..\\pat_back\\react_build\\*.* && react-scripts build && xcopy build ..\\pat_back\\react_build /E/H/C/I",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
   },
   "browserslist": {
     "production": [

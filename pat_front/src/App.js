@@ -2,10 +2,10 @@ import 'react-app-polyfill/stable';
 import { createTheme } from '@material-ui/core/styles';
 import React, {useState, useContext} from 'react';
 import {
-  HashRouter as Router,
+    HashRouter as Router,
     Route,
     Routes,
-  Navigate
+    Navigate
 } from "react-router-dom";
 
 import { makeStyles} from '@material-ui/core/styles';

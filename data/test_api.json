@@ -5,6 +5,7 @@
     "curve_id": 2016,
     "psold": {
         "curve_persp": "Gross",
+        "curve_coverage": "Building_Contents_BI",
         "peril_subline": "All_Perils",
         "trend_factor": 1.035,
         "average_accident_date": "1/1/2022",
@@ -15,7 +16,7 @@
     "loss_alae_ratio": 1,
     "additional_coverage": 2,
     "deductible_treatment": "Retains_Limit",
-    "coverage_type": "Building_Contents_BI",
+    "coverage_type": "Building_Contents",
     "user_name": "Chengyou Xiao",
     "user_email": "chengyou.xiao@guycarp.com"
 }
