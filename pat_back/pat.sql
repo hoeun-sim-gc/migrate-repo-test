@@ -30,25 +30,25 @@ create table psold_aoi(
     AOI float
 );
 
-create table rating_curves(
-    ID int not null, ---2016, 2020, or FLS, MB curve id
-    Curve varchar(20),
-    COVG int,
-    SUBGRP int,
-    RG int,
-    EG int,
-    OCC float,
-    W1 float,
-    W2 float,
-    W3 float,
-    W4 float,
-    W5 float,
-    W6 float,
-    W7 float,
-    W8 float,
-    W9 float,
-    W10 float,
-    W11 float
+create table psold_curves(
+	ID int,, ---2016, 2020
+	CurveType varchar(20), --Gross, Net
+	COVG int,
+	SUBGRP int,
+	RG int,
+	EG int,
+	OCC float,
+	W1 float,
+	W2 float,
+	W3 float,
+	W4 float,
+	W5 float,
+	W6 float,
+	W7 float,
+	W8 float,
+	W9 float,
+	W10 float,
+	W11 float
 );
 
 create table fls_curves(
@@ -123,6 +123,17 @@ create table pat_facultative(
 );
 create index idx_pat_facultative on pat_facultative (job_id asc);
 
+create table pat_layers(
+    job_id int not null,
+    PseudoPolicyID varchar(50),
+    LayerID int,
+    LayerLow float,
+    LayerHigh float,
+    Ceded float,
+    flag int
+);
+create index idx_pat_layers on pat_layers (job_id asc);
+ 
 create table pat_premium(
     job_id int,
     PseudoPolicyID varchar(50),

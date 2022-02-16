@@ -1,0 +1,28 @@
+{
+    "job_name": "Demo_Blending",
+    "job_guid": "676f8a59-1061-42ad-8f27-061b7716c63d",
+    "data_source_type" : "Reference_Job",
+    "reference_job": {
+        "job_id": 100000067
+    },
+    "data_correction": "",
+    "valid_rules": 1073741826,
+    "curve_id": 2016,
+    "psold": {
+        "curve_persp": "Gross",
+        "curve_coverage": "Building_Contents_BI",
+        "peril_subline": "All_Perils",
+        "trend_factor": 1.035,
+        "average_accident_date": "1/1/2022",
+        "blending_type": "missing_invalid",
+        "blending_weights": [1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        "hpr_blending": false
+    },
+    "loss_alae_ratio": 1,
+    "additional_coverage": 2,
+    "deductible_treatment": "Retains_Limit",
+    "coverage_type": "Building_Contents",
+    "type_of_rating": "PSOLD",
+    "user_name": "Chengyou Xiao",
+    "user_email": "chengyou.xiao@guycarp.com"
+}

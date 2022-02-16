@@ -6,64 +6,27 @@ import { Form, FormGroup, FormControl } from "react-bootstrap";
 import "./index.css";
 
 export default function Settings(props) {
-  const [checked, setChecked] = React.useState(props.theme==='dark');
+  const [isDark, setIsDark] = React.useState(props.theme==='dark');
 
-  const [newPsize, setNewPsize]=useState(20);
-
-  React.useEffect(() => {
-    let ps = 20;
-    try
-    {
-      var s = localStorage.getItem('job_page_size');
-      ps = parseInt(s);
-    }
-    catch
-    {
-      ps=20;
-    }
-
-    if (ps && ps > 0) setNewPsize(ps)
-  }, []);
-
-  
   React.useEffect(()=>{
-    const mode= checked?'dark':'light'
-    props.ChangeTheme(mode);
+    const mode= isDark ? 'dark':'light'
     localStorage.setItem("prefer_theme",mode);
-  },[checked, props]);
+    
+    props.ChangeTheme(mode);
+  },[isDark, props]);
 
   const toggleChecked = () => {
-    setChecked(!checked);
+    setIsDark(!isDark);
   };
 
   return (
     <div className="Settings">
       <FormGroup>
         <FormControlLabel
-          control={<Switch checked={checked} onChange={toggleChecked} />}
-          label="Browse in dark mode"
-        />
+          control={<Switch onChange={toggleChecked} color="primary" checked={isDark}/>}
+          // label="Browse in dark mode"
+        />Browse in dark mode
       </FormGroup>
-      <Form>
-        <div className="row align-items-end" >
-          <div className="col">
-            <FormGroup>
-              <label className="float-left">Job List Number Per Page:</label>
-              <FormControl 
-                  value={newPsize}
-                  placeholder="Enter page size"
-                  onChange={
-                    e => {
-                      setNewPsize(e.target.value);
-                      localStorage.setItem("job_page_size",e.target.value );
-                    }
-                  } />
-            </FormGroup>
-          </div>
-          <div className="col" />
-          <div className="col" />
-        </div>
-      </Form>
     </div>
   );
 }

@@ -1,5 +1,7 @@
+from importlib.abc import PathEntryFinder
 import io
 from os import path
+from unicodedata import name
 import zipfile
 import logging
 import json
@@ -7,8 +9,9 @@ from logging.config import fileConfig
 
 import pandas as pd
 
-from fastapi import FastAPI,Request, staticfiles, HTTPException
+from fastapi import FastAPI,Request, staticfiles, HTTPException, status
 from fastapi.responses import RedirectResponse,StreamingResponse
+from sqlalchemy import false
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -39,8 +42,8 @@ def hello():
     return 'Hello from PAT!'
 
 @app.get('/api/job')
-def get_job_list(user:str=None):
-    df = PatHelper.get_job_list(user)
+def get_job_list(req_id:str=None):
+    df = PatHelper.get_job_list(PatHelper.decode64(req_id))
     if df is not None and len(df) > 0:
         return df.to_dict('records')
 
@@ -54,7 +57,7 @@ def send_zip_file(name, *df_lst) -> StreamingResponse:
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED, False) as zf:
             for nm, df in df_lst:
                 if df is not None:
-                    zf.writestr(nm, df.to_csv(header=True, index=False))
+                    zf.writestr(nm, df.to_csv(header=True, index=False, na_rep='NULL'))
         zip_buffer.seek(0)
 
         return StreamingResponse(zip_buffer, media_type='application/zip',headers={
@@ -77,23 +80,34 @@ def send_csv_file(name, df) -> StreamingResponse:
     except Exception as e:
         logging.warning(f"Download data file: \n{e}")
 
-@app.get('/api/result/{job_lst}')
-def results(job_lst:str) -> StreamingResponse:
-    lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
-    lst= [a for a in lst if a>0]
-
-    if len(lst)>0:
-        df = PatHelper.get_results(lst)
-        if df is not None:
-            return send_zip_file(f"pat_res_{lst[0]}.zip", (f"pat_res_{lst[0]}.csv", df))
-
-@app.get('/api/valid/{job_id}')
-def get_validate_data(job_id:int, flagged:bool=True) -> StreamingResponse:
-    df1, df2 = PatHelper.get_validation_data(job_id, flagged)
-    return send_zip_file(f'pat_validation_{job_id}.zip', 
-        ('policy.csv', df1),
-        ('fac.csv', df2)
-    )
+@app.get('/api/data/{job_id}')
+def data(job_id:int, data_type:str = 'results') -> StreamingResponse:
+    df_lst=[]
+    if data_type=='results':
+        df = PatHelper.get_results(job_id)
+        if df is not None: 
+            df_lst.append((f"pat_results_{job_id}.csv", df))
+    elif data_type=='unused':
+        df_pol, df_fac, df_layers = PatHelper.get_unused(job_id)
+        if df_pol is not None and len(df_pol) > 0: 
+            df_lst.append((f"pat_unused_policy_{job_id}.csv", df_pol))
+        if df_fac is not None and len(df_fac) > 0: 
+            df_lst.append((f"pat_unused_fac_{job_id}.csv", df_fac))
+        if df_layers is not None and len(df_layers) > 0: 
+            df_lst.append((f"pat_unused_layers_{job_id}.csv", df_layers))
+    elif data_type=='details':
+        df_pol, df_fac, df_layers, df_facnet = PatHelper.get_data(job_id)
+        if df_pol is not None and len(df_pol) > 0: 
+            df_lst.append((f"pat_detail_policy_{job_id}.csv", df_pol))
+        if df_fac is not None and len(df_fac) > 0: 
+            df_lst.append((f"pat_detail_fac_{job_id}.csv", df_fac))
+        if df_layers is not None and len(df_layers) > 0: 
+            df_lst.append((f"pat_detail_layers_{job_id}.csv", df_layers))
+        if df_facnet is not None and len(df_facnet) > 0: 
+            df_lst.append((f"pat_net_of_fac_{job_id}.csv", df_facnet))
+    
+    if df_lst:
+        return send_zip_file(f"pat_data_{job_id}.zip", *df_lst) 
 
 @app.post('/api/job')
 async def submit_job(request: Request, jobrun:bool = False) -> str:
@@ -119,12 +133,12 @@ async def submit_job(request: Request, jobrun:bool = False) -> str:
         else:
             job_id = PatHelper.submit(js,data)
             if job_id and job_id > 100:
-                wakeup_worker()
+                PatWorker.start_worker(job_id)
                 return f'Analysis submitted: {job_id}'
 
     raise HTTPException(status_code=400, detail=f"Submit job failed!")
 
-@app.route('/api/wakeup', methods=['POST'])
+@app.post('/api/wakeup')
 def wakeup_worker():
     PatWorker.start_worker()
     return "ok"
@@ -134,18 +148,26 @@ def stop_job(job_lst:str)->str:
     lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
     lst= [a for a in lst if a>0]
 
-    if len(lst)>0:
-        PatWorker.stop_jobs(lst)
-        PatHelper.cancel_jobs(lst)
-        
+    if len(lst)>0: PatWorker.stop_jobs(lst)
+    
+    return "ok"
+
+@app.post('/api/reset/{job_id}')
+def reset_job(job_id:int, keep_data:bool = False)->str:
+    PatWorker.stop_jobs([job_id])
+    PatHelper.reset_jobs(job_id, not keep_data)
+    
     return "ok"
     
 @app.post('/api/run/{job_id}')
 def run_job(job_id:int)->str:
-    PatWorker.stop_jobs([job_id])
-    PatHelper.reset_jobs([job_id])
-    PatWorker.start_worker(job_id)     
-    return "ok"
+    if not PatWorker.is_runnung(job_id):
+        PatHelper.reset_jobs(job_id)
+        PatWorker.start_worker(job_id) 
+        
+        return "ok"
+    else:
+        return "Job is already ruuning"
 
 @app.put('/api/rename/{job_id}/{new_name}')
 def rename_job(job_id:int, new_name:str) -> str:
@@ -153,12 +175,20 @@ def rename_job(job_id:int, new_name:str) -> str:
     return "ok"
 
 @app.put('/api/public-job/{job_id}')
-def public_job(job_id:int) -> str:
+def public_job(job_id:int,req_id:str=None) -> str:
+    req_id = PatHelper.decode64(req_id)
+    if not PatHelper.is_admin(req_id):
+        raise HTTPException(status_code=401, detail="Permission not allowed")
+        
     PatHelper.public_job(job_id)
     return "ok"    
 
 @app.delete('/api/job/{job_lst}')
-def delete(job_lst:str)->str:
+def delete(job_lst:str, req_id:str=None)->str:
+    req_id = PatHelper.decode64(req_id)
+    if not PatHelper.is_admin(req_id):
+        raise HTTPException(status_code=401, detail="Permission not allowed")
+
     lst= [int(job) if job.isdigit() else 0 for job in job_lst.split('_')]
     lst= [a for a in lst if a>0]
 

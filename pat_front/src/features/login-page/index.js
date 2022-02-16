@@ -1,5 +1,5 @@
 import React, { useState, useContext } from "react";
-import { useHistory } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button, FormGroup, FormControl } from "react-bootstrap";
 
 import { UserContext } from "../../app/user-context";
@@ -8,7 +8,7 @@ import "./index.css";
 
 export default function Login(props) {
     const [user, setUser] = useContext(UserContext);
-    const history = useHistory()
+    const history = useNavigate()
     const [backto,] = useState(props.backto);
     
     const [newUser, setNewUser]=useState(
@@ -36,21 +36,21 @@ export default function Login(props) {
     return (
         <div className="Login">
           <form onSubmit={handleSubmit}>
-            <FormGroup controlId="user name" bsSize="large">
+            <FormGroup className="LoginItem" controlId="user name" bsSize="large">
               <label className="float-left">User:</label>
               <FormControl
                   value={newUser.name}
                   placeholder="Enter user name"
                   onChange={e => setNewUser({name:e.target.value, email:newUser.email})} />
             </FormGroup>
-            <FormGroup controlId="user email" bsSize="large">
+            <FormGroup className="LoginItem" controlId="user email" bsSize="large">
               <label className="float-left">Email:</label>
               <FormControl
                   value={newUser.email}
                   type="email" placeholder="Enter email"
                   onChange={e => setNewUser({name:newUser.name, email:e.target.value})} />
             </FormGroup>
-            <Button id='login' block type="submit">
+            <Button id='login' className="LoginItem" block type="submit">
               Login
             </Button>
           </form>

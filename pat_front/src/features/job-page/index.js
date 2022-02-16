@@ -156,6 +156,7 @@ export default function JobPage(props) {
         curve_id: 2016,
         psold: {
           curve_persp: 'Gross',
+          curve_coverage: "Building_Contents_BI",
           peril_subline: "All_Perils",
           trend_factor: 1.035,
           average_accident_date: "1/1/2022",
@@ -177,7 +178,7 @@ export default function JobPage(props) {
         // },
 
         loss_alae_ratio: 1,
-        coverage_type: "Building_Contents_BI",
+        coverage_type: "Building_Contents",
         additional_coverage: 2.0,
         deductible_treatment: "Retains_Limit",
 
@@ -212,6 +213,7 @@ export default function JobPage(props) {
 
   const [curveList, setCurveList] = useState([])
   const [psoldBlending, setPsoldBlending] = useState([])
+  const [psoldCvgList, setPsoldCvgList] = useState(['Building_Contents_BI', 'Building_Contents'])
   const [savePsold, setSavePsold] = useState(
     {
       curve_persp: 'Gross',
@@ -361,7 +363,7 @@ export default function JobPage(props) {
       var sort = ["job_name",
         "data_source_type", "cat_data", "reference_job",
         "data_correction", "valid_rules",
-        "type_of_rating", "curve_id", "psold", "FLS", "mb",
+        "type_of_rating", "curve_id", "psold", "fls", "mb",
         "user_email", "user_name"
       ];
 
@@ -833,11 +835,15 @@ export default function JobPage(props) {
       }
       job.curve_id = 1;
       if (rt_type === "PSOLD") {
-        if (newJob.parameter.coverage_type === 'Building_Only'
-          || newJob.parameter.coverage_type === 'Contents_Only') job.curve_id = 2020;
-        else job.curve_id = 2016;
-
+        job['curve_id'] = 2016;
         job['psold'] = { ...savePsold };
+        setPsoldCvgList(['Building_Contents_BI', 'Building_Contents']);
+
+        job['coverage_type']='Building_Contents';
+        if ('curve_coverage' in job.psold) {
+          if(job.psold['curve_coverage']=== 'Building_Only') job['coverage_type'] = 'Building_Only';
+          else if(job.psold['curve_coverage']=== 'Contents_Only') job['coverage_type'] = 'Contents_Only';
+        }
       }
       else if (rt_type === "MB") {
         job['mb'] =
@@ -876,7 +882,7 @@ export default function JobPage(props) {
           />
         </div>
       }
-      <Allotment defaultSizes={[30, 70]}>
+      <Allotment defaultSizes={[35, 65]}>
         <div class="pane_cont">
           <div>
             <Card className={classes.card} variant="outlined">
@@ -1307,12 +1313,14 @@ export default function JobPage(props) {
 
                           if (job['type_of_rating'] === 'PSOLD') {
                             if (event.target.value === 2016) {
-                              job.psold.trend_factor = 1.035
-                              if (job.coverage_type === 'Building_Only' || job.coverage_type === 'Contents_Only')
-                                job.coverage_type = 'Building_Contents';
+                              job.psold.trend_factor = 1.035;
+                              if (job.psold.curve_coverage === 'Building_Only' || job.psold.curve_coverage === 'Contents_Only')
+                                job.psold.curve_coverage = 'Building_Contents';
+                              setPsoldCvgList(['Building_Contents_BI','Building_Contents'])  
                             }
                             else if (event.target.value === 2020) {
                               job.psold.trend_factor = 1.05;
+                              setPsoldCvgList(['Building_Contents_BI','Building_Contents', 'Building_Only','Contents_Only'])  
                             }
                           }
 
@@ -1355,6 +1363,31 @@ export default function JobPage(props) {
                       </Select>
                     </FormControl>
                     <FormControl className={classes.formControl}>
+                    <InputLabel shrink id="coverage-placeholder-label">
+                      Curve Coverage Type
+                    </InputLabel>
+                    <Select
+                      labelId="coverage-placeholder-label"
+                      id="coverage-placeholder"
+                      value={newJob.parameter.psold?.curve_coverage}
+                      defaultValue={'Building_Contents_BI'}
+                      onChange={event => {
+                        if (newJob.parameter.psold?.curve_coverage !== event.target.value) {
+                          var job = newJob.parameter;
+                          
+                          job['coverage_type'] = event.target.value;
+                          if(job['coverage_type'] === 'Building_Contents_BI') job['coverage_type'] = 'Building_Contents';
+                          job.psold.curve_coverage = event.target.value;
+                          handleUpdateJob({ ...newJob, parameter: { ...job} });
+                        }
+                      }}
+                    >
+                      {psoldCvgList.map((n) => {
+                        return <MenuItem value={n}>{ }{n}</MenuItem>
+                      })}
+                    </Select>
+                  </FormControl>
+                    <FormControl className={classes.formControl}>
                       <InputLabel shrink id="peril-placeholder-label">
                         Peril / Subline
                       </InputLabel>
@@ -1375,6 +1408,8 @@ export default function JobPage(props) {
                           })}
                       </Select>
                     </FormControl>
+                  </div>
+                  <div>  
                     <FormControl className={classes.formControl}>
                       <Box
                         component="form"
@@ -1686,17 +1721,16 @@ export default function JobPage(props) {
                       defaultValue={'Building_Contents_BI'}
                       onChange={event => {
                         if (newJob.parameter.coverage_type !== event.target.value) {
-                          var para = newJob.parameter;
-                          para.coverage_type = event.target.value;
-                          if ((event.target.value === 'Building_Only' || event.target.value === 'Contents_Only')
-                            && para.type_of_rating === "PSOLD") {
-                            if (para.curve_id === 2016) {
-                              para.curve_id = 2020;
-                              if (para.trend_factor === 1.035) para.tr = 1.05;
-                            }
+                          var job = newJob.parameter;
+                          if(job.type_of_rating==='PSOLD'){
+                            if(job.psold['curve_coverage']=== 'Building_Only' && event.target.value !== 'Building_Only') 
+                              alert('Suggest to use "Building_Only" for the selected rating curve!');
+                            else if(job.psold['curve_coverage']=== 'Contents_Only' && event.target.value !== 'Contents_Only') 
+                              alert('Suggest to use "Contents_Only" for the selected rating curve!');
+                            else if(event.target.value !== 'Building_Contents') 
+                              alert('Suggest to use "Building_Contents" for the selected rating curve!');
                           }
-
-                          handleUpdateJob({ ...newJob, parameter: { ...para } });
+                          handleUpdateJob({ ...newJob, parameter: { ...newJob.parameter, coverage_type:event.target.value } });
                         }
                       }}
                     >

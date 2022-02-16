@@ -1,17 +1,17 @@
 import 'react-app-polyfill/stable';
+import { createTheme } from '@material-ui/core/styles';
 import React, {useState, useContext} from 'react';
 import {
-  HashRouter as Router,
-  Switch,
-  Route,
-  Redirect
+    HashRouter as Router,
+    Route,
+    Routes,
+    Navigate
 } from "react-router-dom";
 
 import { makeStyles} from '@material-ui/core/styles';
 import CssBaseline from '@material-ui/core/CssBaseline';
 import { ThemeProvider  } from '@material-ui/core/styles';
 
-import {lightTheme, darkTheme} from './app/theme';
 import { UserContext } from "./app/user-context";
 import WbNavbar from "./app/WbAppBar";
 import WbDrawer from './app/WbDrawer';
@@ -20,6 +20,8 @@ import JobPage from './features/job-page';
 import Login from './features/login-page';
 import Settings from './features/setting-page';
 import GuidePage from './features/guide-page';
+import { Options } from "./app/theme";
+
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -30,7 +32,7 @@ const useStyles = makeStyles((theme) => ({
     alignItems: 'center',
     justifyContent: 'flex-end',
     padding: theme.spacing(0, 1),
-    minHeight: '64px',
+    minHeight: '64px'
   },
   content: {
     flexGrow: 1,
@@ -52,45 +54,50 @@ function App () {
   }
   const [theme, setTheme] = useState(prefTheme) 
   
+  console.log("USING THEME: " + theme);
+
   const NotFound = ()=>{
     return <div className="float-left"><h2>404 Page Not Found!</h2></div>
   };
 
   const IsLogin = user.name.length> 0 && user.email.length > 0;
+
+  const gcTheme = createTheme(Options)
+
+  const optionCopy = Object.assign({}, theme === "dark" ? {palette: {}} : Options);
+
+  optionCopy["palette"]["type"] = theme;
+
+  const muiTheme = createTheme(optionCopy);
+  
   return (
-    <ThemeProvider  theme={theme === 'dark' ? darkTheme: lightTheme}>
+    <ThemeProvider theme={muiTheme}>
+      <CssBaseline />
       <Router>
         <div className={classes.root}>
-          <CssBaseline />
           <WbNavbar />
           <WbDrawer />
           <main className={classes.content}>
             <div className={classes.toolbar} />
-            <Switch>
+            <Routes>
                 <Route exact path="/"
-                  render={() => {return <Redirect to="/home" />}}/>
-                <Route exact path="/home">
-                  <HomePage />
+                  render={() => {return <Navigate to="/home" />}}/>
+                <Route exact path="/home" element={<HomePage />}>
+               
                 </Route>
-                <Route exact path="/job/" >
-                  {IsLogin?<JobPage theme={theme} ChangeTheme={setTheme} />:<Login backto='/job'/>}
+                <Route exact path="/job/" element ={IsLogin?<JobPage theme={theme} />:<Login backto='/job'/>}>
                 </Route>
-                <Route exact path="/job/:job_id">
-                  {IsLogin?<JobPage theme={theme} ChangeTheme={setTheme} />:<Login backto='/job/:job_id'/>}
+                <Route exesact path="/guide" element={ <GuidePage theme={theme} />}>
+                 
                 </Route>
-                <Route exact path="/guide">
-                  <GuidePage theme={theme} ChangeTheme={setTheme} />
+                <Route exact path="/setting" element={  <Settings theme={theme} ChangeTheme={setTheme} />}>
+                
                 </Route>
-                <Route exact path="/setting">
-                  <Settings theme={theme} ChangeTheme={setTheme} />
+                <Route exact path="/login" element={<Login/>}>
                 </Route>
-                <Route exact path="/login">
-                  <Login />
+                <Route path="*" element={<NotFound />}>
                 </Route>
-                <Route path="*">
-                  <NotFound  />
-                </Route>
-              </Switch>
+              </Routes>
           </ main>
         </div>
       </Router>

@@ -1,9 +1,13 @@
-import React, { useState, useContext, useRef } from 'react';
+import React, { useState, useContext } from 'react';
 
 import Tooltip from '@mui/material/Tooltip';
 
 import { makeStyles, useTheme } from '@material-ui/core/styles';
-import { Divider, Grid, Button } from '@material-ui/core';
+import { Divider, Grid, Button,
+  FormControl,FormControlLabel, FormLabel,RadioGroup, Radio } from '@material-ui/core';
+
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faStepBackward, faFastBackward,faStop, faPlay,faSyncAlt, faDownload } from '@fortawesome/free-solid-svg-icons';
 
 import { PulseLoader } from "react-spinners";
 import BootstrapTable from 'react-bootstrap-table-next';
@@ -29,8 +33,6 @@ import columns from './header';
 import { convertTime, calcDuration } from '../../app/theme'
 
 import './index.css';
-import { Checkbox } from '@mui/material';
-import FormControlLabel from '@mui/material/FormControlLabel';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -69,11 +71,8 @@ export default function HomePage(props) {
   const classes = useStyles();
   const theme = useTheme();
 
-  const tableRef = useRef(null);
-
   const [user, setUser] = useContext(UserContext);
 
-  const [multiSel, setMultiSel] = useState(false);
   const [confirm, setConfirm] = React.useState('');
 
   const [loadingJobList, setLoadingJobList] = useState(false);
@@ -81,16 +80,17 @@ export default function HomePage(props) {
 
   const [currentJob, setCurrentJob] = useState(null);
   const [loadingJobPara, setLoadingJobPara] = useState(false);
-  const [currentPara, setCurrentPara] = useState({ parameter: '', summary: [] });
+  const [currentPara, setCurrentPara] = useState({job_id:'', parameter: '', summary: [] });
   const [updatingCurrent, setUpdatingCurrent] = useState(false);
 
-  const [downloadingResults, setDownloadingResults] = useState(false);
   const [downloadingData, setDownloadingData] = useState(false);
-  const [flaggedOnly, setFlaggedOnly] = useState(true);
+  const [downloadOption, setDownloadOption] = React.useState({
+    'isOpen': false,
+    'data_type': 'results'
+  });
 
   React.useEffect(() => {
     setLoadingJobList(true);
-    setMultiSel(localStorage.getItem('job_multi_sel') === 'true');
 
     const interval = setInterval(() => setUpdatingCurrent(true), 10000);
     return () => {
@@ -102,7 +102,7 @@ export default function HomePage(props) {
   React.useEffect(() => {
     if (!loadingJobList) return;
 
-    const request = '/api/job' + (user.email !== "admin.pat@guycarp.com" ? '?user=' + user.email.toLowerCase() : '');
+    const request = '/api/job?req_id=' + btoa(user?.email?.toLowerCase());
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -142,15 +142,12 @@ export default function HomePage(props) {
           var sel = data.find(j => j.job_id === currentJob.job_id);
           if (sel) {
             setCurrentJob(sel);
-            setLoadingJobPara(true);
             setUser({ ...user, curr_job: sel.job_id });
           }
         }
         if (data.length > 0 && (!currentJob || currentJob.job_id <= 0)) {
           setCurrentJob(data[0]);
-          setLoadingJobPara(true);
           setUser({ ...user, curr_job: data[0].job_id });
-          tableRef.current.selectionContext.selected.push(data[0].job_id);
         }
       })
       .catch(error => {
@@ -162,12 +159,6 @@ export default function HomePage(props) {
     // eslint-disable-next-line
   }, [loadingJobList]);
 
-  // React.useEffect(() => {
-  //   setCurrentPara({parameter:'', summary:[]});
-  //   setLoadingJobPara(true);
-  // }, [currentJob]);
-
-
   //Update runing job status
   React.useEffect(() => {
     if (!updatingCurrent) return;
@@ -176,7 +167,7 @@ export default function HomePage(props) {
       return;
     }
 
-    const request = '/api/job/' + currentJob.job_id
+    const request = '/api/job/' + currentJob.job_id;
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -198,6 +189,7 @@ export default function HomePage(props) {
           }
         }
         setCurrentPara({
+          job_id: data['job_id'],
           parameter: JSON.stringify(JSON.parse(data['parameters']), null, '    '),
           summary: data['summary']
         });
@@ -213,13 +205,10 @@ export default function HomePage(props) {
 
   //job para and summary
   React.useEffect(() => {
-    if (!loadingJobPara) return;
-    if (!currentJob) {
-      setLoadingJobPara(false);
-      return;
-    }
+    if (!currentJob) return;
 
-    const request = '/api/job/' + currentJob.job_id
+    setLoadingJobPara(true);
+    const request = '/api/job/' + currentJob.job_id;
     fetch(request).then(response => {
       if (response.ok) {
         return response.json();
@@ -227,65 +216,47 @@ export default function HomePage(props) {
       throw new TypeError("Oops, we haven't got data!");
     })
       .then(data => {
-        setCurrentPara({
-          parameter: JSON.stringify(JSON.parse(data['parameters']), null, '    '),
-          summary: data['summary']
-        });
+        if (data['job_id'] === currentJob.job_id){
+          setCurrentPara({
+            job_id : data['job_id'],
+            parameter: JSON.stringify(JSON.parse(data['parameters']), null, '    '),
+            summary: data['summary']
+          });
+        }
       })
       .catch(error => {
         console.log(error);
       })
-      .then(() => {
+      .then(()=>{
         setLoadingJobPara(false);
       });
+
     // eslint-disable-next-line
-  }, [loadingJobPara]);
-
-  //results
-  React.useEffect(() => {
-    if (!downloadingResults) return;
-
-    var lst = tableRef.current.selectionContext.selected;
-    if (lst.length <= 0) {
-      setDownloadingResults(false);
-      alert("No analysis is selected!");
-      return;
-    }
-
-    let request = '/api/result/' + lst.join('_');
-    fetch(request).then(response => {
-      if (response.ok) {
-        return response.blob();
-      }
-      throw new TypeError("Oops, we haven't got data!");
-    })
-      .then(blob => {
-        var url = window.URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = "pat_result_" + currentJob.job_id + ".zip";
-        document.body.appendChild(a); // we need to append the element to the dom -> otherwise it will not work in firefox
-        a.click();
-        a.remove();  //afterwards we remove the element again   
-      })
-      .catch(error => {
-        console.log(error);
-      })
-      .then(() => {
-        setDownloadingResults(false);
-      });
-    // eslint-disable-next-line
-  }, [downloadingResults]);
+  }, [currentJob]);
 
   const handleStopJob = () => {
-    var lst = tableRef.current.selectionContext.selected;
-    if (lst.length <= 0) {
-      setDownloadingResults(false);
+    if (!currentJob) {
+      setDownloadingData(false);
       alert("No analysis is selected!");
       return;
     }
 
-    let request = '/api/stop/' + lst.join('_');
+    let request = '/api/stop/' + currentJob.job_id;
+    fetch(request, { method: "POST" }).then(response => {
+      if (response.ok) {
+        setLoadingJobList(true);
+      }
+    });
+  };
+
+  const handleResetJob = (keep) => {
+    if (!currentJob) {
+      setDownloadingData(false);
+      alert("No analysis is selected!");
+      return;
+    }
+
+    let request = '/api/reset/' + currentJob.job_id + "?keep_data=" + (keep?'true':'false');
     fetch(request, { method: "POST" }).then(response => {
       if (response.ok) {
         setLoadingJobList(true);
@@ -313,37 +284,37 @@ export default function HomePage(props) {
 
   //data file
   React.useEffect(() => {
-    if (!downloadingData) return;
-    if (!currentJob) {
-      setDownloadingData(false);
-      alert("No analysis is selected!");
-      return;
-    }
-
-    let request = '/api/valid/' + currentJob.job_id + '?flagged=' + flaggedOnly;
-    fetch(request).then(response => {
-      if (response.ok) {
-        return response.blob();
-      }
-      throw new TypeError("Oops, we haven't got data!");
-    })
-      .then(blob => {
-        var url = window.URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = "pat_validation" + currentJob.job_id + ".zip";
-        document.body.appendChild(a); // we need to append the element to the dom -> otherwise it will not work in firefox
-        a.click();
-        a.remove();  //afterwards we remove the element again   
-      })
-      .catch(error => {
-        console.log(error);
-      })
-      .then(() => {
+      if (!downloadingData) return;
+      if (!currentJob) {
         setDownloadingData(false);
-      });
-    // eslint-disable-next-line
-  }, [downloadingData]);
+        alert("No analysis is selected!");
+        return;
+      }
+
+      let request = '/api/data/' + currentJob.job_id +'?data_type='+ downloadOption.data_type;
+      fetch(request).then(response => {
+        if (response.ok) {
+          return response.blob();
+        }
+        throw new TypeError("Oops, we haven't got data!");
+      })
+        .then(blob => {
+          var url = window.URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = "pat_data_"+currentJob.job_id+".zip";
+          document.body.appendChild(a); // we need to append the element to the dom -> otherwise it will not work in firefox
+          a.click();
+          a.remove();  //afterwards we remove the element again
+        })
+        .catch(error => {
+          console.log(error);
+        })
+        .then(() => {
+          setDownloadingData(false);
+        });
+      // eslint-disable-next-line
+    }, [downloadingData]);
 
   const get_options = () => {
     let ps = 20;
@@ -361,44 +332,48 @@ export default function HomePage(props) {
     return {
       // pageStartIndex: 0,
       sizePerPage: ps,
-      hideSizePerPage: true,
+      hideSizePerPage: false,
       hidePageListOnlyOnePage: true,
       sizePerPageList: [5, 10, 15, 20, 25, 30, 40, 50],
       alwaysShowAllBtns: true,
-      showTotal: true
+      showTotal: true,
+      onSizePerPageChange:(s, p)=>
+      {
+        localStorage.setItem('job_page_size', s);
+      }
     };
-  };
-
-  const handleSelChange = (event) => {
-    setMultiSel(event.target.checked);
-    localStorage.setItem('job_multi_sel', event.target.checked);
-    window.location.reload(false);
   };
 
   const handleConfirm = (isOK) => {
     var it = confirm
     setConfirm('');
     if (isOK) {
-      if (it === "stop/reset the selected jobs") handleStopJob()
-      else if (it === "run the selected jobs" && currentJob) handleRunJob(currentJob.job_id);
+      if (it === "reset the selected job but keep the input data") handleResetJob(true)
+      else if (it === "reset the selected job to initial submit state") handleResetJob(false)
+      else if (it === "stop/cancel the selected job") handleStopJob()
+      else if (it === "run the selected job" && currentJob) handleRunJob(currentJob.job_id);
     }
   };
 
-  const get_select_row = () => {
-    var sel = multiSel ? 'checkbox' : 'radio';
-    return {
-      mode: sel,
+  const handleDownloadOpt = (isOK) => {
+    setDownloadOption({...downloadOption, isOpen:false});
+    if (isOK && currentJob){
+      setDownloadingData(true);
+    }
+  };
+
+
+  const select_row = {
+      mode: 'radio',
       clickToSelect: true,
       clickToEdit: true,
       style: { backgroundColor: theme.palette.action.selected, fontWeight: 'bold' },
       onSelect: (row, isSelect) => {
         if (isSelect) {
           setCurrentJob(row);
-          setLoadingJobPara(true);
           setUser({ ...user, curr_job: row.job_id })
         }
       }
-    };
   };
 
   const { SearchBar } = Search;
@@ -408,12 +383,12 @@ export default function HomePage(props) {
       <Allotment defaultSizes={[70, 30]}>
         <div class="pane_cont">
           <div class="job_col">
-            {(loadingJobList || loadingJobPara || downloadingResults || downloadingData) &&
+            {(loadingJobList || loadingJobPara || downloadingData) &&
               <div className={classes.spinner}>
                 <PulseLoader
                   size={30}
                   color={"#2BAD60"}
-                  loading={loadingJobList || loadingJobPara || downloadingResults || downloadingData}
+                  loading={loadingJobList || loadingJobPara || downloadingData}
                 />
               </div>
             }
@@ -422,37 +397,41 @@ export default function HomePage(props) {
               <Tooltip title="Refresh job list"  >
                 <Button style={{ outline: 'none', height: '36px' }}
                   onClick={(e) => { setLoadingJobList(true); }}
-                >Refresh
+                ><FontAwesomeIcon icon={faSyncAlt} className='fa-lg' />
                 </Button>
               </Tooltip>
               <Divider orientation="vertical" flexItem />
-              <Tooltip title="Cancel/Reset selected analyses"  >
+              <Tooltip title="Reset to initial submit"  >
                 <Button style={{ outline: 'none', height: '36px' }}
-                  onClick={(e) => { setConfirm("stop/reset the selected jobs"); }}
-                >Reset(Stop)
+                  onClick={(e) => { setConfirm("reset the selected job to initial submit state"); }}
+                ><FontAwesomeIcon icon={faFastBackward} className='fa-lg' />
+                </Button>
+              </Tooltip>
+              <Tooltip title="Reset and keep input data"  >
+                <Button style={{ outline: 'none', height: '36px' }}
+                  onClick={(e) => {setConfirm("reset the selected job but keep the input data");; }}
+                ><FontAwesomeIcon icon={faStepBackward} className='fa-lg' />
+                </Button>
+              </Tooltip>
+              <Tooltip title="Stop/Cancel the selected running job"  >
+                <Button style={{ outline: 'none', height: '36px' }}
+                  onClick={(e) => { setConfirm("stop/cancel the selected job"); }}
+                ><FontAwesomeIcon icon={faStop} className='fa-lg' />
                 </Button>
               </Tooltip>
               <Tooltip title="Run selected analysis"  >
                 <Button style={{ outline: 'none', height: '36px' }}
-                  onClick={(e) => { setConfirm("run the selected jobs"); }}
-                >Run
+                  onClick={(e) => { setConfirm("run the selected job"); }}
+                ><FontAwesomeIcon icon={faPlay} className='fa-lg' />
                 </Button>
               </Tooltip>
               <Divider orientation="vertical" flexItem />
-              <Tooltip title="Download data">
-                <WbMenu header="Download" items={[
-                  { text: 'All Data', onClick: () => { setFlaggedOnly(false); setDownloadingData(true) } },
-                  { text: 'Validation Data', onClick: () => { setFlaggedOnly(true); setDownloadingData(true) } },
-                  { text: 'Results', onClick: () => { setDownloadingResults(true); } },
-                ]} />
+              <Tooltip title="Download results or other data"  >
+                <Button style={{ outline: 'none', height: '36px' }}
+                  onClick={(e) => { setDownloadOption({...downloadOption, isOpen: true}); }}
+                ><FontAwesomeIcon icon={faDownload} className='fa-lg' />
+                </Button>
               </Tooltip>
-              {/* <Divider orientation="vertical" flexItem />
-          <Tooltip title="Populate allocated premium back to EDM">
-            <Button style={{outline: 'none', height:'36px'}}
-                onClick={(e) => { alert("This option hasn't been implemented yet!"); }}
-              >EDM
-            </Button>
-          </Tooltip> */}
               <Dialog
                 open={confirm}
                 onClose={() => { setConfirm(''); }}
@@ -472,9 +451,40 @@ export default function HomePage(props) {
                   <Button style={{ color: 'black' }} onClick={() => { handleConfirm(false) }} > Cancel </Button>
                 </DialogActions>
               </Dialog>
+              <Dialog
+                open={downloadOption.isOpen}
+                aria-labelledby="alert-dialog-title"
+                aria-describedby="alert-dialog-description"
+              >
+                <DialogTitle id="alert-dialog-title">
+                  {"Download Data Options"}
+                </DialogTitle>
+                <DialogContent>
+                <FormControl>
+                  <RadioGroup
+                    aria-labelledby="demo-radio-buttons-group-label"
+                    defaultValue="results"
+                    name="radio-buttons-group"
+                    value = {downloadOption.data_type}
+                    onChange={(event) => {
+                     setDownloadOption({...downloadOption, data_type:event.target.value});
+                    }}
+                  >
+                    <FormControlLabel value="details" control={<Radio />} label="Details" />
+                    <FormControlLabel value="unused" control={<Radio />} label="Unused Only" />
+                    <FormControlLabel value="results" control={<Radio />} label="Results Only" />
+                  </RadioGroup>
+                </FormControl>
+
+                </DialogContent>
+                <DialogActions>
+                  <Button style={{ color: 'black' }} onClick={() => { handleDownloadOpt(true);}} autoFocus>Download</Button>
+                  <Button style={{ color: 'black' }} onClick={() => { handleDownloadOpt(false);}} > Cancel </Button>
+                </DialogActions>
+              </Dialog>
             </div>
             <Grid container className={classes.root} spacing={2}>
-              <Grid item md={12} style={{ marginTop: '-40px' }}>
+              <Grid item md={12} style={{ marginTop: '-30px' }}>
                 <ToolkitProvider
                   keyField="job_id"
                   data={jobList}
@@ -487,14 +497,10 @@ export default function HomePage(props) {
                       <div justify='flex-end'>
                         <Grid container justify='flex-end'>
                           <Grid item md={6} container justify='flex-end' alignItems='center' >
-                            <FormControlLabel control={<Checkbox checked={multiSel}
-                              style={{ color: theme.palette.text.primary, background: theme.palette.background.default }}
-                              onChange={handleSelChange} />} label="Multi-Selection" />
                             <SearchBar  {...props.searchProps} style={{ height: '26px', width: '180px' }} />
                           </Grid>
                         </Grid>
                         <BootstrapTable classes={classes.table}
-                          ref={tableRef}
                           cellEdit={cellEditFactory({
                             mode: 'dbclick', afterSaveCell: (oldValue, newValue, row, column) => {
                               handleRenameJob(row.job_id, newValue);
@@ -502,7 +508,7 @@ export default function HomePage(props) {
                           })}
                           {...props.baseProps}
                           rowClasses={classes.table_row}
-                          selectRow={get_select_row()}
+                          selectRow={select_row}
                           pagination={paginationFactory(get_options())}
                           striped
                           hover
@@ -518,12 +524,10 @@ export default function HomePage(props) {
           </div>
         </div>
         <div class="pane_cont">
-          <div class="single_row">
-            <h5>Parameters:</h5>
-            <span>{currentJob?.job_id}</span>
-          </div>
           <Allotment vertical defaultSizes={[50, 50]}>
             <div class="pane_cont">
+              <h5 style={{marginLeft:'5px'}}>Parameters:</h5>
+              <span style={{marginLeft:'5px'}}>{currentPara?.job_id}</span>
               <textarea value={currentPara?.parameter}
                 readOnly={true}
                 class="para_row"
