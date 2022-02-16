@@ -2,7 +2,6 @@ import React, {useState} from 'react';
 import {
   Link,
 } from "react-router-dom";
-
 import clsx from 'clsx';
 import { makeStyles } from '@material-ui/core/styles';
 import Drawer from '@material-ui/core/Drawer';
@@ -17,9 +16,10 @@ import ListItemText from '@material-ui/core/ListItemText';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faHome, faQuestionCircle,faCog,faPlus } from '@fortawesome/free-solid-svg-icons';
+import NavItem from "../features/NavItem";
 
 const drawerWidth = 200;
-const useStyles = makeStyles((theme) => ({
+export const useStyles = makeStyles((theme) => ({
   drawer: {
     width: drawerWidth,
     flexShrink: 0,
@@ -82,43 +82,35 @@ function WbDrawer() {
       <div className={classes.toolbar} />
       <IconButton onClick={toggleExpanded}>
         {expanded?<ChevronLeftIcon />:<MenuIcon />}
-      </IconButton>
+      </IconButton>      
       <Divider />
-      <List>
-        <Link to='/home' className={classes.menuLink}>
-          <ListItem button>
-            <ListItemIcon><FontAwesomeIcon icon={faHome} className='fa-lg' /></ListItemIcon>
-            <ListItemText primary='Home' />
-          </ListItem>
-        </Link>
-      </List>
+      <NavItem 
+        linkName='home'
+        linkStyle={classes.menuLink} 
+        icon={faHome}
+        linkText='Home/Analyses'
+      />
       <Divider />
-      <List>
-        <Link to='/job' className={classes.menuLink}>
-          <ListItem button>
-            <ListItemIcon><FontAwesomeIcon icon={faPlus} className='fa-lg' /></ListItemIcon>
-            <ListItemText primary='New Analysis' />
-          </ListItem>
-        </Link>
-      </List>
+      <NavItem 
+        linkName='job' 
+        linkStyle={classes.menuLink} 
+        icon={faPlus}
+        linkText='New Analysis'
+      />
       <Divider />
-      <List>
-        <Link to='/guide' className={classes.menuLink}>
-          <ListItem button>
-            <ListItemIcon><FontAwesomeIcon icon={faQuestionCircle} className='fa-lg' /></ListItemIcon>
-            <ListItemText primary="User's Guide" />
-          </ListItem>
-        </Link>
-      </List>
+      <NavItem 
+        linkName='guide' 
+        linkStyle={classes.menuLink} 
+        icon={faQuestionCircle}
+        linkText='Analysis Guide'
+      />
       <Divider />
-      <List>
-        <Link to='/setting' className={classes.menuLink}>
-          <ListItem button>
-            <ListItemIcon><FontAwesomeIcon icon={faCog} className='fa-lg' /></ListItemIcon>
-            <ListItemText primary='Settings' />
-          </ListItem>
-        </Link>
-      </List>
+      <NavItem 
+        linkName='setting' 
+        linkStyle={classes.menuLink} 
+        icon={faCog}
+        linkText='Settings'
+      />
     </Drawer>
   );
 }

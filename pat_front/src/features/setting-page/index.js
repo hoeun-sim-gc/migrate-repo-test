@@ -8,14 +8,11 @@ import "./index.css";
 export default function Settings(props) {
   const [isDark, setIsDark] = React.useState(props.theme==='dark');
 
-  React.useEffect(() => {
-  }, []);
-
-  
   React.useEffect(()=>{
-    const mode= isDark?'dark':'light'
-    props.ChangeTheme(mode);
+    const mode= isDark ? 'dark':'light'
     localStorage.setItem("prefer_theme",mode);
+    
+    props.ChangeTheme(mode);
   },[isDark, props]);
 
   const toggleChecked = () => {
@@ -26,30 +23,10 @@ export default function Settings(props) {
     <div className="Settings">
       <FormGroup>
         <FormControlLabel
-          control={<Switch checked={isDark} onChange={toggleChecked} />}
-          label="Browse in dark mode"
-        />
+          control={<Switch onChange={toggleChecked} color="primary" checked={isDark}/>}
+          // label="Browse in dark mode"
+        />Browse in dark mode
       </FormGroup>
-      {/* <Form>
-        <div className="row align-items-end" >
-          <div className="col">
-            <FormGroup>
-              <label className="float-left">Job List Number Per Page:</label>
-              <FormControl 
-                  value={newPsize}
-                  placeholder="Enter page size"
-                  onChange={
-                    e => {
-                      setNewPsize(e.target.value);
-                      localStorage.setItem("job_page_size",e.target.value );
-                    }
-                  } />
-            </FormGroup>
-          </div>
-          <div className="col" />
-          <div className="col" />
-        </div>
-      </Form> */}
     </div>
   );
 }

@@ -74,7 +74,7 @@ export default function HomePage(props) {
   const [user, setUser] = useContext(UserContext);
 
   const [confirm, setConfirm] = React.useState('');
-  
+
   const [loadingJobList, setLoadingJobList] = useState(false);
   const [jobList, setJobList] = useState([]);
 
@@ -222,7 +222,7 @@ export default function HomePage(props) {
             parameter: JSON.stringify(JSON.parse(data['parameters']), null, '    '),
             summary: data['summary']
           });
-        }        
+        }
       })
       .catch(error => {
         console.log(error);
@@ -248,7 +248,7 @@ export default function HomePage(props) {
       }
     });
   };
-  
+
   const handleResetJob = (keep) => {
     if (!currentJob) {
       setDownloadingData(false);
@@ -290,7 +290,7 @@ export default function HomePage(props) {
         alert("No analysis is selected!");
         return;
       }
-  
+
       let request = '/api/data/' + currentJob.job_id +'?data_type='+ downloadOption.data_type;
       fetch(request).then(response => {
         if (response.ok) {
@@ -305,7 +305,7 @@ export default function HomePage(props) {
           a.download = "pat_data_"+currentJob.job_id+".zip";
           document.body.appendChild(a); // we need to append the element to the dom -> otherwise it will not work in firefox
           a.click();
-          a.remove();  //afterwards we remove the element again   
+          a.remove();  //afterwards we remove the element again
         })
         .catch(error => {
           console.log(error);
@@ -340,7 +340,7 @@ export default function HomePage(props) {
       onSizePerPageChange:(s, p)=>
       {
         localStorage.setItem('job_page_size', s);
-      } 
+      }
     };
   };
 

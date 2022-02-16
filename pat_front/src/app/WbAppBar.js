@@ -11,6 +11,7 @@ import { UserContext } from "./user-context";
 
 const useStyles = makeStyles((theme) => ({
   appBar: {
+    backgroundColor: 'rgba(240, 240, 240, 1)',
     zIndex: theme.zIndex.drawer + 1,
     transition: theme.transitions.create(['width', 'margin'], {
       easing: theme.transitions.easing.sharp,
@@ -27,23 +28,36 @@ const useStyles = makeStyles((theme) => ({
   logoImage: {
     marginLeft: 10,
     marginRight: 50,
+    height: 20,
   },
   title: {
     flexGrow: 1,
+    fontFamily: '"Arial", sans-serif',
+    fontWeight: 'bold',
+    fontSize: '20px',
+    lineHeight: '26px',
+    letterSpacing: '0.15px',
+    color: '#002c77',
+
   },
   menuLink: {
-    color: 'inherit', 
+    color: 'rgba(32, 32, 32, 0.87)', 
     '&:hover':{
       color: theme.palette.text.secondary,
     },
     textDecoration: 'inherit',
-    marginRight:'12px'
+    marginRight:'12px',
+    fontFamily: '"Arial", sans-serif',
+    fontWeight: 'bold',
+    fontSize: '14px',
+    lineHeight: '24px',
+    letterSpacing: '1.25px',
+    
   },
 }));
 
 
-
-export default function WbNavbar(props) {
+function WbNavbar() {
   const classes = useStyles();
   const [user,] = useContext(UserContext);
 
@@ -53,16 +67,20 @@ export default function WbNavbar(props) {
     else 
       return "Login";
   };
+  let prefTheme = localStorage.getItem('prefer_theme')
 
   return (
-  <AppBar position="fixed" color='default' className={classes.appBar}>
-    <Toolbar disableGutters >
-      <img alt='' src={props.theme === 'dark'?require('./gc-logo.png'): require('./gc-logo-new.png')} height = "20" className={classes.logoImage}/>
-      <Typography variant="h6" noWrap className={classes.title}>
-          Premium Allocation Tool
-      </Typography>
-      <Link to="/login" className={classes.menuLink} >{LoginLabel()}</Link>
-    </Toolbar>
-  </AppBar>
+      <AppBar style={{backgroundColor: prefTheme === 'dark'? '#A9A9A9':'rgba(240, 240, 240)'}} className={classes.appBar}>
+        <Toolbar disableGutters >
+          <img alt='GC Logo' src={require('./gc-logo-new.png')} className={classes.logoImage}/>
+          <Typography noWrap className={classes.title}>
+              Premium Allocation Tool
+          </Typography>
+          <Link to="/login" className={classes.menuLink} >{LoginLabel()}</Link>
+        </Toolbar>
+      </AppBar>
   );
-};
+}
+
+export default WbNavbar;
+
